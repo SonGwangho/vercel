@@ -1,48 +1,57 @@
 import type { TreeMenu } from "$lib";
 
+type MenuDay = {
+  MENU_TITLE: `${number}일`;
+  path: string;
+};
+
+type MenuDirectory = {
+  MENU_DIR: `${number}년 ${number}월`;
+  days: MenuDay[];
+};
+
+const MENU_STRUCTURE: MenuDirectory[] = [
+  {
+    MENU_DIR: "2026년 02월",
+    days: [
+      { MENU_TITLE: "24일", path: "/wiki/2026-02-24" },
+      { MENU_TITLE: "25일", path: "/wiki/2026-02-25" },
+    ],
+  },
+  {
+    MENU_DIR: "2026년 03월",
+    days: [
+      { MENU_TITLE: "01일", path: "/wiki/2026-03-01" },
+      { MENU_TITLE: "02일", path: "/wiki/2026-03-02" },
+    ],
+  },
+];
+
+function createMenus(structure: MenuDirectory[]): TreeMenu[] {
+  return structure.flatMap((directory, dirIndex) => {
+    const parentId = `DIR-${dirIndex + 1}`;
+
+    const parentMenu: TreeMenu = {
+      id: parentId,
+      name: directory.MENU_DIR,
+      path: directory.days[0]?.path ?? "/wiki",
+      order: (dirIndex + 1) * 10,
+    };
+
+    const children = directory.days.map((day, dayIndex) => ({
+      id: `${parentId}-DAY-${dayIndex + 1}`,
+      name: day.MENU_TITLE,
+      path: day.path,
+      order: (dayIndex + 1) * 10,
+      parent: parentId,
+    }));
+
+    return [parentMenu, ...children];
+  });
+}
+
 export const load = async () => {
-  const menus: TreeMenu[] = [
-    {
-      id: "P0001",
-      name: "1. 메뉴 최상단",
-      path: "/menu/",
-      order: 10,
-    },
-    {
-      id: "C0011",
-      name: "1. 메뉴 최상단의 자식1",
-      path: "/menu/child11",
-      order: 10,
-      parent: "P0001",
-    },
-    {
-      id: "C0012",
-      name: "1. 메뉴 최상단의 자식2",
-      path: "/menu/child12",
-      order: 20,
-      parent: "P0001",
-    },
-    {
-      id: "P0002",
-      name: "2. 메뉴 최상단",
-      path: "/menu",
-      order: 10,
-    },
-    {
-      id: "C0021",
-      name: "2. 메뉴 최상단의 자식",
-      path: "/menu/child21",
-      order: 10,
-      parent: "P0002",
-    },
-    {
-      id: "C0022",
-      name: "2. 메뉴 최상단의 자식",
-      path: "/menu/child22",
-      order: 20,
-      parent: "P0002",
-    },
-  ];
+  const menus: TreeMenu[] = createMenus(MENU_STRUCTURE);
 
   return { menus };
 };
