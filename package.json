@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@tanstack/svelte-table": "^8.21.3"
+  }
+}
