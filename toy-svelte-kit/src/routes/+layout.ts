@@ -1,57 +1,44 @@
-import type { TreeMenu } from "$lib";
+﻿import type { TreeMenu } from "$lib";
+import menuRaw from "$lib/assets/data/menu.json?raw";
 
-type MenuDay = {
-  MENU_TITLE: `${number}일`;
-  path: string;
-};
+function isTreeMenu(value: unknown): value is TreeMenu {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
 
-type MenuDirectory = {
-  MENU_DIR: `${number}년 ${number}월`;
-  days: MenuDay[];
-};
+  const candidate = value as Partial<TreeMenu>;
 
-const MENU_STRUCTURE: MenuDirectory[] = [
-  {
-    MENU_DIR: "2026년 02월",
-    days: [
-      { MENU_TITLE: "24일", path: "/wiki/2026-02-24" },
-      { MENU_TITLE: "25일", path: "/wiki/2026-02-25" },
-    ],
-  },
-  {
-    MENU_DIR: "2026년 03월",
-    days: [
-      { MENU_TITLE: "01일", path: "/wiki/2026-03-01" },
-      { MENU_TITLE: "02일", path: "/wiki/2026-03-02" },
-    ],
-  },
-];
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.path === "string" &&
+    typeof candidate.order === "number" &&
+    (candidate.parent === undefined || typeof candidate.parent === "string") &&
+    (candidate.description === undefined ||
+      typeof candidate.description === "string")
+  );
+}
 
-function createMenus(structure: MenuDirectory[]): TreeMenu[] {
-  return structure.flatMap((directory, dirIndex) => {
-    const parentId = `DIR-${dirIndex + 1}`;
+function parseMenus(raw: string): TreeMenu[] {
+  if (!raw.trim()) {
+    return [];
+  }
 
-    const parentMenu: TreeMenu = {
-      id: parentId,
-      name: directory.MENU_DIR,
-      path: directory.days[0]?.path ?? "/wiki",
-      order: (dirIndex + 1) * 10,
-    };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
 
-    const children = directory.days.map((day, dayIndex) => ({
-      id: `${parentId}-DAY-${dayIndex + 1}`,
-      name: day.MENU_TITLE,
-      path: day.path,
-      order: (dayIndex + 1) * 10,
-      parent: parentId,
-    }));
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
 
-    return [parentMenu, ...children];
-  });
+    return parsed.filter(isTreeMenu);
+  } catch {
+    return [];
+  }
 }
 
 export const load = async () => {
-  const menus: TreeMenu[] = createMenus(MENU_STRUCTURE);
+  const menus = parseMenus(menuRaw);
 
   return { menus };
 };
