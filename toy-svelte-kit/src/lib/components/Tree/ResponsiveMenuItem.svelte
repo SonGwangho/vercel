@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import type { TreeNode } from "$lib/types/TreeMenu";
   import ResponsiveMenuItem from "./ResponsiveMenuItem.svelte";
 
@@ -19,28 +19,33 @@
   } = $props();
 
   const hasChildren = $derived(node.children.length > 0);
-  const isExpanded = $derived(expandedIds.has(node.id));
+  let isExpanded = $state(false);
 </script>
 
 <li class={`menu-item level-${level}`}>
   <div class="menu-entry">
-    <a href={node.path} class="menu-link" onclick={() => isMobile && onNavigate?.()}>{node.name}</a>
-
     {#if hasChildren}
       <button
         type="button"
-        class="submenu-toggle"
-        aria-label={`${node.name} 하위 메뉴 열기`}
+        class="menu-parent"
         aria-expanded={isExpanded}
-        onclick={() => onToggle?.(node.id)}
+        onclick={() => {
+          isExpanded = !isExpanded;
+          onToggle?.(node.id);
+        }}
       >
-        {isExpanded ? "−" : "+"}
+        <span>{node.name}</span>
+        <span class="submenu-indicator">{isExpanded ? "-" : "+"}</span>
       </button>
+    {:else}
+      <a href={node.path} class="menu-link" onclick={() => isMobile && onNavigate?.()}>
+        {node.name}
+      </a>
     {/if}
   </div>
 
   {#if hasChildren}
-    <ul class={`submenu ${isMobile && isExpanded ? "mobile-open" : ""}`}>
+    <ul class={`submenu ${isExpanded ? "open" : ""}`}>
       {#each node.children as child}
         <ResponsiveMenuItem
           node={child}

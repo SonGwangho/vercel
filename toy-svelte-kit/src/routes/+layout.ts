@@ -20,12 +20,14 @@ function isTreeMenu(value: unknown): value is TreeMenu {
 }
 
 function parseMenus(raw: string): TreeMenu[] {
-  if (!raw.trim()) {
+  const normalized = raw.replace(/^\uFEFF/, "").trim();
+
+  if (!normalized) {
     return [];
   }
 
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(normalized) as unknown;
 
     if (!Array.isArray(parsed)) {
       return [];
