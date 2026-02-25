@@ -7,7 +7,10 @@
 
   let { data, children } = $props();
 
-  const tree = $derived(buildTree(data.menus));
+  const tree = $derived(buildTree(data.menus ?? []));
+  const menuTabs = $derived(data.menuTabs ?? []);
+  const activeMenu = $derived(data.activeMenu ?? "");
+  const showSidebar = $derived(activeMenu !== "home");
 
   let isMobile = $state(false);
   let drawerOpen = $state(false);
@@ -57,43 +60,60 @@
 </svelte:head>
 
 <header class="topbar">
-  <div class="brand">My Wiki</div>
+  <div class="topbar-left">
+    <nav aria-label="Top menus" class="top-menu">
+      {#each menuTabs as menu}
+        <a
+          href={menu.path}
+          class={`top-menu-link ${activeMenu === menu.key ? "active" : ""}`}
+          onclick={closeDrawer}
+        >
+          {menu.label}
+        </a>
+      {/each}
+    </nav>
+  </div>
+
+  {#if showSidebar}
   <button
     type="button"
     class="hamburger"
-    aria-label="메뉴 열기"
+    aria-label="Open menu"
     aria-expanded={drawerOpen}
     onclick={toggleDrawer}
   >
-    ☰
+    &#9776;
   </button>
+  {/if}
 </header>
 
-<div class="wiki-shell">
-  {#if isMobile && drawerOpen}
+<div class={`wiki-shell ${showSidebar ? "" : "no-sidebar"}`}>
+  {#if showSidebar && isMobile && drawerOpen}
     <button
       type="button"
       class="drawer-backdrop"
-      aria-label="메뉴 닫기"
+      aria-label="Close menu"
       onclick={closeDrawer}
     ></button>
   {/if}
 
-  <aside class={`sidebar ${drawerOpen ? "open" : ""}`}>
-    <nav aria-label="위키 메뉴" class="menu-nav">
-      <ul class="menu-root">
-        {#each tree as node}
-          <ResponsiveMenuItem
-            {node}
-            {isMobile}
-            {expandedIds}
-            onToggle={toggleSubmenu}
-            onNavigate={closeDrawer}
-          />
-        {/each}
-      </ul>
-    </nav>
-  </aside>
+  {#if showSidebar}
+    <aside class={`sidebar ${drawerOpen ? "open" : ""}`}>
+      <nav aria-label="Side menu" class="menu-nav">
+        <ul class="menu-root">
+          {#each tree as node}
+            <ResponsiveMenuItem
+              {node}
+              {isMobile}
+              {expandedIds}
+              onToggle={toggleSubmenu}
+              onNavigate={closeDrawer}
+            />
+          {/each}
+        </ul>
+      </nav>
+    </aside>
+  {/if}
 
   <main class="content">
     {@render children()}

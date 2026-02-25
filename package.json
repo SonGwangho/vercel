@@ -1,5 +1,4 @@
 {
-  "dependencies": {
-    "@tanstack/svelte-table": "^8.21.3"
-  }
+  "name": "vercel",
+  "private": true
 }
