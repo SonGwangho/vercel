@@ -20,6 +20,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
+  overflow-x: hidden;
   font-family:
     "Pretendard",
     "Noto Sans KR",
@@ -41,6 +42,7 @@ body {
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
+  overflow-x: clip;
 }
 
 .topbar-left {
@@ -102,6 +104,7 @@ body {
 .wiki-shell {
   display: flex;
   min-height: calc(100dvh - 60px);
+  overflow-x: clip;
 }
 
 .wiki-shell.no-sidebar {
@@ -219,7 +222,7 @@ body {
 }
 
 .content {
-  width: 100%;
+  width: min(100%, 100%);
   padding: 20px;
 }
 
@@ -307,8 +310,7 @@ body {
   }
 
   .wiki-shell {
-    display: grid;
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    display: block;
   }
 
   .wiki-shell.no-sidebar {
@@ -316,17 +318,42 @@ body {
   }
 
   .sidebar {
-    position: sticky;
+    position: fixed;
     top: 60px;
     left: 0;
     right: auto;
-    transform: none;
     width: var(--sidebar-width);
     height: calc(100dvh - 60px);
-    z-index: 10;
+    z-index: 15;
+    transform: translateX(0);
+    transition: transform 0.24s ease;
+  }
+
+  .sidebar.desktop-collapsed {
+    transform: translateX(calc(-1 * var(--sidebar-width) + 34px));
+  }
+
+  .sidebar-toggle-desktop {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-strong);
+    color: var(--brand-strong);
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1;
   }
 
   .menu-nav {
+    padding-top: 36px;
     overflow: visible;
   }
 
@@ -346,5 +373,18 @@ body {
 
   .content {
     padding: 28px;
+    margin-left: 0;
+    width: 100%;
+    transition: margin-left 0.24s ease;
+  }
+
+  .wiki-shell.has-sidebar .content {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+  }
+
+  .wiki-shell.has-sidebar.sidebar-collapsed .content {
+    margin-left: 34px;
+    width: calc(100% - 34px);
   }
 }

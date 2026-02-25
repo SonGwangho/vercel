@@ -1,0 +1,8 @@
+[
+  {
+    "id": "wordle",
+    "name": "Wordle",
+    "path": "/game/wordle",
+    "order": 10
+  }
+]

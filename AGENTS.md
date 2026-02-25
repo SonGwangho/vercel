@@ -26,3 +26,12 @@
 - 페이지는 `/src/{MENU_DIR}/{MENU_TITLE}` 경로에 폴더를 만들어서 작성한다.
 - 페이지 타입은 `TreeMenu.ts` 파일에 정의된 `TreeMenu`를 따른다.
 - 메뉴는 직접 생성하지 않고 `src\\lib\\assets\\data\\*.json` 경로에 작성한다.
+
+
+## 데이터 관리
+**정적 데이터**
+- 정적 데이터들은 모두 `/src/lib/assets/data/{dataDir}` 경로에 저장한다.
+- 카테고리에 따라 디렉토리를 만들고 값은 가능한 json으로 저장한다.
+
+**로컬 데이터**
+- 로컬에 데이터를 저장할 때는 localStorage가 아닌 `src/lib/utils/Storage.ts`의 IndexedDB를 사용한다.
