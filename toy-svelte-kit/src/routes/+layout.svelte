@@ -2,6 +2,7 @@
   import { buildTree } from "$lib";
   import favicon from "$lib/assets/favicon.ico";
   import ResponsiveMenuItem from "$lib/components/Tree/ResponsiveMenuItem.svelte";
+  import GlobalLoadingModal from "$lib/components/Modal/GlobalLoadingModal.svelte";
   import "../app.css";
   import { onMount } from "svelte";
 
@@ -138,3 +139,5 @@
     {@render children()}
   </main>
 </div>
+
+<GlobalLoadingModal />
