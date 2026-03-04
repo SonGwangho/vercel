@@ -75,6 +75,7 @@
   let searchDexNo = $state("");
   let visibleCount = $state(PAGE_SIZE);
   let sentinelEl = $state<HTMLDivElement | null>(null);
+  let infiniteObserver: IntersectionObserver | null = null;
 
   const normalizedDexQuery = $derived(searchDexNo.replace(/\D/g, ""));
 
@@ -412,10 +413,16 @@
     }
   }
 
-  onMount(() => {
-    loadPokemon();
+  $effect(() => {
+    if (!sentinelEl) {
+      return;
+    }
 
-    const observer = new IntersectionObserver(
+    if (infiniteObserver) {
+      infiniteObserver.disconnect();
+    }
+
+    infiniteObserver = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
@@ -426,11 +433,17 @@
       { root: null, rootMargin: "280px 0px", threshold: 0 },
     );
 
-    if (sentinelEl) {
-      observer.observe(sentinelEl);
-    }
+    infiniteObserver.observe(sentinelEl);
+  });
 
-    return () => observer.disconnect();
+  onMount(() => {
+    loadPokemon();
+
+    return () => {
+      if (infiniteObserver) {
+        infiniteObserver.disconnect();
+      }
+    };
   });
 </script>
 
