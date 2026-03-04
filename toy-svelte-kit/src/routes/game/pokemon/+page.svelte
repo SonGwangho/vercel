@@ -67,7 +67,6 @@
   };
 
   let loading = $state(true);
-  let fromCache = $state(false);
   let errorMessage = $state("");
   let items = $state<PokemonKoItem[]>([]);
   let fetchedAtLabel = $state("");
@@ -398,8 +397,7 @@
     startGlobalLoading("포켓몬 정보를 불러오는 중입니다...");
 
     try {
-      const { payload, fromCache: cacheHit } = await getOrBuildPokemonCache();
-      fromCache = cacheHit;
+      const { payload } = await getOrBuildPokemonCache();
       items = payload.items;
       fetchedAtLabel = formatDateTime(payload.fetchedAt);
     } catch (error) {
@@ -452,9 +450,7 @@
     <p class="eyebrow">Pokemon Explorer</p>
     <h1>Pokebook</h1>
     {#if !loading && !errorMessage}
-      <p class="meta">
-        {fromCache ? "캐시 사용" : "API 조회 후 저장"} | {items.length}마리 | {fetchedAtLabel}
-      </p>
+      <p class="meta">{items.length}마리 | {fetchedAtLabel}</p>
     {/if}
   </div>
 
