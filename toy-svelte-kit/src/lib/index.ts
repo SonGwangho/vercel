@@ -5,3 +5,4 @@ export * from "./types/User.ts";
 export * from "./types/Table.ts";
 export * from "./types/TreeMenu.ts";
 export * from "./types/Pokemon.ts";
+export * from "./types/Tarot.ts";

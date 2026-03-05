@@ -10,5 +10,11 @@
     "name": "pokemon",
     "path": "/game/pokemon",
     "order": 20
+  },
+  {
+    "id": "tarot",
+    "name": "Tarot",
+    "path": "/game/tarot",
+    "order": 30
   }
 ]

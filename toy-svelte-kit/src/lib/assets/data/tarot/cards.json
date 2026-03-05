@@ -1,0 +1,110 @@
+[
+  {
+    "id": "the-fool",
+    "name": "The Fool",
+    "koreanName": "바보",
+    "symbol": "0",
+    "accent": "#f59e0b",
+    "upright": "새로운 시작이 열립니다. 가벼운 용기가 행운을 부릅니다.",
+    "reversed": "준비 없는 도전은 손실로 이어질 수 있습니다. 계획을 먼저 점검하세요."
+  },
+  {
+    "id": "the-magician",
+    "name": "The Magician",
+    "koreanName": "마법사",
+    "symbol": "I",
+    "accent": "#ef4444",
+    "upright": "당신의 재능이 주목받는 시기입니다. 실행력이 결과를 만듭니다.",
+    "reversed": "집중력이 흐트러질 수 있습니다. 한 번에 한 가지에 몰입하세요."
+  },
+  {
+    "id": "the-high-priestess",
+    "name": "The High Priestess",
+    "koreanName": "여교황",
+    "symbol": "II",
+    "accent": "#6366f1",
+    "upright": "직감이 정확합니다. 조용히 관찰하면 답이 보입니다.",
+    "reversed": "정보 부족으로 오해가 생길 수 있습니다. 확인 후 판단하세요."
+  },
+  {
+    "id": "the-empress",
+    "name": "The Empress",
+    "koreanName": "여황제",
+    "symbol": "III",
+    "accent": "#ec4899",
+    "upright": "관계와 일에서 풍요가 커집니다. 돌봄이 큰 성과로 돌아옵니다.",
+    "reversed": "과한 배려로 에너지가 소모됩니다. 경계를 분명히 하세요."
+  },
+  {
+    "id": "the-emperor",
+    "name": "The Emperor",
+    "koreanName": "황제",
+    "symbol": "IV",
+    "accent": "#f97316",
+    "upright": "질서와 책임감이 신뢰를 만듭니다. 리더십을 발휘할 때입니다.",
+    "reversed": "통제 욕구가 갈등을 키울 수 있습니다. 유연한 협업을 시도하세요."
+  },
+  {
+    "id": "the-lovers",
+    "name": "The Lovers",
+    "koreanName": "연인",
+    "symbol": "VI",
+    "accent": "#22c55e",
+    "upright": "중요한 선택에서 진심이 길을 안내합니다. 관계 운이 상승합니다.",
+    "reversed": "감정과 현실의 균형이 필요합니다. 약속은 구체적으로 정하세요."
+  },
+  {
+    "id": "the-chariot",
+    "name": "The Chariot",
+    "koreanName": "전차",
+    "symbol": "VII",
+    "accent": "#0ea5e9",
+    "upright": "강한 추진력으로 목표에 가까워집니다. 속도를 내도 좋습니다.",
+    "reversed": "급한 결정이 방향을 흐릴 수 있습니다. 기준을 다시 세우세요."
+  },
+  {
+    "id": "strength",
+    "name": "Strength",
+    "koreanName": "힘",
+    "symbol": "VIII",
+    "accent": "#16a34a",
+    "upright": "차분한 인내가 문제를 해결합니다. 부드러움이 강점이 됩니다.",
+    "reversed": "자신감이 떨어질 수 있습니다. 작은 성공부터 다시 쌓아가세요."
+  },
+  {
+    "id": "wheel-of-fortune",
+    "name": "Wheel of Fortune",
+    "koreanName": "운명의 수레바퀴",
+    "symbol": "X",
+    "accent": "#8b5cf6",
+    "upright": "흐름이 당신 편으로 움직입니다. 변화에 올라타면 기회가 큽니다.",
+    "reversed": "예상 밖 변수에 대비해야 합니다. 백업 플랜을 준비하세요."
+  },
+  {
+    "id": "the-star",
+    "name": "The Star",
+    "koreanName": "별",
+    "symbol": "XVII",
+    "accent": "#38bdf8",
+    "upright": "회복과 희망의 카드입니다. 장기 계획에 좋은 신호가 들어옵니다.",
+    "reversed": "기대가 과하면 실망이 커집니다. 현실적인 단계로 나누어 보세요."
+  },
+  {
+    "id": "the-moon",
+    "name": "The Moon",
+    "koreanName": "달",
+    "symbol": "XVIII",
+    "accent": "#334155",
+    "upright": "보이지 않는 감정이 드러납니다. 내면의 목소리를 들어보세요.",
+    "reversed": "불안이 걷히며 상황이 명확해집니다. 사실 확인이 핵심입니다."
+  },
+  {
+    "id": "the-sun",
+    "name": "The Sun",
+    "koreanName": "태양",
+    "symbol": "XIX",
+    "accent": "#f59e0b",
+    "upright": "성공과 활력이 강하게 들어옵니다. 자신 있게 표현해도 좋습니다.",
+    "reversed": "성급함만 조절하면 좋은 흐름을 유지할 수 있습니다."
+  }
+]
