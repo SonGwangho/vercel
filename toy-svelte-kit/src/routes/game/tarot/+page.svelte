@@ -5,7 +5,16 @@
   type DrawMode = "upright" | "reversed";
 
   const cards = tarotCards as TarotCard[];
-  const frontImageMap = new Map<string, string>();
+  const imageModules = import.meta.glob("$lib/assets/data/tarot/img/*.jpg", {
+    eager: true,
+    import: "default",
+  }) as Record<string, string>;
+  const imageUrlByFile = new Map(
+    Object.entries(imageModules).map(([path, url]) => [
+      path.split("/").pop() ?? "",
+      url,
+    ]),
+  );
   const backImage = buildBackImage();
 
   let shuffledCards = $state(shuffleDeck(cards));
@@ -62,36 +71,8 @@
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }
 
-  function buildFrontImage(card: TarotCard) {
-    const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="560" viewBox="0 0 360 560">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#1e293b"/>
-    </linearGradient>
-  </defs>
-  <rect width="360" height="560" rx="26" fill="url(#g)"/>
-  <rect x="16" y="16" width="328" height="528" rx="18" fill="none" stroke="${card.accent}" stroke-width="3"/>
-  <circle cx="180" cy="280" r="98" fill="none" stroke="${card.accent}" stroke-width="4"/>
-  <circle cx="180" cy="280" r="68" fill="none" stroke="#f8fafc" stroke-opacity="0.45" stroke-width="2"/>
-  <text x="180" y="298" text-anchor="middle" fill="#f8fafc" font-size="56" font-family="Georgia, serif">${card.symbol}</text>
-  <text x="180" y="64" text-anchor="middle" fill="${card.accent}" font-size="20" letter-spacing="1.5" font-family="Georgia, serif">${card.name.toUpperCase()}</text>
-  <text x="180" y="530" text-anchor="middle" fill="#cbd5e1" font-size="22" font-family="Georgia, serif">${card.koreanName}</text>
-</svg>`;
-
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  }
-
   function frontImage(card: TarotCard) {
-    const cached = frontImageMap.get(card.id);
-    if (cached) {
-      return cached;
-    }
-
-    const value = buildFrontImage(card);
-    frontImageMap.set(card.id, value);
-    return value;
+    return imageUrlByFile.get(card.imageFile) ?? backImage;
   }
 
   function pickCard(card: TarotCard) {
@@ -372,9 +353,12 @@
   .card-face img {
     width: 100%;
     aspect-ratio: 9 / 14;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
     background: #0f172a;
+    padding: 6px;
+    box-sizing: border-box;
+    border-radius: 8px;
   }
 
   .card-front {

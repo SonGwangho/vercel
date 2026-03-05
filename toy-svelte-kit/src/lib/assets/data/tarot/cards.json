@@ -1,110 +1,244 @@
-[
+﻿[
   {
+    "majorNo": 0,
     "id": "the-fool",
     "name": "The Fool",
     "koreanName": "바보",
     "symbol": "0",
+    "imageFile": "0.jpg",
     "accent": "#f59e0b",
-    "upright": "새로운 시작이 열립니다. 가벼운 용기가 행운을 부릅니다.",
-    "reversed": "준비 없는 도전은 손실로 이어질 수 있습니다. 계획을 먼저 점검하세요."
+    "upright": "새 출발의 운입니다. 가볍게 시작한 일이 의외의 기회로 이어집니다.",
+    "reversed": "충동적인 선택을 조심하세요. 시작 전에 체크리스트를 먼저 확인해 보세요."
   },
   {
+    "majorNo": 1,
     "id": "the-magician",
     "name": "The Magician",
     "koreanName": "마법사",
     "symbol": "I",
+    "imageFile": "1.jpg",
     "accent": "#ef4444",
-    "upright": "당신의 재능이 주목받는 시기입니다. 실행력이 결과를 만듭니다.",
-    "reversed": "집중력이 흐트러질 수 있습니다. 한 번에 한 가지에 몰입하세요."
+    "upright": "실행력이 강해지는 시기입니다. 지금 가진 자원으로도 충분히 결과를 냅니다.",
+    "reversed": "집중력 분산을 주의하세요. 한 번에 하나씩 끝내는 방식이 유리합니다."
   },
   {
+    "majorNo": 2,
     "id": "the-high-priestess",
     "name": "The High Priestess",
     "koreanName": "여교황",
     "symbol": "II",
+    "imageFile": "2.jpg",
     "accent": "#6366f1",
-    "upright": "직감이 정확합니다. 조용히 관찰하면 답이 보입니다.",
-    "reversed": "정보 부족으로 오해가 생길 수 있습니다. 확인 후 판단하세요."
+    "upright": "직감이 잘 맞는 흐름입니다. 서두르기보다 관찰이 정답을 줍니다.",
+    "reversed": "감정과 사실이 섞일 수 있습니다. 정보 확인 후 판단하세요."
   },
   {
+    "majorNo": 3,
     "id": "the-empress",
     "name": "The Empress",
     "koreanName": "여황제",
     "symbol": "III",
+    "imageFile": "3.jpg",
     "accent": "#ec4899",
-    "upright": "관계와 일에서 풍요가 커집니다. 돌봄이 큰 성과로 돌아옵니다.",
-    "reversed": "과한 배려로 에너지가 소모됩니다. 경계를 분명히 하세요."
+    "upright": "풍요와 성장의 기운입니다. 관계와 일 모두 안정적인 확장이 가능합니다.",
+    "reversed": "과한 배려로 지칠 수 있습니다. 내 페이스를 우선으로 두세요."
   },
   {
+    "majorNo": 4,
     "id": "the-emperor",
     "name": "The Emperor",
     "koreanName": "황제",
     "symbol": "IV",
+    "imageFile": "4.jpg",
     "accent": "#f97316",
-    "upright": "질서와 책임감이 신뢰를 만듭니다. 리더십을 발휘할 때입니다.",
-    "reversed": "통제 욕구가 갈등을 키울 수 있습니다. 유연한 협업을 시도하세요."
+    "upright": "원칙과 리더십이 성과를 만듭니다. 계획한 대로 밀고 가도 좋습니다.",
+    "reversed": "고집이 갈등을 만들 수 있습니다. 상대의 방식도 열어두세요."
   },
   {
+    "majorNo": 5,
+    "id": "the-hierophant",
+    "name": "The Hierophant",
+    "koreanName": "교황",
+    "symbol": "V",
+    "imageFile": "5.jpg",
+    "accent": "#a855f7",
+    "upright": "기본과 원칙이 힘을 발휘합니다. 검증된 방법이 가장 빠른 길입니다.",
+    "reversed": "틀에 갇히기 쉽습니다. 기존 방식에 작은 변화를 줘 보세요."
+  },
+  {
+    "majorNo": 6,
     "id": "the-lovers",
     "name": "The Lovers",
     "koreanName": "연인",
     "symbol": "VI",
+    "imageFile": "6.jpg",
     "accent": "#22c55e",
-    "upright": "중요한 선택에서 진심이 길을 안내합니다. 관계 운이 상승합니다.",
-    "reversed": "감정과 현실의 균형이 필요합니다. 약속은 구체적으로 정하세요."
+    "upright": "관계 운이 좋아집니다. 중요한 선택은 진심에 맞추면 길이 열립니다.",
+    "reversed": "감정과 현실 사이에서 흔들릴 수 있습니다. 기준을 분명히 하세요."
   },
   {
+    "majorNo": 7,
     "id": "the-chariot",
     "name": "The Chariot",
     "koreanName": "전차",
     "symbol": "VII",
+    "imageFile": "7.jpg",
     "accent": "#0ea5e9",
-    "upright": "강한 추진력으로 목표에 가까워집니다. 속도를 내도 좋습니다.",
-    "reversed": "급한 결정이 방향을 흐릴 수 있습니다. 기준을 다시 세우세요."
+    "upright": "강한 추진력이 들어옵니다. 목표를 향해 과감하게 전진하세요.",
+    "reversed": "속도 조절이 필요합니다. 방향이 맞는지 먼저 점검하세요."
   },
   {
+    "majorNo": 8,
     "id": "strength",
     "name": "Strength",
     "koreanName": "힘",
     "symbol": "VIII",
+    "imageFile": "8.jpg",
     "accent": "#16a34a",
-    "upright": "차분한 인내가 문제를 해결합니다. 부드러움이 강점이 됩니다.",
-    "reversed": "자신감이 떨어질 수 있습니다. 작은 성공부터 다시 쌓아가세요."
+    "upright": "인내와 절제가 좋은 결과를 부릅니다. 부드러운 리더십이 통합니다.",
+    "reversed": "자신감이 흔들릴 수 있습니다. 작은 성공을 먼저 쌓아보세요."
   },
   {
+    "majorNo": 9,
+    "id": "the-hermit",
+    "name": "The Hermit",
+    "koreanName": "은둔자",
+    "symbol": "IX",
+    "imageFile": "9.jpg",
+    "accent": "#475569",
+    "upright": "혼자 정리하는 시간이 큰 통찰을 줍니다. 속도를 잠시 늦춰도 좋습니다.",
+    "reversed": "고립감이 커질 수 있습니다. 믿을 만한 사람과 대화를 시도하세요."
+  },
+  {
+    "majorNo": 10,
     "id": "wheel-of-fortune",
     "name": "Wheel of Fortune",
     "koreanName": "운명의 수레바퀴",
     "symbol": "X",
+    "imageFile": "10.jpg",
     "accent": "#8b5cf6",
-    "upright": "흐름이 당신 편으로 움직입니다. 변화에 올라타면 기회가 큽니다.",
-    "reversed": "예상 밖 변수에 대비해야 합니다. 백업 플랜을 준비하세요."
+    "upright": "상황이 유리하게 바뀌는 타이밍입니다. 변화의 흐름을 타세요.",
+    "reversed": "예상치 못한 변수에 대비해야 합니다. 대안 플랜을 준비하세요."
   },
   {
+    "majorNo": 11,
+    "id": "justice",
+    "name": "Justice",
+    "koreanName": "정의",
+    "symbol": "XI",
+    "imageFile": "11.jpg",
+    "accent": "#2563eb",
+    "upright": "공정한 판단이 필요한 때입니다. 사실 기반으로 결정하면 유리합니다.",
+    "reversed": "편견이 판단을 흐릴 수 있습니다. 근거를 다시 검토하세요."
+  },
+  {
+    "majorNo": 12,
+    "id": "the-hanged-man",
+    "name": "The Hanged Man",
+    "koreanName": "매달린 사람",
+    "symbol": "XII",
+    "imageFile": "12.jpg",
+    "accent": "#14b8a6",
+    "upright": "잠시 멈춤이 필요한 카드입니다. 관점을 바꾸면 해답이 보입니다.",
+    "reversed": "미루기 패턴에 빠질 수 있습니다. 작은 실행부터 다시 시작하세요."
+  },
+  {
+    "majorNo": 13,
+    "id": "death",
+    "name": "Death",
+    "koreanName": "죽음",
+    "symbol": "XIII",
+    "imageFile": "13.jpg",
+    "accent": "#111827",
+    "upright": "끝은 곧 새로운 시작입니다. 낡은 습관을 정리할 기회입니다.",
+    "reversed": "변화를 거부하면 소모가 커집니다. 정리할 것을 정리하세요."
+  },
+  {
+    "majorNo": 14,
+    "id": "temperance",
+    "name": "Temperance",
+    "koreanName": "절제",
+    "symbol": "XIV",
+    "imageFile": "14.jpg",
+    "accent": "#06b6d4",
+    "upright": "균형 감각이 빛납니다. 조율과 협업에서 좋은 결과가 납니다.",
+    "reversed": "한쪽으로 치우치기 쉽습니다. 생활 리듬을 다시 맞춰보세요."
+  },
+  {
+    "majorNo": 15,
+    "id": "the-devil",
+    "name": "The Devil",
+    "koreanName": "악마",
+    "symbol": "XV",
+    "imageFile": "15.jpg",
+    "accent": "#b91c1c",
+    "upright": "집착이나 유혹을 경계해야 합니다. 소비와 관계의 경계를 분명히 하세요.",
+    "reversed": "묶여 있던 문제에서 벗어나는 흐름입니다. 끊어낼 것을 끊으세요."
+  },
+  {
+    "majorNo": 16,
+    "id": "the-tower",
+    "name": "The Tower",
+    "koreanName": "탑",
+    "symbol": "XVI",
+    "imageFile": "16.jpg",
+    "accent": "#f97316",
+    "upright": "예상 밖 변화가 올 수 있습니다. 빠른 재정비가 핵심입니다.",
+    "reversed": "큰 충돌은 피할 수 있습니다. 작은 경고를 무시하지 마세요."
+  },
+  {
+    "majorNo": 17,
     "id": "the-star",
     "name": "The Star",
     "koreanName": "별",
     "symbol": "XVII",
+    "imageFile": "17.jpg",
     "accent": "#38bdf8",
     "upright": "회복과 희망의 카드입니다. 장기 계획에 좋은 신호가 들어옵니다.",
-    "reversed": "기대가 과하면 실망이 커집니다. 현실적인 단계로 나누어 보세요."
+    "reversed": "기대가 너무 높으면 흔들릴 수 있습니다. 단계를 나눠 진행하세요."
   },
   {
+    "majorNo": 18,
     "id": "the-moon",
     "name": "The Moon",
     "koreanName": "달",
     "symbol": "XVIII",
+    "imageFile": "18.jpg",
     "accent": "#334155",
-    "upright": "보이지 않는 감정이 드러납니다. 내면의 목소리를 들어보세요.",
-    "reversed": "불안이 걷히며 상황이 명확해집니다. 사실 확인이 핵심입니다."
+    "upright": "불확실한 감정이 올라올 수 있습니다. 직감과 사실을 함께 보세요.",
+    "reversed": "혼란이 정리되는 흐름입니다. 오해가 풀리고 방향이 보입니다."
   },
   {
+    "majorNo": 19,
     "id": "the-sun",
     "name": "The Sun",
     "koreanName": "태양",
     "symbol": "XIX",
+    "imageFile": "19.jpg",
     "accent": "#f59e0b",
-    "upright": "성공과 활력이 강하게 들어옵니다. 자신 있게 표현해도 좋습니다.",
-    "reversed": "성급함만 조절하면 좋은 흐름을 유지할 수 있습니다."
+    "upright": "성공과 활력이 크게 들어옵니다. 자신 있게 드러낼수록 유리합니다.",
+    "reversed": "좋은 흐름은 유지됩니다. 조급함만 조절하면 충분합니다."
+  },
+  {
+    "majorNo": 20,
+    "id": "judgement",
+    "name": "Judgement",
+    "koreanName": "심판",
+    "symbol": "XX",
+    "imageFile": "20.jpg",
+    "accent": "#0f766e",
+    "upright": "중요한 결론을 내릴 시점입니다. 과거 경험이 정답을 알려줍니다.",
+    "reversed": "결정 회피를 주의하세요. 완벽을 기다리기보다 선택이 필요합니다."
+  },
+  {
+    "majorNo": 21,
+    "id": "the-world",
+    "name": "The World",
+    "koreanName": "세계",
+    "symbol": "XXI",
+    "imageFile": "21.jpg",
+    "accent": "#10b981",
+    "upright": "완성과 성취의 카드입니다. 마무리와 다음 단계 진입에 최적입니다.",
+    "reversed": "마지막 한 조각이 부족할 수 있습니다. 끝까지 점검하면 완성됩니다."
   }
 ]
