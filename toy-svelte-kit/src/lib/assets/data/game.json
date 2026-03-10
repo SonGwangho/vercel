@@ -1,20 +1,14 @@
 [
   {
-    "id": "wordle",
-    "name": "Wordle",
-    "path": "/game/wordle",
-    "order": 10
-  },
-  {
     "id": "pokemon",
     "name": "pokemon",
     "path": "/game/pokemon",
-    "order": 20
+    "order": 10
   },
   {
     "id": "tarot",
     "name": "Tarot",
     "path": "/game/tarot",
-    "order": 30
+    "order": 20
   }
 ]

@@ -1,70 +1,10 @@
 <script lang="ts">
-  import type { PokemonKoCache, PokemonKoItem } from "$lib";
-  import { startGlobalLoading, stopGlobalLoading } from "$lib/stores/loading";
-  import { Storage } from "$lib/utils/Storage";
+  import type { PokemonDetailItem, PokemonDetailPayload, PokemonKoItem } from "$lib";
+  import pokemonDetailData from "$lib/assets/data/pokemon/pokemon_detail.json";
   import { onMount } from "svelte";
 
-  const STORAGE_KEY = "pokemon:ko:detail:v5";
-  const POKEAPI_BASE = "https://pokeapi.co/api/v2";
-  const MAX_CONCURRENCY = 20;
   const PAGE_SIZE = 24;
-  const OFFICIAL_ARTWORK_BASE =
-    "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork";
-
-  let memoryCache: PokemonKoCache | null = null;
-  let inFlight: Promise<PokemonKoCache> | null = null;
-
-  type NamedApiResource = {
-    name: string;
-    url: string;
-  };
-
-  type SpeciesListResponse = {
-    count: number;
-    results: NamedApiResource[];
-  };
-
-  type SpeciesDetailResponse = {
-    id: number;
-    name: string;
-    names: Array<{
-      name: string;
-      language: { name: string };
-    }>;
-    generation: NamedApiResource;
-    evolves_from_species: NamedApiResource | null;
-    evolution_chain: { url: string };
-  };
-
-  type PokemonDetailResponse = {
-    types: Array<{
-      slot: number;
-      type: NamedApiResource;
-    }>;
-    stats: Array<{
-      base_stat: number;
-      stat: { name: string };
-    }>;
-    abilities: Array<{
-      ability: NamedApiResource;
-    }>;
-    sprites: {
-      other?: {
-        home?: { front_default?: string | null };
-        "official-artwork"?: { front_default?: string | null };
-      };
-      front_default?: string | null;
-    };
-  };
-
-  type EvolutionChainResponse = {
-    chain: EvolutionNode;
-  };
-
-  type EvolutionNode = {
-    species: NamedApiResource;
-    evolves_to: EvolutionNode[];
-  };
+  const pokemonPayload = pokemonDetailData as PokemonDetailPayload;
 
   let loading = $state(true);
   let errorMessage = $state("");
@@ -103,124 +43,15 @@
     if (!hasMore) {
       return;
     }
+
     visibleCount = Math.min(filteredItems.length, visibleCount + PAGE_SIZE);
   }
 
-  function formatDateTime(timestamp: number) {
+  function formatDateTime(timestamp: string) {
     return new Intl.DateTimeFormat("ko-KR", {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(timestamp));
-  }
-
-  function generationToKoLabel(apiName: string) {
-    const table: Record<string, string> = {
-      "generation-i": "1세대",
-      "generation-ii": "2세대",
-      "generation-iii": "3세대",
-      "generation-iv": "4세대",
-      "generation-v": "5세대",
-      "generation-vi": "6세대",
-      "generation-vii": "7세대",
-      "generation-viii": "8세대",
-      "generation-ix": "9세대",
-    };
-    return table[apiName] ?? apiName;
-  }
-
-  function buildArtworkFallback(id: number) {
-    return `${OFFICIAL_ARTWORK_BASE}/${id}.png`;
-  }
-
-  async function fetchJson<T>(url: string): Promise<T> {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`fetch failed: ${res.status} ${url}`);
-    }
-    return (await res.json()) as T;
-  }
-
-  async function mapWithConcurrency<T, R>(
-    list: T[],
-    limit: number,
-    mapper: (item: T, index: number) => Promise<R>,
-  ): Promise<R[]> {
-    const results: R[] = new Array(list.length);
-    let index = 0;
-
-    async function worker() {
-      while (index < list.length) {
-        const current = index++;
-        results[current] = await mapper(list[current], current);
-      }
-    }
-
-    const workerCount = Math.min(limit, Math.max(1, list.length));
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    return results;
-  }
-
-  async function fetchKoNameByResource(
-    resource: NamedApiResource,
-    cache: Map<string, string>,
-  ) {
-    const cached = cache.get(resource.url);
-    if (cached) {
-      return cached;
-    }
-
-    const detail = await fetchJson<{
-      names?: Array<{
-        name: string;
-        language: { name: string };
-      }>;
-      name?: string;
-    }>(resource.url);
-
-    const koName =
-      detail.names?.find((entry) => entry.language.name === "ko")?.name ??
-      detail.name ??
-      resource.name;
-
-    cache.set(resource.url, koName);
-    return koName;
-  }
-
-  function collectEvolutionLinks(
-    node: EvolutionNode,
-    prevBySpecies: Map<string, string>,
-    nextBySpecies: Map<string, string[]>,
-  ) {
-    const current = node.species.name;
-    const children = node.evolves_to.map((entry) => entry.species.name);
-    nextBySpecies.set(current, children);
-
-    for (const child of node.evolves_to) {
-      prevBySpecies.set(child.species.name, current);
-      collectEvolutionLinks(child, prevBySpecies, nextBySpecies);
-    }
-  }
-
-  function readStat(
-    stats: PokemonDetailResponse["stats"],
-    key: string,
-    fallback = 0,
-  ) {
-    return (
-      stats.find((entry) => entry.stat.name === key)?.base_stat ?? fallback
-    );
-  }
-
-  function selectLatestSprite(
-    sprites: PokemonDetailResponse["sprites"],
-    id: number,
-  ) {
-    return (
-      sprites.other?.home?.front_default ??
-      sprites.other?.["official-artwork"]?.front_default ??
-      sprites.front_default ??
-      buildArtworkFallback(id)
-    );
   }
 
   function applyNameFilter(name: string) {
@@ -228,185 +59,60 @@
     searchDexNo = "";
   }
 
-  async function buildPokemonKoData(): Promise<PokemonKoItem[]> {
-    const first = await fetchJson<SpeciesListResponse>(
-      `${POKEAPI_BASE}/pokemon-species?limit=1&offset=0`,
-    );
-
-    const speciesList = await fetchJson<SpeciesListResponse>(
-      `${POKEAPI_BASE}/pokemon-species?limit=${first.count}&offset=0`,
-    );
-
-    const nameCache = new Map<string, string>();
-    const speciesDetails = await mapWithConcurrency(
-      speciesList.results,
-      MAX_CONCURRENCY,
-      (resource) => fetchJson<SpeciesDetailResponse>(resource.url),
-    );
-
-    const koNameBySpeciesName = new Map<string, string>();
-    for (const species of speciesDetails) {
-      const koName =
-        species.names.find((entry) => entry.language.name === "ko")?.name ??
-        species.name;
-      koNameBySpeciesName.set(species.name, koName);
+  function findEvolutionPath(
+    node: PokemonDetailItem["evolutionTree"],
+    targetName: string,
+    parentName: string | null = null,
+  ): { from: string | null; to: string[] } | null {
+    if (node.name === targetName) {
+      return {
+        from: parentName,
+        to: node.children.map((child) => child.name),
+      };
     }
 
-    const uniqueEvolutionUrls = [
-      ...new Set(speciesDetails.map((species) => species.evolution_chain.url)),
-    ];
-
-    const prevBySpecies = new Map<string, string>();
-    const nextBySpecies = new Map<string, string[]>();
-
-    const evolutionChains = await mapWithConcurrency(
-      uniqueEvolutionUrls,
-      MAX_CONCURRENCY,
-      (url) => fetchJson<EvolutionChainResponse>(url),
-    );
-
-    for (const chain of evolutionChains) {
-      collectEvolutionLinks(chain.chain, prevBySpecies, nextBySpecies);
+    for (const child of node.children) {
+      const found = findEvolutionPath(child, targetName, node.name);
+      if (found) {
+        return found;
+      }
     }
 
-    const pokemonDetails = await mapWithConcurrency(
-      speciesDetails,
-      MAX_CONCURRENCY,
-      (species) =>
-        fetchJson<PokemonDetailResponse>(
-          `${POKEAPI_BASE}/pokemon/${species.id}`,
-        ),
-    );
-
-    const pokemonById = new Map<number, PokemonDetailResponse>();
-    for (let i = 0; i < speciesDetails.length; i++) {
-      pokemonById.set(speciesDetails[i].id, pokemonDetails[i]);
-    }
-
-    const itemsWithNull = await mapWithConcurrency(
-      speciesDetails,
-      MAX_CONCURRENCY,
-      async (species) => {
-        const pokemon = pokemonById.get(species.id);
-        if (!pokemon) {
-          return null;
-        }
-
-        const hp = readStat(pokemon.stats, "hp");
-        const attack = readStat(pokemon.stats, "attack");
-        const defense = readStat(pokemon.stats, "defense");
-        const specialAttack = readStat(pokemon.stats, "special-attack");
-        const specialDefense = readStat(pokemon.stats, "special-defense");
-        const speed = readStat(pokemon.stats, "speed");
-
-        const types = await Promise.all(
-          [...pokemon.types]
-            .sort((a, b) => a.slot - b.slot)
-            .map((entry) => fetchKoNameByResource(entry.type, nameCache)),
-        );
-
-        const abilitySet = new Set(
-          await Promise.all(
-            pokemon.abilities.map((entry) =>
-              fetchKoNameByResource(entry.ability, nameCache),
-            ),
-          ),
-        );
-
-        const previousSpeciesName =
-          species.evolves_from_species?.name ??
-          prevBySpecies.get(species.name) ??
-          null;
-        const previousKoName = previousSpeciesName
-          ? (koNameBySpeciesName.get(previousSpeciesName) ??
-            previousSpeciesName)
-          : null;
-
-        const nextSpeciesNames = nextBySpecies.get(species.name) ?? [];
-        const nextKoNames = nextSpeciesNames.map(
-          (name) => koNameBySpeciesName.get(name) ?? name,
-        );
-
-        return {
-          id: species.id,
-          name: koNameBySpeciesName.get(species.name) ?? species.name,
-          imageUrl: selectLatestSprite(pokemon.sprites, species.id),
-          types,
-          baseStats: {
-            hp,
-            attack,
-            defense,
-            specialAttack,
-            specialDefense,
-            speed,
-            total:
-              hp + attack + defense + specialAttack + specialDefense + speed,
-          },
-          evolution: {
-            from: previousKoName,
-            to: nextKoNames,
-          },
-          generation: generationToKoLabel(species.generation.name),
-          abilities: [...abilitySet].sort((a, b) =>
-            a.localeCompare(b, "ko-KR"),
-          ),
-        } satisfies PokemonKoItem;
-      },
-    );
-
-    const cleaned = itemsWithNull.flatMap((item) => (item ? [item] : []));
-    return cleaned.sort((a, b) => a.id - b.id);
+    return null;
   }
 
-  async function getOrBuildPokemonCache(): Promise<{
-    payload: PokemonKoCache;
-    fromCache: boolean;
-  }> {
-    if (memoryCache && memoryCache.items.length > 0) {
-      return { payload: memoryCache, fromCache: true };
-    }
+  function toViewItem(item: PokemonDetailItem): PokemonKoItem {
+    const evolution =
+      findEvolutionPath(item.evolutionTree, item.name) ?? {
+        from: null,
+        to: item.evolutionMethods.map((entry) => entry.to),
+      };
 
-    const saved = await Storage.get<PokemonKoCache>(STORAGE_KEY);
-    if (saved && saved.items.length > 0) {
-      memoryCache = saved;
-      return { payload: saved, fromCache: true };
-    }
-
-    if (!inFlight) {
-      inFlight = (async () => {
-        const built = await buildPokemonKoData();
-        const payload: PokemonKoCache = {
-          fetchedAt: Date.now(),
-          items: built,
-        };
-        await Storage.set(STORAGE_KEY, payload);
-        memoryCache = payload;
-        return payload;
-      })().finally(() => {
-        inFlight = null;
-      });
-    }
-
-    const payload = await inFlight;
-    return { payload, fromCache: false };
+    return {
+      id: item.dexNo,
+      name: item.name,
+      imageUrl: item.imageUrl,
+      types: item.types,
+      baseStats: item.baseStats,
+      evolution,
+      generation: "",
+      abilities: item.abilities,
+    } satisfies PokemonKoItem;
   }
 
-  async function loadPokemon() {
+  function loadPokemon() {
     loading = true;
     errorMessage = "";
-    startGlobalLoading("포켓몬 정보를 불러오는 중입니다...");
 
     try {
-      const { payload } = await getOrBuildPokemonCache();
-      items = payload.items;
-      fetchedAtLabel = formatDateTime(payload.fetchedAt);
+      items = pokemonPayload.items.map(toViewItem);
+      fetchedAtLabel = formatDateTime(pokemonPayload.generatedAt);
     } catch (error) {
       errorMessage =
         error instanceof Error
           ? error.message
           : "포켓몬 데이터를 불러오지 못했습니다.";
     } finally {
-      stopGlobalLoading();
       loading = false;
     }
   }
@@ -486,11 +192,7 @@
           </header>
 
           <div class="photo-wrap">
-            <img
-              src={item.imageUrl ?? buildArtworkFallback(item.id)}
-              alt={`${item.name} 이미지`}
-              loading="lazy"
-            />
+            <img src={item.imageUrl ?? ""} alt={`${item.name} 이미지`} loading="lazy" />
           </div>
 
           <div class="row">
@@ -505,21 +207,15 @@
 
           <div class="stats">
             <div class="stat"><span>체력</span><b>{item.baseStats.hp}</b></div>
-            <div class="stat">
-              <span>공격</span><b>{item.baseStats.attack}</b>
-            </div>
+            <div class="stat"><span>공격</span><b>{item.baseStats.attack}</b></div>
             <div class="stat">
               <span>특수공격</span><b>{item.baseStats.specialAttack}</b>
             </div>
-            <div class="stat">
-              <span>방어</span><b>{item.baseStats.defense}</b>
-            </div>
+            <div class="stat"><span>방어</span><b>{item.baseStats.defense}</b></div>
             <div class="stat">
               <span>특수방어</span><b>{item.baseStats.specialDefense}</b>
             </div>
-            <div class="stat">
-              <span>스피드</span><b>{item.baseStats.speed}</b>
-            </div>
+            <div class="stat"><span>스피드</span><b>{item.baseStats.speed}</b></div>
           </div>
 
           <div class="evolution">
@@ -544,9 +240,7 @@
                 </button>
               {/each}
             {:else}
-              <button type="button" class="evo-btn evolve" disabled
-                >진화 없음</button
-              >
+              <button type="button" class="evo-btn evolve" disabled>진화 없음</button>
             {/if}
           </div>
         </li>
@@ -559,7 +253,7 @@
 
     <div bind:this={sentinelEl} class="sentinel" aria-hidden="true"></div>
     {#if hasMore}
-      <p class="status">스크롤해서 더 불러오세요.</p>
+      <p class="status">스크롤해 더 불러오세요.</p>
     {/if}
   {/if}
 </section>

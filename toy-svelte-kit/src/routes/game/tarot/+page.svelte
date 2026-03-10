@@ -108,7 +108,9 @@
     <div class="live-info">
       <p class="live-label">현재 뽑은 카드</p>
       {#if selectedCard}
-        <h2>{selectedCard.koreanName} ({selectedCard.name})</h2>
+        <h2>
+          #{selectedCard.majorNo} {selectedCard.koreanName} ({selectedCard.name})
+        </h2>
         <p class={`direction ${selectedDrawMode}`}>
           {selectedDrawMode === "upright" ? "정방향 ↑" : "역방향 ↓"}
         </p>
@@ -150,6 +152,7 @@
           onclick={() => pickCard(card)}
           aria-pressed={selectedCardId === card.id}
         >
+          <span class="card-no">#{card.majorNo}</span>
           <span class={`flip-inner ${revealed ? "revealed" : ""}`}>
             <span class="card-face card-back">
               <img src={backImage} alt="타로 카드 뒷면" loading="lazy" />
@@ -310,6 +313,7 @@
   }
 
   .deck-card {
+    position: relative;
     width: 100%;
     border: 1px solid #cbd5e1;
     border-radius: 14px;
@@ -332,6 +336,20 @@
   .deck-card.active {
     border-color: #0ea5e9;
     box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+  }
+
+  .card-no {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    z-index: 3;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.95);
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
   }
 
   .flip-inner {
