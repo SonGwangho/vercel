@@ -52,7 +52,7 @@
 
   function resetPlayer() {
     player = {
-      x: 96,
+      x: ARENA_WIDTH / 2 - PLAYER_SIZE / 2,
       y: ARENA_HEIGHT / 2 - PLAYER_SIZE / 2,
     };
   }
@@ -158,11 +158,11 @@
 
   function movePlayer(deltaSeconds: number) {
     const horizontal =
-      (pressedKeys.has("arrowright") || pressedKeys.has("d") ? 1 : 0) -
-      (pressedKeys.has("arrowleft") || pressedKeys.has("a") ? 1 : 0);
+      (pressedKeys.has("arrowright") || pressedKeys.has("d") || pressedKeys.has("ㅇ") ? 1 : 0) -
+      (pressedKeys.has("arrowleft") || pressedKeys.has("a") || pressedKeys.has("ㅁ") ? 1 : 0);
     const vertical =
-      (pressedKeys.has("arrowdown") || pressedKeys.has("s") ? 1 : 0) -
-      (pressedKeys.has("arrowup") || pressedKeys.has("w") ? 1 : 0);
+      (pressedKeys.has("arrowdown") || pressedKeys.has("s") || pressedKeys.has("ㄴ") ? 1 : 0) -
+      (pressedKeys.has("arrowup") || pressedKeys.has("w") || pressedKeys.has("ㅈ") ? 1 : 0);
 
     if (!horizontal && !vertical) {
       return;
@@ -256,7 +256,7 @@
     }
 
     if (
-      ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D"].includes(
+      ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D", "ㅈ", "ㅁ", "ㄴ", "ㅇ"].includes(
         event.key,
       )
     ) {
