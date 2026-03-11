@@ -1,0 +1,12 @@
+[
+  { "level": 0, "name": "1", "color": "#ff6b6b", "radius": 18, "score": 1 },
+  { "level": 1, "name": "2", "color": "#ff8fab", "radius": 24, "score": 3 },
+  { "level": 2, "name": "3", "color": "#9b5de5", "radius": 30, "score": 6 },
+  { "level": 3, "name": "4", "color": "#ff9f1c", "radius": 37, "score": 10 },
+  { "level": 4, "name": "5", "color": "#ef476f", "radius": 46, "score": 15 },
+  { "level": 5, "name": "6", "color": "#ffd166", "radius": 56, "score": 21 },
+  { "level": 6, "name": "7", "color": "#f7a8b8", "radius": 68, "score": 28 },
+  { "level": 7, "name": "8", "color": "#f4d35e", "radius": 82, "score": 36 },
+  { "level": 8, "name": "9", "color": "#7bd389", "radius": 98, "score": 45 },
+  { "level": 9, "name": "10", "color": "#2a9d8f", "radius": 118, "score": 60 }
+]

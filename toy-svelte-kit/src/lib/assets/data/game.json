@@ -16,5 +16,11 @@
     "name": "짭림고수",
     "path": "/game/jjaprimgosu",
     "order": 30
+  },
+  {
+    "id": "suika",
+    "name": "수박게임",
+    "path": "/game/suika",
+    "order": 40
   }
 ]

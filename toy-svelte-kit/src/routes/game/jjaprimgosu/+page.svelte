@@ -247,6 +247,16 @@
   }
 
   function onKeyDown(event: KeyboardEvent) {
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
     if (event.key === " " || event.code === "Space") {
       event.preventDefault();
 
@@ -267,6 +277,16 @@
   }
 
   function onKeyUp(event: KeyboardEvent) {
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
     pressedKeys.delete(event.key.toLowerCase());
   }
 

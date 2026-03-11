@@ -7,3 +7,4 @@ export * from "./types/TreeMenu.ts";
 export * from "./types/Pokemon.ts";
 export * from "./types/Tarot.ts";
 export * from "./types/JjaprimGosu.ts";
+export * from "./types/Suika.ts";
