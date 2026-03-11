@@ -10,5 +10,11 @@
     "name": "Tarot",
     "path": "/game/tarot",
     "order": 20
+  },
+  {
+    "id": "jjaprimgosu",
+    "name": "짭림고수",
+    "path": "/game/jjaprimgosu",
+    "order": 30
   }
 ]

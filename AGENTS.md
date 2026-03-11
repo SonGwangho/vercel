@@ -35,3 +35,7 @@
 
 **로컬 데이터**
 - 로컬에 데이터를 저장할 때는 localStorage가 아닌 `src/lib/utils/Storage.ts`의 IndexedDB를 사용한다.
+
+**서버 데이터**
+- 서버 API 호출은 /api/{endpoint} 규칙을 따른다.
+- 서버 API는 http://168.107.31.65:8080/swagger-ui/index.html에 스웨거로 정의되어 있으므로 필요시 확인한다.
