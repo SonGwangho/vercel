@@ -601,6 +601,12 @@
     box-shadow: 0 16px 30px rgba(16, 38, 31, 0.08);
   }
 
+  .arena-card {
+    display: grid;
+    justify-items: center;
+    align-content: start;
+  }
+
   .arena {
     position: relative;
     width: 800px;
