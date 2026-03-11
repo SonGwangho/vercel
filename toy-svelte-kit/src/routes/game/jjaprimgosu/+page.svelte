@@ -79,8 +79,18 @@
     animationFrameId = window.requestAnimationFrame(loop);
   }
 
-  function restartGame() {
-    startGame();
+  function resetToIdle() {
+    stopLoop();
+    gameStatus = "idle";
+    elapsedMs = 0;
+    finalScore = 0;
+    submitMessage = "";
+    userName = "";
+    spawnElapsed = 0;
+    nextSpawnDelay = createSpawnDelay(0);
+    arrowId = 1;
+    arrows = [];
+    resetPlayer();
   }
 
   function stopLoop() {
@@ -91,7 +101,7 @@
   }
 
   function currentSpawnInterval(ms: number) {
-    return Math.max(70, 240 - ms / 55);
+    return Math.max(56, 192 - ms / 55);
   }
 
   function createSpawnDelay(ms: number) {
@@ -169,11 +179,23 @@
   }
 
   function hasCollision(arrow: ArrowEntity) {
+    const playerPadding = 7;
+    const arrowPaddingX = 6;
+    const arrowPaddingY = 2;
+    const playerLeft = player.x + playerPadding;
+    const playerTop = player.y + playerPadding;
+    const playerRight = player.x + PLAYER_SIZE - playerPadding;
+    const playerBottom = player.y + PLAYER_SIZE - playerPadding;
+    const arrowLeft = arrow.x + arrowPaddingX;
+    const arrowTop = arrow.y + arrowPaddingY;
+    const arrowRight = arrow.x + arrow.width - arrowPaddingX;
+    const arrowBottom = arrow.y + arrow.height - arrowPaddingY;
+
     return !(
-      player.x + PLAYER_SIZE < arrow.x ||
-      player.x > arrow.x + arrow.width ||
-      player.y + PLAYER_SIZE < arrow.y ||
-      player.y > arrow.y + arrow.height
+      playerRight < arrowLeft ||
+      playerLeft > arrowRight ||
+      playerBottom < arrowTop ||
+      playerTop > arrowBottom
     );
   }
 
@@ -370,8 +392,8 @@
         throw new Error(`score submit failed: ${response.status}`);
       }
 
-      submitMessage = "기록이 등록되었습니다.";
       await fetchRanking();
+      resetToIdle();
     } catch (error) {
       submitMessage = "기록 등록에 실패했습니다.";
       console.error(error);
@@ -382,6 +404,7 @@
 
   onMount(() => {
     fetchRanking();
+    resetToIdle();
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
 
@@ -399,23 +422,7 @@
 
 <section class="jjaprim-page">
   <article class="hero">
-    <div class="hero-copy">
-      <h1>짭림고수</h1>
-      <p class="lead">스페이스바로 시작. 화살에 닿으면 끝.</p>
-      <p class="hint">이동: 방향키 / WASD</p>
-    </div>
-
-    <div class="score-card">
-      <p class="score-label">현재 기록</p>
-      <strong>{gameStatus === "dead" ? finalSeconds : elapsedSeconds}초</strong>
-      <p class="score-sub">
-        {gameStatus === "running"
-          ? "살아남는 동안 계속 측정 중"
-          : gameStatus === "dead"
-            ? "사망 시점 기록"
-            : "시작 전 대기 중"}
-      </p>
-    </div>
+    <h1>짭림고수</h1>
   </article>
 
   <div class="game-layout">
@@ -527,32 +534,18 @@
   }
 
   .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.8fr) minmax(240px, 0.8fr);
-    gap: 12px;
-    padding: 18px 20px;
-    border-radius: 24px;
+    padding: 10px 4px 2px;
     background:
-      radial-gradient(circle at 12% 18%, rgba(255, 244, 214, 0.3), transparent 22%),
-      radial-gradient(circle at 88% 20%, rgba(187, 247, 208, 0.18), transparent 24%),
-      linear-gradient(135deg, #0f2f28 0%, #1e4a3b 54%, #7c2d12 100%);
-    color: #f1f5f9;
-    overflow: hidden;
-    box-shadow: 0 20px 40px rgba(15, 47, 40, 0.18);
+      none;
+    color: #10261f;
+    box-shadow: none;
   }
 
   .hero h1 {
     margin: 0;
-    font-size: clamp(28px, 3.6vw, 40px);
+    font-size: clamp(24px, 3vw, 32px);
     line-height: 0.98;
     letter-spacing: -0.03em;
-  }
-
-  .lead {
-    margin: 6px 0 0;
-    line-height: 1.3;
-    color: rgba(241, 245, 249, 0.92);
-    font-size: 15px;
   }
 
   .submit-btn,
@@ -563,24 +556,6 @@
     font-weight: 700;
   }
 
-  .hint {
-    margin: 6px 0 0;
-    color: rgba(226, 232, 240, 0.86);
-    font-size: 12px;
-  }
-
-  .score-card {
-    display: grid;
-    align-content: center;
-    gap: 4px;
-    padding: 14px 16px;
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    backdrop-filter: blur(16px);
-  }
-
-  .score-label,
   .ranking-label {
     margin: 0;
     font-size: 12px;
@@ -588,17 +563,6 @@
     text-transform: uppercase;
     color: #86efac;
     font-weight: 700;
-  }
-
-  .score-card strong {
-    font-size: clamp(28px, 4vw, 38px);
-    line-height: 1;
-  }
-
-  .score-sub {
-    margin: 0;
-    color: rgba(241, 245, 249, 0.8);
-    font-size: 13px;
   }
 
   .game-layout {
