@@ -256,7 +256,7 @@
     const candidate = item as Record<string, unknown>;
     const userNameValue = candidate.userName;
     const scoreValue = candidate.score;
-    const rankValue = candidate.rank;
+    const rankValue = candidate.rank ?? candidate.ranking;
     const gameNameValue = candidate.gameName;
 
     if (typeof userNameValue !== "string") {
@@ -300,6 +300,7 @@
 
     const candidate = payload as Record<string, unknown>;
     const sources = [
+      candidate.rankingData,
       candidate.rankings,
       candidate.ranking,
       candidate.scores,
@@ -327,7 +328,9 @@
         throw new Error(`ranking fetch failed: ${response.status}`);
       }
 
-      rankings = normalizeRankingPayload(await response.json());
+      rankings = normalizeRankingPayload(await response.json())
+        .sort((a, b) => a.rank - b.rank || b.score - a.score)
+        .slice(0, 5);
     } catch (error) {
       rankings = [];
       rankingError = "랭킹을 불러오지 못했습니다.";
@@ -527,25 +530,29 @@
     display: grid;
     grid-template-columns: minmax(0, 1.8fr) minmax(240px, 0.8fr);
     gap: 12px;
-    padding: 16px 18px;
-    border-radius: 20px;
+    padding: 18px 20px;
+    border-radius: 24px;
     background:
-      radial-gradient(circle at top left, rgba(236, 253, 245, 0.92), transparent 44%),
-      linear-gradient(135deg, #143b31 0%, #264f2b 52%, #6f1d1b 100%);
+      radial-gradient(circle at 12% 18%, rgba(255, 244, 214, 0.3), transparent 22%),
+      radial-gradient(circle at 88% 20%, rgba(187, 247, 208, 0.18), transparent 24%),
+      linear-gradient(135deg, #0f2f28 0%, #1e4a3b 54%, #7c2d12 100%);
     color: #f1f5f9;
     overflow: hidden;
+    box-shadow: 0 20px 40px rgba(15, 47, 40, 0.18);
   }
 
   .hero h1 {
     margin: 0;
-    font-size: clamp(26px, 3.5vw, 38px);
+    font-size: clamp(28px, 3.6vw, 40px);
     line-height: 0.98;
+    letter-spacing: -0.03em;
   }
 
   .lead {
     margin: 6px 0 0;
     line-height: 1.3;
-    color: rgba(241, 245, 249, 0.88);
+    color: rgba(241, 245, 249, 0.92);
+    font-size: 15px;
   }
 
   .submit-btn,
@@ -558,8 +565,8 @@
 
   .hint {
     margin: 6px 0 0;
-    color: rgba(241, 245, 249, 0.76);
-    font-size: 13px;
+    color: rgba(226, 232, 240, 0.86);
+    font-size: 12px;
   }
 
   .score-card {
@@ -567,10 +574,10 @@
     align-content: center;
     gap: 4px;
     padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    backdrop-filter: blur(12px);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(16px);
   }
 
   .score-label,
@@ -598,33 +605,40 @@
     display: grid;
     grid-template-columns: minmax(0, 1.85fr) 260px;
     gap: 12px;
+    align-items: start;
   }
 
   .arena-card,
   .ranking-card {
-    background: #f8faf7;
-    border: 1px solid #d7e6d9;
-    border-radius: 18px;
+    background: linear-gradient(180deg, #fdfcf6 0%, #f4f8f2 100%);
+    border: 1px solid #d8e5d6;
+    border-radius: 22px;
     padding: 12px;
-    box-shadow: 0 14px 28px rgba(16, 38, 31, 0.06);
+    box-shadow: 0 16px 30px rgba(16, 38, 31, 0.08);
   }
 
   .arena {
     position: relative;
     width: 800px;
     height: 600px;
-    border-radius: 16px;
+    border-radius: 18px;
     overflow: hidden;
     background:
-      linear-gradient(180deg, rgba(197, 242, 215, 0.72) 0%, rgba(179, 223, 195, 0.8) 54%, #5a7c45 100%);
+      radial-gradient(circle at top, rgba(255, 255, 255, 0.38), transparent 24%),
+      linear-gradient(180deg, #dff5df 0%, #b9deb9 38%, #6f9858 82%, #557240 100%);
+    border: 1px solid rgba(50, 108, 63, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -40px 80px rgba(36, 62, 26, 0.16);
   }
 
   .sky {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.86), transparent 18%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, transparent 50%);
+      radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.88), transparent 13%),
+      radial-gradient(circle at 78% 12%, rgba(255, 255, 255, 0.44), transparent 10%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, transparent 36%);
   }
 
   .bamboo {
@@ -636,12 +650,13 @@
     background:
       repeating-linear-gradient(
         180deg,
-        #326c3f 0 44px,
-        #254f31 44px 48px,
-        #3d824a 48px 92px,
-        #254f31 92px 96px
+        #3c7a46 0 44px,
+        #23472d 44px 48px,
+        #63a35d 48px 92px,
+        #23472d 92px 96px
       );
-    opacity: 0.7;
+    opacity: 0.78;
+    filter: drop-shadow(0 12px 12px rgba(20, 48, 29, 0.16));
   }
 
   .bamboo-a {
@@ -668,6 +683,7 @@
     width: 28px;
     height: 28px;
     transition: transform 0.05s linear;
+    filter: drop-shadow(0 6px 8px rgba(24, 32, 17, 0.22));
   }
 
   .player-head,
@@ -683,7 +699,7 @@
     top: 0;
     width: 14px;
     height: 14px;
-    background: #f6d5b7;
+    background: linear-gradient(180deg, #f6d5b7 0%, #e9b98f 100%);
     border: 2px solid #2c1b0f;
   }
 
@@ -691,7 +707,7 @@
     top: 11px;
     width: 18px;
     height: 17px;
-    background: linear-gradient(180deg, #7f1d1d 0%, #3f0d12 100%);
+    background: linear-gradient(180deg, #8d1f1f 0%, #431016 100%);
     border: 2px solid #1f2937;
   }
 
@@ -715,7 +731,7 @@
     right: 10px;
     height: 3px;
     border-radius: 999px;
-    background: linear-gradient(90deg, #7c4a20 0%, #3f2813 100%);
+    background: linear-gradient(90deg, #996238 0%, #4a2b13 100%);
   }
 
   .tip {
@@ -740,8 +756,8 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(12, 25, 20, 0.52);
-    backdrop-filter: blur(5px);
+    background: rgba(12, 25, 20, 0.36);
+    backdrop-filter: blur(4px);
   }
 
   .overlay-panel {
@@ -750,9 +766,9 @@
     gap: 10px;
     padding: 18px;
     border-radius: 18px;
-    background: rgba(248, 250, 247, 0.94);
+    background: rgba(252, 252, 248, 0.92);
     color: #10261f;
-    box-shadow: 0 22px 40px rgba(12, 25, 20, 0.18);
+    box-shadow: 0 24px 42px rgba(12, 25, 20, 0.18);
   }
 
   .overlay-panel h2,
@@ -798,7 +814,7 @@
     flex-wrap: wrap;
     gap: 6px 14px;
     margin-top: 10px;
-    color: #365347;
+    color: #446253;
     font-size: 12px;
   }
 
@@ -812,9 +828,9 @@
 
   .ghost-btn {
     padding: 8px 12px;
-    color: #134e4a;
-    background: #ecfdf5;
-    border: 1px solid #bbf7d0;
+    color: #163c33;
+    background: #eef8f0;
+    border: 1px solid #c8dfcc;
   }
 
   .ranking-empty {
@@ -838,8 +854,8 @@
     align-items: center;
     padding: 10px 12px;
     border-radius: 12px;
-    background: #f0f9f4;
-    border: 1px solid #d4ead9;
+    background: linear-gradient(180deg, #f6fbf7 0%, #edf7ef 100%);
+    border: 1px solid #d4e7d7;
   }
 
   .rank-no {
@@ -847,7 +863,7 @@
     text-align: center;
     padding: 6px 8px;
     border-radius: 999px;
-    background: #143b31;
+    background: linear-gradient(135deg, #173d34 0%, #356453 100%);
     color: #f8fafc;
     font-weight: 700;
   }
