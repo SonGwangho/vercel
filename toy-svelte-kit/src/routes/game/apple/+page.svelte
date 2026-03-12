@@ -1,989 +1,902 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import appleConfigJson from "$lib/assets/data/apple/config.json";
-  import appleImageUrl from "$lib/assets/data/apple/img/apple.png";
-  import type {
-    AppleGameCell,
-    AppleGameConfig,
-    AppleRankingItem,
-    AppleScoreRequest,
-  } from "$lib";
-
-  type Coord = {
-    row: number;
-    col: number;
-  };
-
-  type Board = (AppleGameCell | null)[][];
-  type SelectionBox = {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
-
-  const GAME_NAME = "사과게임";
-  const GAME_CODE = 300;
-  const BOARD_WIDTH = 1142;
-  const BOARD_HEIGHT = 700;
-  const BOARD_PADDING = 50;
-  const TIME_LIMIT_SECONDS = 120;
-  const config = appleConfigJson as AppleGameConfig;
-  const DIRECTIONS = [
-    { row: -1, col: 0 },
-    { row: 1, col: 0 },
-    { row: 0, col: -1 },
-    { row: 0, col: 1 },
-  ];
-
-  let board = $state<Board>([]);
-  let selectedCells = $state<Coord[]>([]);
-  let score = $state(0);
-  let removedAppleCount = $state(0);
-  let gameOver = $state(false);
-  let isSelecting = $state(false);
-  let userName = $state("");
-  let rankings = $state<AppleRankingItem[]>([]);
-  let isRankingLoading = $state(false);
-  let rankingError = $state("");
-  let isSubmitting = $state(false);
-  let submitMessage = $state("");
-  let timeLeft = $state(TIME_LIMIT_SECONDS);
-  let endReason = $state<"playing" | "timeout" | "cleared" | "stuck">("playing");
-  let clearBonusAwarded = $state(false);
-  let timerStarted = $state(false);
-  let selectionBox = $state<SelectionBox | null>(null);
-
-  let nextCellId = 1;
-  let timerId: number | null = null;
-  let lastPointerClient = { x: 0, y: 0 };
-  let selectionStartClient = { x: 0, y: 0 };
-
-  const selectionSum = $derived(
-    selectedCells.reduce((total, coord) => total + (board[coord.row]?.[coord.col]?.value ?? 0), 0),
-  );
-  const selectionValues = $derived(
-    selectedCells
-      .map((coord) => board[coord.row]?.[coord.col]?.value)
-      .filter((value): value is number => typeof value === "number"),
-  );
-  const remainingAppleCount = $derived(
-    board.reduce(
-      (total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell ? 1 : 0), 0),
-      0,
-    ),
-  );
-  const boardHasMoves = $derived(findHintInBoard(board) !== null);
-  const timeLabel = $derived(`${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, "0")}`);
-
-  function randomValue() {
-    return (
-      Math.floor(Math.random() * (config.maxValue - config.minValue + 1)) + config.minValue
-    );
-  }
-
-  function createCell(): AppleGameCell {
-    return {
-      id: nextCellId++,
-      value: randomValue(),
-    };
-  }
-
-  function createBoard(): Board {
-    return Array.from({ length: config.rows }, () =>
-      Array.from({ length: config.cols }, () => createCell()),
-    );
-  }
-
-  function collapseBoard(source: Board): Board {
-    return source.map((row) => [...row]);
-  }
-
-  function findHintInBoard(source: Board): Coord[] | null {
-    const visited = new Set<string>();
-
-    function dfs(coord: Coord, sum: number, path: Coord[]): Coord[] | null {
-      const cell = source[coord.row]?.[coord.col];
-      if (!cell) {
-        return null;
-      }
-
-      const nextSum = sum + cell.value;
-      if (nextSum > config.targetSum) {
-        return null;
-      }
-
-      const nextPath = [...path, coord];
-      if (nextSum === config.targetSum) {
-        return nextPath;
-      }
-
-      visited.add(`${coord.row}:${coord.col}`);
-
-      for (const direction of DIRECTIONS) {
-        const nextCoord = { row: coord.row + direction.row, col: coord.col + direction.col };
-        const nextCell = source[nextCoord.row]?.[nextCoord.col];
-        const key = `${nextCoord.row}:${nextCoord.col}`;
-
-        if (!nextCell || visited.has(key)) {
-          continue;
-        }
-
-        const result = dfs(nextCoord, nextSum, nextPath);
-        if (result) {
-          return result;
-        }
-      }
-
-      visited.delete(`${coord.row}:${coord.col}`);
-      return null;
-    }
-
-    for (let row = 0; row < config.rows; row += 1) {
-      for (let col = 0; col < config.cols; col += 1) {
-        visited.clear();
-        const result = dfs({ row, col }, 0, []);
-        if (result) {
-          return result;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  function normalizeRankingItem(item: unknown, index: number): AppleRankingItem | null {
-    if (!item || typeof item !== "object") {
-      return null;
-    }
-
-    const candidate = item as Record<string, unknown>;
-    const userNameValue = candidate.userName;
-    const scoreValue = candidate.score;
-    const rankValue = candidate.rank ?? candidate.ranking;
-
-    if (typeof userNameValue !== "string") {
-      return null;
-    }
-
-    const parsedScore =
-      typeof scoreValue === "number"
-        ? scoreValue
-        : typeof scoreValue === "string"
-          ? Number(scoreValue)
-          : Number.NaN;
-
-    if (!Number.isFinite(parsedScore)) {
-      return null;
-    }
-
-    return {
-      rank:
-        typeof rankValue === "number"
-          ? rankValue
-          : typeof rankValue === "string" && Number.isFinite(Number(rankValue))
-            ? Number(rankValue)
-            : index + 1,
-      userName: userNameValue,
-      score: parsedScore,
-      gameName: typeof candidate.gameName === "string" ? candidate.gameName : undefined,
-    };
-  }
-
-  function normalizeRankingPayload(payload: unknown) {
-    if (Array.isArray(payload)) {
-      return payload
-        .map((item, index) => normalizeRankingItem(item, index))
-        .filter((item): item is AppleRankingItem => item !== null);
-    }
-
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-
-    const candidate = payload as Record<string, unknown>;
-    const sources = [
-      candidate.rankingData,
-      candidate.rankings,
-      candidate.ranking,
-      candidate.scores,
-      candidate.items,
-      candidate.data,
-    ];
-    const list = sources.find(Array.isArray);
-
-    if (!Array.isArray(list)) {
-      return [];
-    }
-
-    return list
-      .map((item, index) => normalizeRankingItem(item, index))
-      .filter((item): item is AppleRankingItem => item !== null);
-  }
-
-  async function fetchRanking() {
-    isRankingLoading = true;
-    rankingError = "";
-
-    try {
-      const response = await fetch(`/api/getRanking?gameCode=${GAME_CODE}`);
-      if (!response.ok) {
-        throw new Error(`ranking fetch failed: ${response.status}`);
-      }
-
-      rankings = normalizeRankingPayload(await response.json())
-        .sort((a, b) => a.rank - b.rank || b.score - a.score)
-        .slice(0, 10);
-    } catch (error) {
-      rankings = [];
-      rankingError = "랭킹을 불러오지 못했습니다.";
-      console.error(error);
-    } finally {
-      isRankingLoading = false;
-    }
-  }
-
-  async function submitScore() {
-    if (!gameOver || !userName.trim() || isSubmitting) {
-      return;
-    }
-
-    isSubmitting = true;
-    submitMessage = "";
-
-    const payload: AppleScoreRequest = {
-      userName: userName.trim(),
-      gameName: GAME_NAME,
-      gameCode: GAME_CODE,
-      score,
-    };
-
-    try {
-      const response = await fetch("/api/postScore", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`submit failed: ${response.status}`);
-      }
-
-      await fetchRanking();
-      submitMessage = "점수가 랭킹에 등록되었습니다.";
-    } catch (error) {
-      submitMessage = "점수 등록에 실패했습니다.";
-      console.error(error);
-    } finally {
-      isSubmitting = false;
-    }
-  }
-
-  function refreshGameState(nextBoard: Board) {
-    board = nextBoard;
-    const hasMoves = findHintInBoard(nextBoard) !== null;
-    const remainingCount = nextBoard.reduce(
-      (total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell ? 1 : 0), 0),
-      0,
-    );
-
-    if (remainingCount === 0) {
-      if (!clearBonusAwarded) {
-        score += timeLeft * 10;
-        clearBonusAwarded = true;
-      }
-      endReason = "cleared";
-      gameOver = true;
-      stopTimer();
-      return;
-    }
-
-    if (!hasMoves) {
-      endReason = "stuck";
-      gameOver = true;
-      stopTimer();
-      return;
-    }
-
-    endReason = "playing";
-    gameOver = false;
-  }
-
-  function stopTimer() {
-    if (timerId !== null) {
-      window.clearInterval(timerId);
-      timerId = null;
-    }
-  }
-
-  function startTimer() {
-    if (timerStarted) {
-      return;
-    }
-
-    timerStarted = true;
-    stopTimer();
-    timerId = window.setInterval(() => {
-      if (gameOver) {
-        stopTimer();
-        return;
-      }
-
-      if (timeLeft <= 1) {
-        timeLeft = 0;
-        endReason = "timeout";
-        gameOver = true;
-        stopTimer();
-        return;
-      }
-
-      timeLeft -= 1;
-    }, 1000);
-  }
-
-  function resetGame() {
-    stopTimer();
-    nextCellId = 1;
-    selectedCells = [];
-    score = 0;
-    removedAppleCount = 0;
-    isSelecting = false;
-    userName = "";
-    submitMessage = "";
-    timeLeft = TIME_LIMIT_SECONDS;
-    endReason = "playing";
-    clearBonusAwarded = false;
-    timerStarted = false;
-    selectionBox = null;
-    refreshGameState(createBoard());
-  }
-
-  function updateSelectionFromBox(boardElement: HTMLElement, clientX: number, clientY: number) {
-    const boardRect = boardElement.getBoundingClientRect();
-    const left = Math.max(Math.min(selectionStartClient.x, clientX), boardRect.left);
-    const right = Math.min(Math.max(selectionStartClient.x, clientX), boardRect.right);
-    const top = Math.max(Math.min(selectionStartClient.y, clientY), boardRect.top);
-    const bottom = Math.min(Math.max(selectionStartClient.y, clientY), boardRect.bottom);
-
-    selectionBox = {
-      left: left - boardRect.left,
-      top: top - boardRect.top,
-      width: Math.max(0, right - left),
-      height: Math.max(0, bottom - top),
-    };
-
-    const nextSelected: Coord[] = [];
-    const cells = boardElement.querySelectorAll<HTMLElement>("[data-row][data-col]");
-
-    cells.forEach((cell) => {
-      const cellRect = cell.getBoundingClientRect();
-      const centerX = cellRect.left + cellRect.width / 2;
-      const centerY = cellRect.top + cellRect.height / 2;
-      const withinX = centerX >= left && centerX <= right;
-      const withinY = centerY >= top && centerY <= bottom;
-
-      if (!withinX || !withinY) {
-        return;
-      }
-
-      const row = Number(cell.dataset.row);
-      const col = Number(cell.dataset.col);
-      if (!Number.isInteger(row) || !Number.isInteger(col)) {
-        return;
-      }
-
-      if (board[row]?.[col]) {
-        nextSelected.push({ row, col });
-      }
-    });
-
-    selectedCells = nextSelected;
-  }
-
-  function finishSelection() {
-    if (!selectedCells.length) {
-      isSelecting = false;
-      selectionBox = null;
-      return;
-    }
-
-    if (selectionSum === config.targetSum) {
-      if (!timerStarted) {
-        startTimer();
-      }
-
-      const removed = new Set(selectedCells.map((coord) => `${coord.row}:${coord.col}`));
-      const nextBoard = board.map((row, rowIndex) =>
-        row.map((cell, colIndex) => (removed.has(`${rowIndex}:${colIndex}`) ? null : cell)),
-      );
-      const removedCount = selectedCells.length;
-
-      score += removedCount * 10;
-      removedAppleCount += removedCount;
-      refreshGameState(collapseBoard(nextBoard));
-    }
-
-    selectedCells = [];
-    isSelecting = false;
-    selectionBox = null;
-  }
-
-  function onBoardPointerDown(event: PointerEvent) {
-    lastPointerClient = { x: event.clientX, y: event.clientY };
-    if (gameOver) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const boardElement = event.currentTarget as HTMLElement;
-    const boardRect = boardElement.getBoundingClientRect();
-
-    isSelecting = true;
-    selectedCells = [];
-    selectionStartClient = {
-      x: Math.max(boardRect.left, Math.min(event.clientX, boardRect.right)),
-      y: Math.max(boardRect.top, Math.min(event.clientY, boardRect.bottom)),
-    };
-    selectionBox = {
-      left: selectionStartClient.x - boardRect.left,
-      top: selectionStartClient.y - boardRect.top,
-      width: 0,
-      height: 0,
-    };
-    boardElement.setPointerCapture(event.pointerId);
-  }
-
-  function onBoardPointerMove(event: PointerEvent) {
-    lastPointerClient = { x: event.clientX, y: event.clientY };
-    if (!isSelecting) {
-      return;
-    }
-
-    event.preventDefault();
-
-    updateSelectionFromBox(event.currentTarget as HTMLElement, event.clientX, event.clientY);
-  }
-
-  function onBoardPointerUp(event: PointerEvent) {
-    lastPointerClient = { x: event.clientX, y: event.clientY };
-    if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
-      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
-    }
-
-    finishSelection();
-  }
-
-  function isSelected(row: number, col: number) {
-    return selectedCells.some((coord) => coord.row === row && coord.col === col);
-  }
-
-  onMount(() => {
-    resetGame();
-    fetchRanking();
-
-    const handleScroll = () => {
-      if (!isSelecting) {
-        return;
-      }
-
-      const boardElement = document.querySelector<HTMLElement>(".board");
-      if (!boardElement) {
-        return;
-      }
-
-      updateSelectionFromBox(boardElement, lastPointerClient.x, lastPointerClient.y);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      stopTimer();
-      window.removeEventListener("scroll", handleScroll);
-    };
-  });
+	import { onMount } from 'svelte';
+	import appleConfigJson from '$lib/assets/data/apple/config.json';
+	import appleImageUrl from '$lib/assets/data/apple/img/apple.png';
+	import type {
+		AppleGameCell,
+		AppleGameConfig,
+		AppleRankingItem,
+		AppleScoreRequest
+	} from '$lib';
+
+	const GAME_CODE = 300;
+	const GAME_DURATION_SECONDS = 120;
+	const BOARD_WIDTH = 1142;
+	const BOARD_HEIGHT = 700;
+	const BOARD_PADDING = 50;
+	const RANKING_LIMIT = 10;
+
+	type EndReason = 'clear' | 'timeout' | null;
+	type Box = { left: number; top: number; width: number; height: number };
+	type BoardCell = AppleGameCell & {
+		row: number;
+		col: number;
+		removed: boolean;
+	};
+
+	const config = appleConfigJson as AppleGameConfig;
+	const rows = config.rows;
+	const cols = config.cols;
+	const targetSum = config.targetSum ?? 10;
+	const cellGap = 8;
+
+	let board: BoardCell[][] = [];
+	let selectedKeys = new Set<string>();
+	let score = 0;
+	let removedAppleCount = 0;
+	let remainingAppleCount = rows * cols;
+	let hasStarted = false;
+	let isSelecting = false;
+	let gameOver = false;
+	let endReason: EndReason = null;
+	let selectionBox: Box | null = null;
+	let boardElement: HTMLDivElement | null = null;
+	let boardRect: DOMRect | null = null;
+	let startPoint: { x: number; y: number } | null = null;
+	let currentPoint: { x: number; y: number } | null = null;
+	let timeLeft = GAME_DURATION_SECONDS;
+	let timerHandle: ReturnType<typeof setInterval> | null = null;
+	let rankings: AppleRankingItem[] = [];
+	let rankingLoading = false;
+	let rankingError = '';
+	let submittingScore = false;
+	let scoreSubmitted = false;
+	let userName = '';
+
+	const playableWidth = BOARD_WIDTH - BOARD_PADDING * 2;
+	const playableHeight = BOARD_HEIGHT - BOARD_PADDING * 2;
+	const cellSize = Math.min(
+		(playableWidth - cellGap * (cols - 1)) / cols,
+		(playableHeight - cellGap * (rows - 1)) / rows
+	);
+	const offsetX = (BOARD_WIDTH - (cellSize * cols + cellGap * (cols - 1))) / 2;
+	const offsetY = (BOARD_HEIGHT - (cellSize * rows + cellGap * (rows - 1))) / 2;
+
+	function cellLeftPercent(col: number): number {
+		return ((offsetX + col * (cellSize + cellGap)) / BOARD_WIDTH) * 100;
+	}
+
+	function cellTopPercent(row: number): number {
+		return ((offsetY + row * (cellSize + cellGap)) / BOARD_HEIGHT) * 100;
+	}
+
+	function cellWidthPercent(): number {
+		return (cellSize / BOARD_WIDTH) * 100;
+	}
+
+	function cellHeightPercent(): number {
+		return (cellSize / BOARD_HEIGHT) * 100;
+	}
+
+	function createBoard(): BoardCell[][] {
+		return Array.from({ length: rows }, (_, row) =>
+			Array.from({ length: cols }, (_, col) => ({
+				id: row * cols + col + 1,
+				row,
+				col,
+				value: ((row + col) % 9) + 1,
+				removed: false
+			}))
+		);
+	}
+
+	function keyOf(row: number, col: number): string {
+		return `${row}:${col}`;
+	}
+
+	function resetGame(): void {
+		board = createBoard();
+		selectedKeys = new Set();
+		score = 0;
+		removedAppleCount = 0;
+		remainingAppleCount = rows * cols;
+		timeLeft = GAME_DURATION_SECONDS;
+		gameOver = false;
+		endReason = null;
+		isSelecting = false;
+		selectionBox = null;
+		startPoint = null;
+		currentPoint = null;
+		scoreSubmitted = false;
+		userName = '';
+		stopTimer();
+	}
+
+	function startGame(): void {
+		resetGame();
+		hasStarted = true;
+		startTimer();
+	}
+
+	function startTimer(): void {
+		stopTimer();
+		timerHandle = setInterval(() => {
+			if (gameOver) {
+				stopTimer();
+				return;
+			}
+
+			timeLeft -= 1;
+
+			if (timeLeft <= 0) {
+				timeLeft = 0;
+				gameOver = true;
+				endReason = 'timeout';
+				stopTimer();
+			}
+		}, 1000);
+	}
+
+	function stopTimer(): void {
+		if (timerHandle) {
+			clearInterval(timerHandle);
+			timerHandle = null;
+		}
+	}
+
+	function refreshBoardRect(): void {
+		boardRect = boardElement?.getBoundingClientRect() ?? null;
+	}
+
+	function updateSelectionBox(): void {
+		if (!startPoint || !currentPoint) {
+			selectionBox = null;
+			return;
+		}
+
+		const left = Math.min(startPoint.x, currentPoint.x);
+		const top = Math.min(startPoint.y, currentPoint.y);
+		const width = Math.abs(currentPoint.x - startPoint.x);
+		const height = Math.abs(currentPoint.y - startPoint.y);
+
+		selectionBox = { left, top, width, height };
+		updateSelectionFromBox();
+	}
+
+	function updateSelectionFromBox(): void {
+		if (!selectionBox) {
+			selectedKeys = new Set();
+			return;
+		}
+
+		const next = new Set<string>();
+		const boxRight = selectionBox.left + selectionBox.width;
+		const boxBottom = selectionBox.top + selectionBox.height;
+
+		for (const row of board) {
+			for (const cell of row) {
+				if (cell.removed) continue;
+
+				const cellLeft = offsetX + cell.col * (cellSize + cellGap);
+				const cellTop = offsetY + cell.row * (cellSize + cellGap);
+				const cellRight = cellLeft + cellSize;
+				const cellBottom = cellTop + cellSize;
+
+				const intersects =
+					cellLeft < boxRight &&
+					cellRight > selectionBox.left &&
+					cellTop < boxBottom &&
+					cellBottom > selectionBox.top;
+
+				if (intersects) {
+					next.add(keyOf(cell.row, cell.col));
+				}
+			}
+		}
+
+		selectedKeys = next;
+	}
+
+	function selectedCells(): BoardCell[] {
+		const cells: BoardCell[] = [];
+
+		for (const row of board) {
+			for (const cell of row) {
+				if (!cell.removed && selectedKeys.has(keyOf(cell.row, cell.col))) {
+					cells.push(cell);
+				}
+			}
+		}
+
+		return cells;
+	}
+
+	function finishSelection(): void {
+		if (!isSelecting || gameOver) {
+			return;
+		}
+
+		isSelecting = false;
+
+		const cells = selectedCells();
+		const total = cells.reduce((sum, cell) => sum + cell.value, 0);
+
+		if (cells.length > 0 && total === targetSum) {
+			for (const cell of cells) {
+				board[cell.row][cell.col].removed = true;
+			}
+
+			const removedCount = cells.length;
+			removedAppleCount += removedCount;
+			remainingAppleCount -= removedCount;
+			score += removedCount * 10;
+
+			if (remainingAppleCount === 0) {
+				score += timeLeft * 10;
+				gameOver = true;
+				endReason = 'clear';
+				stopTimer();
+			}
+		}
+
+		selectedKeys = new Set();
+		selectionBox = null;
+		startPoint = null;
+		currentPoint = null;
+		board = board;
+	}
+
+	function handlePointerDown(event: PointerEvent): void {
+		if (!hasStarted || gameOver || !boardElement) {
+			return;
+		}
+
+		event.preventDefault();
+		refreshBoardRect();
+		if (!boardRect) return;
+
+		const x = Math.min(Math.max(event.clientX - boardRect.left, 0), boardRect.width);
+		const y = Math.min(Math.max(event.clientY - boardRect.top, 0), boardRect.height);
+
+		startPoint = { x, y };
+		currentPoint = { x, y };
+		isSelecting = true;
+		updateSelectionBox();
+		boardElement.setPointerCapture(event.pointerId);
+	}
+
+	function handlePointerMove(event: PointerEvent): void {
+		if (!isSelecting || !boardRect) {
+			return;
+		}
+
+		event.preventDefault();
+
+		const x = Math.min(Math.max(event.clientX - boardRect.left, 0), boardRect.width);
+		const y = Math.min(Math.max(event.clientY - boardRect.top, 0), boardRect.height);
+
+		currentPoint = { x, y };
+		updateSelectionBox();
+	}
+
+	function handlePointerUp(event: PointerEvent): void {
+		if (!isSelecting || !boardElement) {
+			return;
+		}
+
+		event.preventDefault();
+		boardElement.releasePointerCapture(event.pointerId);
+		finishSelection();
+	}
+
+	function formatTime(seconds: number): string {
+		const minutes = Math.floor(seconds / 60);
+		const remain = seconds % 60;
+		return `${minutes}:${String(remain).padStart(2, '0')}`;
+	}
+
+	async function loadRankings(): Promise<void> {
+		rankingLoading = true;
+		rankingError = '';
+
+		try {
+			const response = await fetch(`/api/getRanking?gameCode=${GAME_CODE}`);
+			if (!response.ok) {
+				throw new Error('랭킹을 불러오지 못했습니다.');
+			}
+
+			const data = await response.json();
+			const items = Array.isArray(data)
+				? data
+				: Array.isArray(data?.data)
+					? data.data
+					: Array.isArray(data?.rankings)
+						? data.rankings
+						: [];
+
+			rankings = items.slice(0, RANKING_LIMIT);
+		} catch (error) {
+			rankingError = error instanceof Error ? error.message : '랭킹을 불러오지 못했습니다.';
+		} finally {
+			rankingLoading = false;
+		}
+	}
+
+	async function submitScore(): Promise<void> {
+		if (!userName.trim() || submittingScore || scoreSubmitted || !gameOver) {
+			return;
+		}
+
+		submittingScore = true;
+		rankingError = '';
+
+		try {
+			const payload: AppleScoreRequest = {
+				gameCode: GAME_CODE,
+				gameName: '사과게임',
+				userName: userName.trim(),
+				score
+			};
+
+			const response = await fetch('/api/postScore', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(payload)
+			});
+
+			if (!response.ok) {
+				throw new Error('점수 등록에 실패했습니다.');
+			}
+
+			scoreSubmitted = true;
+			await loadRankings();
+		} catch (error) {
+			rankingError = error instanceof Error ? error.message : '점수 등록에 실패했습니다.';
+		} finally {
+			submittingScore = false;
+		}
+	}
+
+	onMount(() => {
+		resetGame();
+		loadRankings();
+
+		const handleResize = (): void => refreshBoardRect();
+		window.addEventListener('resize', handleResize);
+
+		return () => {
+			stopTimer();
+			window.removeEventListener('resize', handleResize);
+		};
+	});
 </script>
 
 <svelte:head>
-  <title>사과게임</title>
+	<title>사과게임</title>
 </svelte:head>
 
-<section class="apple-page">
-  <article class="hero">
-    <h1>사과게임</h1>
-  </article>
+<div class="apple-page">
+	<header class="page-header">
+		<h1>사과게임</h1>
+	</header>
 
-  <div class="game-layout">
-    <article class="arena-card">
-      <div class="status-bar">
-        <div class="status-item">
-          <span>남은 시간</span>
-          <strong>{timeLabel}</strong>
-        </div>
-        <div class="status-item">
-          <span>점수</span>
-          <strong>{score}</strong>
-        </div>
-        <div class="status-item">
-          <span>남은 사과</span>
-          <strong>{remainingAppleCount}</strong>
-        </div>
-        <div class="status-item">
-          <span>제거한 사과</span>
-          <strong>{removedAppleCount}</strong>
-        </div>
-      </div>
+	<div class="game-layout">
+		{#if !hasStarted}
+			<section class="arena-card start-card">
+				<div class="start-scene">
+					<button
+						type="button"
+						class="start-apple"
+						style={`background-image: url(${appleImageUrl});`}
+						on:click={startGame}
+						aria-label="게임 시작"
+					>
+						<span>시작</span>
+					</button>
+				</div>
+			</section>
+		{:else}
+			<section class="arena-card">
+				<div class="status-bar">
+					<div class="status-card">
+						<span class="label">남은 시간</span>
+						<strong>{formatTime(timeLeft)}</strong>
+					</div>
+					<div class="status-card">
+						<span class="label">점수</span>
+						<strong>{score}</strong>
+					</div>
+					<div class="status-card">
+						<span class="label">남은 사과</span>
+						<strong>{remainingAppleCount}</strong>
+					</div>
+					<div class="status-card">
+						<span class="label">제거한 사과</span>
+						<strong>{removedAppleCount}</strong>
+					</div>
+				</div>
 
-      <div class="board-frame">
-        <div
-          class="board"
-          role="application"
-          aria-label="사과게임 보드"
-          onpointerdown={onBoardPointerDown}
-          onpointermove={onBoardPointerMove}
-          onpointerup={onBoardPointerUp}
-          onpointercancel={finishSelection}
-        >
-          {#each board as row, rowIndex}
-            {#each row as cell, colIndex}
-              <div class="cell-slot">
-                {#if cell}
-                  <button
-                    type="button"
-                    class:selected={isSelected(rowIndex, colIndex)}
-                    class="apple-cell"
-                    data-row={rowIndex}
-                    data-col={colIndex}
-                    style={`background-image:linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.08)), url(${appleImageUrl});`}
-                    aria-label={`${rowIndex + 1}행 ${colIndex + 1}열 ${cell.value}`}
-                  >
-                    <span>{cell.value}</span>
-                  </button>
-                {:else}
-                  <div class="empty-cell" aria-hidden="true"></div>
-                {/if}
-              </div>
-            {/each}
-          {/each}
+				<div
+					class="board"
+					bind:this={boardElement}
+					on:pointerdown={handlePointerDown}
+					on:pointermove={handlePointerMove}
+					on:pointerup={handlePointerUp}
+					on:pointercancel={handlePointerUp}
+					role="presentation"
+				>
+					<div class="board-surface">
+						{#each board as row}
+							{#each row as cell}
+								<div
+									class:selected={selectedKeys.has(keyOf(cell.row, cell.col))}
+									class:removed={cell.removed}
+									class="apple-cell"
+									style={`left:${cellLeftPercent(cell.col)}%; top:${cellTopPercent(cell.row)}%; width:${cellWidthPercent()}%; height:${cellHeightPercent()}%;`}
+								>
+									{#if !cell.removed}
+										<div class="apple-face" style={`background-image: url(${appleImageUrl});`}>
+											<span>{cell.value}</span>
+										</div>
+									{/if}
+								</div>
+							{/each}
+						{/each}
 
-          {#if selectionBox}
-            <div
-              class="selection-box"
-              style={`left:${selectionBox.left}px;top:${selectionBox.top}px;width:${selectionBox.width}px;height:${selectionBox.height}px;`}
-            ></div>
-          {/if}
+						{#if selectionBox}
+							<div
+								class="selection-box"
+								style={`left:${selectionBox.left}px; top:${selectionBox.top}px; width:${selectionBox.width}px; height:${selectionBox.height}px;`}
+							></div>
+						{/if}
+					</div>
 
-          {#if gameOver}
-            <div class="overlay">
-              <div class="overlay-panel">
-                <h2>
-                  {#if endReason === "cleared"}
-                    모든 사과를 제거하셨습니다.
-                  {:else if endReason === "timeout"}
-                    시간이 종료되었습니다.
-                  {:else}
-                    게임이 종료되었습니다.
-                  {/if}
-                </h2>
-                <p>
-                  {#if endReason === "cleared"}
-                    남은 시간 보너스 {timeLeft * 10}점이 추가되었습니다.
-                  {:else if endReason === "timeout"}
-                    2분 제한 시간이 끝나 패배하셨습니다.
-                  {:else}
-                    더 이상 합이 10이 되는 조합이 없습니다.
-                  {/if}
-                </p>
-                <p>최종 점수는 {score}점입니다.</p>
+					{#if gameOver}
+						<div class="overlay">
+							<div class="overlay-card">
+								<h2>{endReason === 'clear' ? '클리어' : '시간 종료'}</h2>
+								<p>
+									{#if endReason === 'clear'}
+										모든 사과를 제거했습니다. 남은 시간 보너스가 반영되었습니다.
+									{:else}
+										2분이 지나 게임이 종료되었습니다.
+									{/if}
+								</p>
+								<div class="overlay-score">최종 점수 {score}</div>
+								<div class="submit-row">
+									<input
+										type="text"
+										maxlength="12"
+										bind:value={userName}
+										placeholder="이름 입력"
+										disabled={scoreSubmitted || submittingScore}
+									/>
+									<button
+										type="button"
+										on:click={submitScore}
+										disabled={!userName.trim() || scoreSubmitted || submittingScore}
+									>
+										{scoreSubmitted ? '등록 완료' : submittingScore ? '등록 중' : '점수 등록'}
+									</button>
+								</div>
+								<button type="button" class="restart-button" on:click={startGame}>다시 시작</button>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</section>
+		{/if}
 
-                <label class="name-field">
-                  <span>이름</span>
-                  <input bind:value={userName} maxlength="20" placeholder="userName" />
-                </label>
+		<aside class="ranking-card">
+			<div class="ranking-header">
+				<h2>랭킹</h2>
+				<span>TOP 10</span>
+			</div>
 
-                <button
-                  type="button"
-                  class="submit-btn"
-                  onclick={submitScore}
-                  disabled={!userName.trim() || isSubmitting}
-                >
-                  {isSubmitting ? "등록 중입니다" : "점수 등록"}
-                </button>
-
-                {#if submitMessage}
-                  <p class="submit-message">{submitMessage}</p>
-                {/if}
-
-                <button type="button" class="ghost-btn" onclick={resetGame}>새 게임</button>
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    </article>
-
-    <aside class="ranking-card">
-      <div class="ranking-head">
-        <div>
-          <p class="ranking-label">Server Ranking</p>
-          <h2>상위 10명</h2>
-        </div>
-        <button type="button" class="ghost-btn" onclick={fetchRanking}>새로고침</button>
-      </div>
-
-      {#if isRankingLoading}
-        <p class="ranking-empty">랭킹을 불러오는 중입니다.</p>
-      {:else if rankingError}
-        <p class="ranking-empty">{rankingError}</p>
-      {:else if !rankings.length}
-        <p class="ranking-empty">등록된 기록이 없습니다.</p>
-      {:else}
-        <ol class="ranking-list">
-          {#each rankings as ranking}
-            <li>
-              <span class="rank-no">#{ranking.rank}</span>
-              <div class="rank-body">
-                <strong>{ranking.userName}</strong>
-                <span>{ranking.score}점</span>
-              </div>
-            </li>
-          {/each}
-        </ol>
-      {/if}
-    </aside>
-  </div>
-</section>
+			{#if rankingLoading}
+				<p class="ranking-message">불러오는 중...</p>
+			{:else if rankingError}
+				<p class="ranking-message error">{rankingError}</p>
+			{:else if rankings.length === 0}
+				<p class="ranking-message">등록된 점수가 없습니다.</p>
+			{:else}
+				<ol class="ranking-list">
+					{#each rankings as ranking, index}
+						<li>
+							<span class="rank">{index + 1}</span>
+							<span class="name">{ranking.userName ?? '익명'}</span>
+							<strong>{ranking.score}</strong>
+						</li>
+					{/each}
+				</ol>
+			{/if}
+		</aside>
+	</div>
+</div>
 
 <style>
-  .apple-page {
-    display: grid;
-    gap: 12px;
-    color: #1f2937;
-  }
+	:global(body) {
+		overflow-x: hidden;
+	}
 
-  .hero {
-    padding: 10px 4px 2px;
-  }
+	.apple-page {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		padding: 20px 24px 32px;
+		color: var(--text, #1f2937);
+	}
 
-  .hero h1 {
-    margin: 0;
-    font-size: clamp(24px, 3vw, 32px);
-    line-height: 0.98;
-    letter-spacing: -0.03em;
-  }
+	.page-header {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 
-  .game-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 12px;
-    align-items: start;
-  }
+	.page-header h1 {
+		margin: 0;
+		font-size: 1.25rem;
+		font-weight: 800;
+	}
 
-  .arena-card,
-  .ranking-card {
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-    border: 1px solid #e5e7eb;
-    border-radius: 22px;
-    padding: 12px;
-    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.06);
-  }
+	.game-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1142px) 320px;
+		gap: 20px;
+		align-items: start;
+		justify-content: center;
+	}
 
-  .status-bar {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 12px;
-  }
+	.arena-card,
+	.ranking-card {
+		background: var(--surface, #ffffff);
+		border: 1px solid color-mix(in srgb, var(--text, #1f2937) 10%, transparent);
+		border-radius: 24px;
+		box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+	}
 
-  .status-item {
-    display: grid;
-    gap: 4px;
-    padding: 10px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 14px;
-    background: #ffffff;
-  }
+	.start-card {
+		min-height: 820px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 
-  .status-item span,
-  .ranking-label {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #64748b;
-  }
+	.start-scene {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		min-height: 780px;
+	}
 
-  .status-item strong {
-    font-size: 16px;
-    color: #111827;
-  }
+	.start-apple {
+		width: 280px;
+		height: 280px;
+		border: 0;
+		border-radius: 50%;
+		background-color: #fff7ed;
+		background-position: center;
+		background-repeat: no-repeat;
+		background-size: 72%;
+		box-shadow: 0 24px 50px rgba(249, 115, 22, 0.18);
+		cursor: pointer;
+		position: relative;
+		transition: transform 0.15s ease;
+		overflow: hidden;
+	}
 
-  .board-frame {
-    width: 100%;
-  }
+	.start-apple:hover {
+		transform: scale(1.03);
+	}
 
-  .board {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(17, minmax(0, 1fr));
-    grid-template-rows: repeat(10, minmax(0, 1fr));
-    gap: 8px;
-    width: min(100%, 1142px);
-    aspect-ratio: 1142 / 700;
-    min-height: 0;
-    padding: clamp(18px, 4vw, 50px);
-    box-sizing: border-box;
-    border-radius: 20px;
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    user-select: none;
-    -webkit-user-select: none;
-  }
+	.start-apple span {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 2rem;
+		font-weight: 900;
+		color: #fff;
+		text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+	}
 
-  .cell-slot {
-    min-width: 0;
-    min-height: 0;
-  }
+	.status-bar {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 12px;
+		padding: 20px 20px 0;
+	}
 
-  .apple-cell,
-  .empty-cell {
-    width: 100%;
-    height: 100%;
-    border-radius: 18px;
-  }
+	.status-card {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 14px 16px;
+		border-radius: 18px;
+		background: #f8fafc;
+		border: 1px solid rgba(15, 23, 42, 0.08);
+	}
 
-  .apple-cell {
-    border: 1px solid rgba(185, 28, 28, 0.18);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    color: #ffffff;
-    font-size: clamp(15px, 1.1vw, 22px);
-    font-weight: 800;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-    box-shadow: 0 10px 20px rgba(153, 27, 27, 0.16);
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    transition:
-      transform 0.12s ease,
-      box-shadow 0.12s ease;
-  }
+	.status-card .label {
+		font-size: 0.82rem;
+		color: #64748b;
+	}
 
-  .apple-cell.selected {
-    transform: translateY(-2px);
-    box-shadow:
-      0 0 0 3px rgba(255, 255, 255, 0.92),
-      0 0 0 6px rgba(239, 68, 68, 0.46);
-  }
+	.status-card strong {
+		font-size: 1.35rem;
+		color: #0f172a;
+	}
 
-  .empty-cell {
-    border: 1px dashed rgba(148, 163, 184, 0.35);
-    background: rgba(255, 255, 255, 0.16);
-    user-select: none;
-    -webkit-user-select: none;
-  }
+	.board {
+		position: relative;
+		width: min(1142px, calc(100% - 40px));
+		aspect-ratio: 1142 / 700;
+		height: auto;
+		margin: 20px auto;
+		border-radius: 24px;
+		background: #ffffff;
+		border: 1px solid rgba(15, 23, 42, 0.08);
+		overflow: hidden;
+		touch-action: none;
+		user-select: none;
+	}
 
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    border-radius: 20px;
-    background: rgba(15, 23, 42, 0.36);
-    backdrop-filter: blur(4px);
-  }
+	.board-surface {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
 
-  .selection-box {
-    position: absolute;
-    border: 2px solid rgba(37, 99, 235, 0.9);
-    background: rgba(59, 130, 246, 0.18);
-    border-radius: 12px;
-    pointer-events: none;
-    z-index: 2;
-  }
+	.apple-cell {
+		position: absolute;
+		user-select: none;
+	}
 
-  .overlay-panel {
-    width: min(360px, calc(100% - 32px));
-    display: grid;
-    gap: 10px;
-    padding: 18px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.96);
-    color: #111827;
-  }
+	.apple-cell.removed {
+		pointer-events: none;
+	}
 
-  .overlay-panel h2,
-  .overlay-panel p,
-  .ranking-head h2 {
-    margin: 0;
-  }
+	.apple-face {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
+		background-position: center;
+		background-repeat: no-repeat;
+		background-size: contain;
+		user-select: none;
+	}
 
-  .name-field {
-    display: grid;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 700;
-  }
+	.apple-face span {
+		font-size: 1.05rem;
+		font-weight: 900;
+		color: #ffffff;
+		text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+	}
 
-  .name-field span {
-    color: #475569;
-  }
+	.apple-cell.selected .apple-face {
+		filter: brightness(1.08);
+		transform: scale(1.03);
+	}
 
-  .name-field input {
-    height: 40px;
-    border: 1px solid #cbd5e1;
-    border-radius: 12px;
-    padding: 0 12px;
-    font: inherit;
-    background: #ffffff;
-  }
+	.selection-box {
+		position: absolute;
+		border: 2px solid rgba(37, 99, 235, 0.65);
+		background: rgba(37, 99, 235, 0.12);
+		border-radius: 12px;
+		pointer-events: none;
+	}
 
-  .submit-btn,
-  .ghost-btn {
-    height: 40px;
-    border: none;
-    border-radius: 999px;
-    font: inherit;
-    font-weight: 700;
-    cursor: pointer;
-  }
+	.overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(15, 23, 42, 0.42);
+	}
 
-  .submit-btn {
-    color: #ffffff;
-    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-  }
+	.overlay-card {
+		width: min(420px, calc(100% - 32px));
+		padding: 28px;
+		border-radius: 24px;
+		background: rgba(255, 255, 255, 0.96);
+		text-align: center;
+		box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+	}
 
-  .ghost-btn {
-    padding: 0 14px;
-    color: #1e293b;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-  }
+	.overlay-card h2,
+	.overlay-card p {
+		margin: 0;
+	}
 
-  .submit-btn:disabled,
-  .ghost-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
+	.overlay-card h2 {
+		font-size: 1.7rem;
+	}
 
-  .submit-message,
-  .ranking-empty {
-    margin: 0;
-    color: #475569;
-    font-size: 14px;
-    line-height: 1.5;
-  }
+	.overlay-card p {
+		margin-top: 10px;
+		color: #475569;
+	}
 
-  .ranking-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 10px;
-  }
+	.overlay-score {
+		margin-top: 18px;
+		font-size: 1.2rem;
+		font-weight: 800;
+	}
 
-  .ranking-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 8px;
-  }
+	.submit-row {
+		display: flex;
+		gap: 10px;
+		margin-top: 18px;
+	}
 
-  .ranking-list li {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 10px;
-    align-items: center;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    border: 1px solid #e2e8f0;
-  }
+	.submit-row input,
+	.submit-row button,
+	.restart-button {
+		border-radius: 14px;
+		border: 1px solid rgba(15, 23, 42, 0.12);
+		font: inherit;
+	}
 
-  .rank-no {
-    min-width: 42px;
-    text-align: center;
-    padding: 6px 8px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, #991b1b 0%, #b91c1c 100%);
-    color: #ffffff;
-    font-weight: 700;
-  }
+	.submit-row input {
+		flex: 1;
+		padding: 12px 14px;
+		background: #ffffff;
+	}
 
-  .rank-body {
-    display: grid;
-    gap: 4px;
-  }
+	.submit-row button,
+	.restart-button {
+		padding: 12px 16px;
+		background: #111827;
+		color: #ffffff;
+		cursor: pointer;
+	}
 
-  .rank-body strong {
-    font-size: 14px;
-  }
+	.restart-button {
+		margin-top: 12px;
+		width: 100%;
+	}
 
-  .rank-body span {
-    color: #475569;
-    font-size: 13px;
-  }
+	.ranking-card {
+		padding: 20px;
+		position: sticky;
+		top: 20px;
+	}
 
-  @media (max-width: 1400px) {
-    .status-bar {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
+	.ranking-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 16px;
+	}
 
-  @media (max-width: 980px) {
-    .game-layout {
-      grid-template-columns: 1fr;
-    }
-  }
+	.ranking-header h2,
+	.ranking-header span {
+		margin: 0;
+	}
 
-  @media (max-width: 640px) {
-    .arena-card,
-    .ranking-card {
-      padding: 12px;
-      border-radius: 16px;
-    }
+	.ranking-header span {
+		color: #64748b;
+		font-size: 0.9rem;
+	}
 
-    .status-bar {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+	.ranking-message {
+		margin: 0;
+		color: #64748b;
+	}
 
-    .board {
-      gap: 4px;
-    }
-  }
+	.ranking-message.error {
+		color: #dc2626;
+	}
 
-  :global(html[data-theme="dark"]) .apple-page {
-    color: #e5eefc;
-  }
+	.ranking-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
 
-  :global(html[data-theme="dark"]) .apple-page .arena-card,
-  :global(html[data-theme="dark"]) .apple-page .ranking-card,
-  :global(html[data-theme="dark"]) .apple-page .ranking-list li,
-  :global(html[data-theme="dark"]) .apple-page .status-item,
-  :global(html[data-theme="dark"]) .apple-page .overlay-panel,
-  :global(html[data-theme="dark"]) .apple-page .ghost-btn,
-  :global(html[data-theme="dark"]) .apple-page .name-field input {
-    background: #111827;
-    color: #e5eefc;
-    border-color: #243041;
-  }
+	.ranking-list li {
+		display: grid;
+		grid-template-columns: 32px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 14px;
+		border-radius: 16px;
+		background: #f8fafc;
+	}
 
-  :global(html[data-theme="dark"]) .apple-page .board {
-    background: #0f172a;
-    border-color: #243041;
-  }
+	.rank {
+		font-weight: 800;
+		color: #ef4444;
+	}
 
-  :global(html[data-theme="dark"]) .apple-page .status-item span,
-  :global(html[data-theme="dark"]) .apple-page .ranking-label,
-  :global(html[data-theme="dark"]) .apple-page .submit-message,
-  :global(html[data-theme="dark"]) .apple-page .ranking-empty,
-  :global(html[data-theme="dark"]) .apple-page .rank-body span,
-  :global(html[data-theme="dark"]) .apple-page .name-field span {
-    color: #94a3b8;
-  }
+	.name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	@media (max-width: 1520px) {
+		.game-layout {
+			grid-template-columns: 1fr;
+		}
+
+		.ranking-card {
+			position: static;
+		}
+
+		.board {
+			width: min(1142px, calc(100% - 24px));
+		}
+	}
+
+	:global(html[data-theme='dark']) .apple-page {
+		color: #eef2ff;
+	}
+
+	:global(html[data-theme='dark']) .arena-card,
+	:global(html[data-theme='dark']) .ranking-card {
+		background: rgba(15, 23, 42, 0.88);
+		border-color: rgba(255, 255, 255, 0.08);
+		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+	}
+
+	:global(html[data-theme='dark']) .status-card {
+		background: rgba(30, 41, 59, 0.92);
+		border-color: rgba(255, 255, 255, 0.1);
+	}
+
+	:global(html[data-theme='dark']) .status-card .label {
+		color: #cbd5e1;
+	}
+
+	:global(html[data-theme='dark']) .status-card strong {
+		color: #f8fafc;
+	}
+
+	:global(html[data-theme='dark']) .board {
+		background: #ffffff;
+	}
+
+	:global(html[data-theme='dark']) .overlay-card {
+		background: rgba(15, 23, 42, 0.94);
+		color: #f8fafc;
+	}
+
+	:global(html[data-theme='dark']) .start-apple {
+		background-color: rgba(30, 41, 59, 0.96);
+		box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+	}
+
+	:global(html[data-theme='dark']) .overlay-card p,
+	:global(html[data-theme='dark']) .ranking-header span,
+	:global(html[data-theme='dark']) .ranking-message {
+		color: #cbd5e1;
+	}
+
+	:global(html[data-theme='dark']) .submit-row input {
+		background: rgba(15, 23, 42, 0.9);
+		color: #f8fafc;
+		border-color: rgba(255, 255, 255, 0.14);
+	}
+
+	:global(html[data-theme='dark']) .submit-row button,
+	:global(html[data-theme='dark']) .restart-button {
+		background: #f8fafc;
+		color: #0f172a;
+	}
+
+	:global(html[data-theme='dark']) .ranking-list li {
+		background: rgba(30, 41, 59, 0.92);
+	}
 </style>
