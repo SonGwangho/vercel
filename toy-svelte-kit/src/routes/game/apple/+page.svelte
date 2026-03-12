@@ -23,6 +23,7 @@
 		col: number;
 		removed: boolean;
 	};
+	type RankingLike = Record<string, unknown>;
 
 	const config = appleConfigJson as AppleGameConfig;
 	const rows = config.rows;
@@ -295,6 +296,75 @@
 		return `${minutes}:${String(remain).padStart(2, '0')}`;
 	}
 
+	function isRankingEntry(value: unknown): value is RankingLike {
+		if (!value || typeof value !== 'object') {
+			return false;
+		}
+
+		const candidate = value as RankingLike;
+		return (
+			typeof candidate.score === 'number' ||
+			typeof candidate.score === 'string' ||
+			typeof candidate.userName === 'string' ||
+			typeof candidate.username === 'string' ||
+			typeof candidate.name === 'string' ||
+			typeof candidate.nickName === 'string' ||
+			typeof candidate.nickname === 'string'
+		);
+	}
+
+	function extractRankingItems(value: unknown): RankingLike[] {
+		if (Array.isArray(value)) {
+			if (value.every((item) => isRankingEntry(item))) {
+				return value;
+			}
+
+			for (const item of value) {
+				const nested = extractRankingItems(item);
+				if (nested.length > 0) {
+					return nested;
+				}
+			}
+
+			return [];
+		}
+
+		if (!value || typeof value !== 'object') {
+			return [];
+		}
+
+		for (const nested of Object.values(value as Record<string, unknown>)) {
+			const found = extractRankingItems(nested);
+			if (found.length > 0) {
+				return found;
+			}
+		}
+
+		return [];
+	}
+
+	function normalizeRankingItem(item: RankingLike): AppleRankingItem {
+		const rawName =
+			item.userName ??
+			item.username ??
+			item.name ??
+			item.nickName ??
+			item.nickname ??
+			item.memberName;
+
+		const rawScore = item.score ?? item.gameScore ?? item.value ?? 0;
+		const scoreValue =
+			typeof rawScore === 'number'
+				? rawScore
+				: Number.parseInt(String(rawScore), 10) || 0;
+
+		return {
+			...item,
+			userName: typeof rawName === 'string' && rawName.trim() ? rawName : '익명',
+			score: scoreValue
+		} as AppleRankingItem;
+	}
+
 	async function loadRankings(): Promise<void> {
 		rankingLoading = true;
 		rankingError = '';
@@ -306,15 +376,10 @@
 			}
 
 			const data = await response.json();
-			const items = Array.isArray(data)
-				? data
-				: Array.isArray(data?.data)
-					? data.data
-					: Array.isArray(data?.rankings)
-						? data.rankings
-						: [];
-
-			rankings = items.slice(0, RANKING_LIMIT);
+			const items = extractRankingItems(data).map(normalizeRankingItem);
+			rankings = items
+				.sort((a, b) => Number(b.score) - Number(a.score))
+				.slice(0, RANKING_LIMIT);
 		} catch (error) {
 			rankingError = error instanceof Error ? error.message : '랭킹을 불러오지 못했습니다.';
 		} finally {
