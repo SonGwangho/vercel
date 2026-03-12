@@ -891,4 +891,26 @@
       overflow-x: auto;
     }
   }
+
+  :global(html[data-theme="dark"]) .jjaprim-page {
+    color: #e5eefc;
+  }
+
+  :global(html[data-theme="dark"]) .jjaprim-page .arena-card,
+  :global(html[data-theme="dark"]) .jjaprim-page .ranking-card,
+  :global(html[data-theme="dark"]) .jjaprim-page .ranking-list li,
+  :global(html[data-theme="dark"]) .jjaprim-page .ghost-btn,
+  :global(html[data-theme="dark"]) .jjaprim-page .overlay-panel,
+  :global(html[data-theme="dark"]) .jjaprim-page .name-field input {
+    background: #111827;
+    color: #e5eefc;
+    border-color: #243041;
+  }
+
+  :global(html[data-theme="dark"]) .jjaprim-page .ranking-empty,
+  :global(html[data-theme="dark"]) .jjaprim-page .rank-body span,
+  :global(html[data-theme="dark"]) .jjaprim-page .guide,
+  :global(html[data-theme="dark"]) .jjaprim-page .submit-message {
+    color: #94a3b8;
+  }
 </style>

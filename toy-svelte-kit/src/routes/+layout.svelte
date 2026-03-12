@@ -3,6 +3,7 @@
   import favicon from "$lib/assets/favicon.ico";
   import ResponsiveMenuItem from "$lib/components/Tree/ResponsiveMenuItem.svelte";
   import GlobalLoadingModal from "$lib/components/Modal/GlobalLoadingModal.svelte";
+  import { Storage } from "$lib/utils/Storage";
   import "../app.css";
   import { onMount } from "svelte";
 
@@ -17,6 +18,14 @@
   let drawerOpen = $state(false);
   let desktopSidebarCollapsed = $state(false);
   let expandedIds = $state(new Set<string>());
+  let isDarkMode = $state(false);
+
+  const THEME_STORAGE_KEY = "app.theme.dark";
+
+  function applyTheme(isDark: boolean) {
+    isDarkMode = isDark;
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  }
 
   function detectViewport() {
     isMobile = window.innerWidth < 1024;
@@ -53,9 +62,35 @@
     expandedIds = next;
   }
 
+  async function toggleTheme() {
+    const next = !isDarkMode;
+    applyTheme(next);
+
+    try {
+      await Storage.remove(THEME_STORAGE_KEY);
+      await Storage.set(THEME_STORAGE_KEY, next);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   onMount(() => {
     detectViewport();
     window.addEventListener("resize", detectViewport);
+
+    (async () => {
+      try {
+        const stored = await Storage.get<boolean>(THEME_STORAGE_KEY);
+        if (typeof stored === "boolean") {
+          applyTheme(stored);
+          return;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+
+      applyTheme(window.matchMedia("(prefers-color-scheme: dark)").matches);
+    })();
 
     return () => window.removeEventListener("resize", detectViewport);
   });
@@ -91,6 +126,16 @@
     &#9776;
   </button>
   {/if}
+
+  <button
+    type="button"
+    class="theme-toggle"
+    aria-label="Toggle dark mode"
+    aria-pressed={isDarkMode}
+    onclick={toggleTheme}
+  >
+    {isDarkMode ? "☀️" : "🌙"}
+  </button>
 </header>
 
 <div

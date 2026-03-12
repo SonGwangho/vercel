@@ -458,4 +458,21 @@
       width: min(100%, 160px);
     }
   }
+
+  :global(html[data-theme="dark"]) .tarot-page {
+    color: #e5eefc;
+  }
+
+  :global(html[data-theme="dark"]) .tarot-page .live-result,
+  :global(html[data-theme="dark"]) .tarot-page .shuffle-btn,
+  :global(html[data-theme="dark"]) .tarot-page .deck-card {
+    background: #111827;
+    color: #e5eefc;
+    border-color: #243041;
+  }
+
+  :global(html[data-theme="dark"]) .tarot-page .fortune,
+  :global(html[data-theme="dark"]) .tarot-page .count {
+    color: #94a3b8;
+  }
 </style>

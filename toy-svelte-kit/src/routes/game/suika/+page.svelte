@@ -1115,4 +1115,26 @@
       overflow-x: auto;
     }
   }
+
+  :global(html[data-theme="dark"]) .suika-page {
+    color: #f5eadb;
+  }
+
+  :global(html[data-theme="dark"]) .suika-page .ranking-board,
+  :global(html[data-theme="dark"]) .suika-page .evolution-card,
+  :global(html[data-theme="dark"]) .suika-page .overlay-panel,
+  :global(html[data-theme="dark"]) .suika-page .name-field input,
+  :global(html[data-theme="dark"]) .suika-page .tiny-btn,
+  :global(html[data-theme="dark"]) .suika-page .ranking-strip li {
+    background: #111827;
+    color: #f5eadb;
+    border-color: #243041;
+  }
+
+  :global(html[data-theme="dark"]) .suika-page .ranking-empty,
+  :global(html[data-theme="dark"]) .suika-page .ranking-board-head p,
+  :global(html[data-theme="dark"]) .suika-page .evolution-title,
+  :global(html[data-theme="dark"]) .suika-page .evolution-foot {
+    color: #cbd5e1;
+  }
 </style>

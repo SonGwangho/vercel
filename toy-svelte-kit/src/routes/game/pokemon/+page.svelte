@@ -555,4 +555,94 @@
       font-size: 32px;
     }
   }
+
+  :global(html[data-theme="dark"]) .pokemon-page {
+    --ink: #e5eefc;
+    --muted: #a8b6cc;
+    --surface: #111827;
+    --line: rgba(148, 163, 184, 0.22);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .hero {
+    background:
+      radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.18), transparent 36%),
+      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.14), transparent 34%),
+      linear-gradient(160deg, #0f172a 0%, #111827 52%, #172033 100%);
+    border-color: rgba(96, 165, 250, 0.22);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .eyebrow {
+    color: #7dd3fc;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page h1,
+  :global(html[data-theme="dark"]) .pokemon-page h2,
+  :global(html[data-theme="dark"]) .pokemon-page .row span,
+  :global(html[data-theme="dark"]) .pokemon-page .stat b,
+  :global(html[data-theme="dark"]) .pokemon-page .search input {
+    color: #f8fbff;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .meta,
+  :global(html[data-theme="dark"]) .pokemon-page .result,
+  :global(html[data-theme="dark"]) .pokemon-page .search label,
+  :global(html[data-theme="dark"]) .pokemon-page .row strong,
+  :global(html[data-theme="dark"]) .pokemon-page .stat span,
+  :global(html[data-theme="dark"]) .pokemon-page .status,
+  :global(html[data-theme="dark"]) .pokemon-page .dex {
+    color: #a8b6cc;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .card {
+    background:
+      radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.14), transparent 44%),
+      linear-gradient(180deg, #111827 0%, #0f172a 100%);
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow: 0 14px 30px rgba(2, 6, 23, 0.34);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .photo-wrap {
+    background:
+      radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.14), transparent 36%),
+      radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.1), transparent 36%),
+      #0b1220;
+    border-color: rgba(148, 163, 184, 0.18);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .search input,
+  :global(html[data-theme="dark"]) .pokemon-page .stat {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.22);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .search input::placeholder {
+    color: #64748b;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .search input:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .evolve {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: rgba(74, 222, 128, 0.34);
+    color: #bbf7d0;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .devolve {
+    background: rgba(244, 63, 94, 0.16);
+    border-color: rgba(251, 113, 133, 0.34);
+    color: #fecdd3;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .evo-btn:disabled {
+    background: #0f172a;
+    border-color: rgba(148, 163, 184, 0.18);
+    color: #64748b;
+  }
+
+  :global(html[data-theme="dark"]) .pokemon-page .status.error {
+    color: #fca5a5;
+  }
 </style>

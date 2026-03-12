@@ -956,4 +956,34 @@
       gap: 4px;
     }
   }
+
+  :global(html[data-theme="dark"]) .apple-page {
+    color: #e5eefc;
+  }
+
+  :global(html[data-theme="dark"]) .apple-page .arena-card,
+  :global(html[data-theme="dark"]) .apple-page .ranking-card,
+  :global(html[data-theme="dark"]) .apple-page .ranking-list li,
+  :global(html[data-theme="dark"]) .apple-page .status-item,
+  :global(html[data-theme="dark"]) .apple-page .overlay-panel,
+  :global(html[data-theme="dark"]) .apple-page .ghost-btn,
+  :global(html[data-theme="dark"]) .apple-page .name-field input {
+    background: #111827;
+    color: #e5eefc;
+    border-color: #243041;
+  }
+
+  :global(html[data-theme="dark"]) .apple-page .board {
+    background: #0f172a;
+    border-color: #243041;
+  }
+
+  :global(html[data-theme="dark"]) .apple-page .status-item span,
+  :global(html[data-theme="dark"]) .apple-page .ranking-label,
+  :global(html[data-theme="dark"]) .apple-page .submit-message,
+  :global(html[data-theme="dark"]) .apple-page .ranking-empty,
+  :global(html[data-theme="dark"]) .apple-page .rank-body span,
+  :global(html[data-theme="dark"]) .apple-page .name-field span {
+    color: #94a3b8;
+  }
 </style>
