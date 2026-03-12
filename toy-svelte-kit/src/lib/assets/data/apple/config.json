@@ -1,0 +1,19 @@
+{
+  "rows": 10,
+  "cols": 17,
+  "targetSum": 10,
+  "minValue": 1,
+  "maxValue": 9,
+  "appleImage": "",
+  "palette": [
+    "#f06543",
+    "#ef476f",
+    "#ff7f50",
+    "#ff9f1c",
+    "#ffb703",
+    "#f94144",
+    "#e76f51",
+    "#d62828",
+    "#bc4749"
+  ]
+}

@@ -22,5 +22,11 @@
     "name": "수박게임",
     "path": "/game/suika",
     "order": 40
+  },
+  {
+    "id": "apple",
+    "name": "사과게임",
+    "path": "/game/apple",
+    "order": 50
   }
 ]
