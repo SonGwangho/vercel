@@ -9,3 +9,4 @@ export * from "./types/Tarot.ts";
 export * from "./types/JjaprimGosu.ts";
 export * from "./types/Suika.ts";
 export * from "./types/Apple.ts";
+export * from "./types/Neon.ts";

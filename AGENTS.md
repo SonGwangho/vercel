@@ -16,6 +16,7 @@
   - `vite`: `^7.3.1` (installed: `7.3.1`)
   - `svelte-check`: `^4.3.5` (installed: `4.3.6`)
   - `typescript`: `^5.9.3` (installed: `5.9.3`)
+  - `neon`: `2.21.2` (intalled: `2.21.2`)
 
 ## 경로 관리
 **타입 경로**
@@ -29,6 +30,10 @@
 
 
 ## 데이터 관리
+- 데이터는 최대한 클라이언트에 저장한다.
+- 단순 CRUD는 Neon Postgres를 사용한다.
+- 그 외 꼭 필요한 경우에만 서버 데이터 및 API를 사용한다.
+
 **정적 데이터**
 - 정적 데이터들은 모두 `/src/lib/assets/data/{dataDir}` 경로에 저장한다.
 - 카테고리에 따라 디렉토리를 만들고 값은 가능한 json으로 저장한다.
@@ -39,3 +44,8 @@
 **서버 데이터**
 - 서버 API 호출은 /api/{endpoint} 규칙을 따른다.
 - 서버 API는 http://168.107.31.65:8080/swagger-ui/index.html에 스웨거로 정의되어 있으므로 필요시 확인한다.
+
+**데이터베이스**
+- 데이터베이스는 Neon Postgres를 사용한다.
+- 서버에서 실시간 데이터 변경이 필요한게 아니면 Neon Postgres를 사용한다.
+- vercel에 DATABASE_URL로 환경 변수가 등록되어 있다.
