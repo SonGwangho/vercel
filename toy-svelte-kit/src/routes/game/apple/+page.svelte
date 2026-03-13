@@ -6,7 +6,8 @@
 		AppleGameCell,
 		AppleGameConfig,
 		AppleRankingItem,
-		AppleScoreRequest
+		AppleScoreRequest,
+		RankingListResponse
 	} from '$lib';
 
 	const GAME_CODE = 300;
@@ -370,16 +371,13 @@
 		rankingError = '';
 
 		try {
-			const response = await fetch(`/api/getRanking?gameCode=${GAME_CODE}`);
+			const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=${RANKING_LIMIT}`);
 			if (!response.ok) {
 				throw new Error('랭킹을 불러오지 못했습니다.');
 			}
 
-			const data = await response.json();
-			const items = extractRankingItems(data).map(normalizeRankingItem);
-			rankings = items
-				.sort((a, b) => Number(b.score) - Number(a.score))
-				.slice(0, RANKING_LIMIT);
+			const data = (await response.json()) as RankingListResponse;
+			rankings = data.rankings as AppleRankingItem[];
 		} catch (error) {
 			rankingError = error instanceof Error ? error.message : '랭킹을 불러오지 못했습니다.';
 		} finally {
@@ -403,7 +401,7 @@
 				score
 			};
 
-			const response = await fetch('/api/postScore', {
+			const response = await fetch('/api/rankings', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

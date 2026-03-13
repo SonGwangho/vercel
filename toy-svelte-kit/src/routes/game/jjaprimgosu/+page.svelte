@@ -3,6 +3,7 @@
   import type {
     JjaprimGosuRankingItem,
     JjaprimGosuScoreRequest,
+    RankingListResponse,
   } from "$lib";
 
   type GameStatus = "idle" | "running" | "dead";
@@ -199,6 +200,24 @@
     );
   }
 
+  function hasSweptCollision(previousArrow: ArrowEntity, nextArrow: ArrowEntity) {
+    if (hasCollision(previousArrow) || hasCollision(nextArrow)) {
+      return true;
+    }
+
+    const sweptArrow: ArrowEntity = {
+      ...nextArrow,
+      x: Math.min(previousArrow.x, nextArrow.x),
+      y: Math.min(previousArrow.y, nextArrow.y),
+      width: Math.max(previousArrow.x + previousArrow.width, nextArrow.x + nextArrow.width) -
+        Math.min(previousArrow.x, nextArrow.x),
+      height: Math.max(previousArrow.y + previousArrow.height, nextArrow.y + nextArrow.height) -
+        Math.min(previousArrow.y, nextArrow.y),
+    };
+
+    return hasCollision(sweptArrow);
+  }
+
   function killPlayer(now: number) {
     stopLoop();
     gameStatus = "dead";
@@ -224,12 +243,22 @@
       nextSpawnDelay = createSpawnDelay(elapsedMs);
     }
 
+    let collisionDetected = false;
+
     arrows = arrows
-      .map((arrow) => ({
-        ...arrow,
-        x: arrow.x + arrow.vx * (deltaMs / 1000),
-        y: arrow.y + arrow.vy * (deltaMs / 1000),
-      }))
+      .map((arrow) => {
+        const nextArrow = {
+          ...arrow,
+          x: arrow.x + arrow.vx * (deltaMs / 1000),
+          y: arrow.y + arrow.vy * (deltaMs / 1000),
+        };
+
+        if (!collisionDetected && hasSweptCollision(arrow, nextArrow)) {
+          collisionDetected = true;
+        }
+
+        return nextArrow;
+      })
       .filter(
         (arrow) =>
           arrow.x + arrow.width > -48 &&
@@ -238,7 +267,7 @@
           arrow.y < ARENA_HEIGHT + 48,
       );
 
-    if (arrows.some(hasCollision)) {
+    if (collisionDetected || arrows.some(hasCollision)) {
       killPlayer(now);
       return;
     }
@@ -290,89 +319,18 @@
     pressedKeys.delete(event.key.toLowerCase());
   }
 
-  function normalizeRankingItem(item: unknown, index: number): JjaprimGosuRankingItem | null {
-    if (!item || typeof item !== "object") {
-      return null;
-    }
-
-    const candidate = item as Record<string, unknown>;
-    const userNameValue = candidate.userName;
-    const scoreValue = candidate.score;
-    const rankValue = candidate.rank ?? candidate.ranking;
-    const gameNameValue = candidate.gameName;
-
-    if (typeof userNameValue !== "string") {
-      return null;
-    }
-
-    const score =
-      typeof scoreValue === "number"
-        ? scoreValue
-        : typeof scoreValue === "string"
-          ? Number(scoreValue)
-          : Number.NaN;
-
-    if (!Number.isFinite(score)) {
-      return null;
-    }
-
-    return {
-      rank:
-        typeof rankValue === "number"
-          ? rankValue
-          : typeof rankValue === "string" && Number.isFinite(Number(rankValue))
-            ? Number(rankValue)
-            : index + 1,
-      userName: userNameValue,
-      score,
-      gameName: typeof gameNameValue === "string" ? gameNameValue : undefined,
-    };
-  }
-
-  function normalizeRankingPayload(payload: unknown) {
-    if (Array.isArray(payload)) {
-      return payload
-        .map((item, index) => normalizeRankingItem(item, index))
-        .filter((item): item is JjaprimGosuRankingItem => item !== null);
-    }
-
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-
-    const candidate = payload as Record<string, unknown>;
-    const sources = [
-      candidate.rankingData,
-      candidate.rankings,
-      candidate.ranking,
-      candidate.scores,
-      candidate.items,
-      candidate.data,
-    ];
-    const list = sources.find(Array.isArray);
-
-    if (!Array.isArray(list)) {
-      return [];
-    }
-
-    return list
-      .map((item, index) => normalizeRankingItem(item, index))
-      .filter((item): item is JjaprimGosuRankingItem => item !== null);
-  }
-
   async function fetchRanking() {
     isRankingLoading = true;
     rankingError = "";
 
     try {
-      const response = await fetch(`/api/getRanking?gameCode=${GAME_CODE}`);
+      const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=5`);
       if (!response.ok) {
         throw new Error(`ranking fetch failed: ${response.status}`);
       }
 
-      rankings = normalizeRankingPayload(await response.json())
-        .sort((a, b) => a.rank - b.rank || b.score - a.score)
-        .slice(0, 5);
+      const data = (await response.json()) as RankingListResponse;
+      rankings = data.rankings as JjaprimGosuRankingItem[];
     } catch (error) {
       rankings = [];
       rankingError = "랭킹을 불러오지 못했습니다.";
@@ -400,7 +358,7 @@
     };
 
     try {
-      const response = await fetch("/api/postScore", {
+      const response = await fetch("/api/rankings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

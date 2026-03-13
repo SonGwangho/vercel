@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import fruitDefs from "$lib/assets/data/suika/fruits.json";
   import type {
+    RankingListResponse,
     SuikaFruitDefinition,
     SuikaRankingItem,
     SuikaScoreRequest,
@@ -334,88 +335,18 @@
     animationFrameId = requestAnimationFrame(loop);
   }
 
-  function normalizeRankingItem(item: unknown, index: number): SuikaRankingItem | null {
-    if (!item || typeof item !== "object") {
-      return null;
-    }
-
-    const candidate = item as Record<string, unknown>;
-    const userNameValue = candidate.userName;
-    const scoreValue = candidate.score;
-    const rankValue = candidate.rank ?? candidate.ranking;
-
-    if (typeof userNameValue !== "string") {
-      return null;
-    }
-
-    const parsedScore =
-      typeof scoreValue === "number"
-        ? scoreValue
-        : typeof scoreValue === "string"
-          ? Number(scoreValue)
-          : Number.NaN;
-
-    if (!Number.isFinite(parsedScore)) {
-      return null;
-    }
-
-    return {
-      rank:
-        typeof rankValue === "number"
-          ? rankValue
-          : typeof rankValue === "string" && Number.isFinite(Number(rankValue))
-            ? Number(rankValue)
-            : index + 1,
-      userName: userNameValue,
-      score: parsedScore,
-      gameName: typeof candidate.gameName === "string" ? candidate.gameName : undefined,
-    };
-  }
-
-  function normalizeRankingPayload(payload: unknown) {
-    if (Array.isArray(payload)) {
-      return payload
-        .map((item, index) => normalizeRankingItem(item, index))
-        .filter((item): item is SuikaRankingItem => item !== null);
-    }
-
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-
-    const candidate = payload as Record<string, unknown>;
-    const sources = [
-      candidate.rankingData,
-      candidate.rankings,
-      candidate.ranking,
-      candidate.scores,
-      candidate.items,
-      candidate.data,
-    ];
-    const list = sources.find(Array.isArray);
-
-    if (!Array.isArray(list)) {
-      return [];
-    }
-
-    return list
-      .map((item, index) => normalizeRankingItem(item, index))
-      .filter((item): item is SuikaRankingItem => item !== null);
-  }
-
   async function fetchRanking() {
     isRankingLoading = true;
     rankingError = "";
 
     try {
-      const response = await fetch(`/api/getRanking?gameCode=${GAME_CODE}`);
+      const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=5`);
       if (!response.ok) {
         throw new Error(`ranking fetch failed: ${response.status}`);
       }
 
-      rankings = normalizeRankingPayload(await response.json())
-        .sort((a, b) => a.rank - b.rank || b.score - a.score)
-        .slice(0, 5);
+      const data = (await response.json()) as RankingListResponse;
+      rankings = data.rankings as SuikaRankingItem[];
     } catch (error) {
       rankings = [];
       rankingError = "랭킹을 불러오지 못했습니다.";
@@ -441,7 +372,7 @@
     };
 
     try {
-      const response = await fetch("/api/postScore", {
+      const response = await fetch("/api/rankings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

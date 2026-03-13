@@ -10,3 +10,4 @@ export * from "./types/JjaprimGosu.ts";
 export * from "./types/Suika.ts";
 export * from "./types/Apple.ts";
 export * from "./types/Neon.ts";
+export * from "./types/Ranking.ts";
