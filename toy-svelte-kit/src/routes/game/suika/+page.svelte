@@ -670,16 +670,20 @@
   }
 
   .stage-shell {
+    width: 100%;
     overflow-x: auto;
     padding-bottom: 8px;
   }
 
   .stage {
     position: relative;
-    width: 1024px;
+    width: 100%;
+    min-width: 1024px;
+    max-width: 1074px;
+    margin: 0 auto;
     height: 768px;
     display: grid;
-    grid-template-columns: 214px 1fr 214px;
+    grid-template-columns: minmax(200px, 1fr) 430px minmax(200px, 1fr);
     gap: 20px;
     padding: 24px 22px 18px;
     box-sizing: border-box;
@@ -691,6 +695,7 @@
   }
 
   .side-panel {
+    min-width: 0;
     display: grid;
     align-content: start;
     gap: 18px;
@@ -747,9 +752,10 @@
   }
 
   .ranking-board {
-    width: 184px;
+    width: min(100%, 280px);
+    max-width: 100%;
     min-height: 280px;
-    justify-self: center;
+    justify-self: stretch;
     border-radius: 26px;
     padding: 12px 10px 14px;
     box-sizing: border-box;
@@ -792,7 +798,7 @@
 
   .ranking-strip li {
     display: grid;
-    grid-template-columns: 46px 1fr auto;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     min-height: 42px;
@@ -801,6 +807,18 @@
     background: rgba(255, 255, 255, 0.56);
     color: #7b552b;
     font-weight: 800;
+  }
+
+  .ranking-strip strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ranking-strip span:last-child {
+    justify-self: end;
+    white-space: nowrap;
   }
 
   .ranking-strip li.index-top {
