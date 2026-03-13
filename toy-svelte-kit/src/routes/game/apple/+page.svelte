@@ -166,7 +166,7 @@
 	}
 
 	function updateSelectionFromBox(): void {
-		if (!selectionBox) {
+		if (!selectionBox || !boardRect) {
 			selectedKeys = new Set();
 			return;
 		}
@@ -174,15 +174,17 @@
 		const next = new Set<string>();
 		const boxRight = selectionBox.left + selectionBox.width;
 		const boxBottom = selectionBox.top + selectionBox.height;
+		const scaleX = boardRect.width / BOARD_WIDTH;
+		const scaleY = boardRect.height / BOARD_HEIGHT;
 
 		for (const row of board) {
 			for (const cell of row) {
 				if (cell.removed) continue;
 
-				const cellLeft = offsetX + cell.col * (cellSize + cellGap);
-				const cellTop = offsetY + cell.row * (cellSize + cellGap);
-				const cellRight = cellLeft + cellSize;
-				const cellBottom = cellTop + cellSize;
+				const cellLeft = (offsetX + cell.col * (cellSize + cellGap)) * scaleX;
+				const cellTop = (offsetY + cell.row * (cellSize + cellGap)) * scaleY;
+				const cellRight = cellLeft + cellSize * scaleX;
+				const cellBottom = cellTop + cellSize * scaleY;
 
 				const intersects =
 					cellLeft < boxRight &&
