@@ -11,6 +11,32 @@ import type {
 
 type ApiRequestEvent = Pick<RequestEvent, "params" | "request" | "url">;
 
+function extractClientIp(event: Pick<RequestEvent, "request"> & Partial<Pick<RequestEvent, "getClientAddress">>) {
+	const forwardedFor = event.request.headers.get("x-forwarded-for");
+	const realIp = event.request.headers.get("x-real-ip");
+
+	if (forwardedFor) {
+		const [clientIp] = forwardedFor.split(",").map((value) => value.trim()).filter(Boolean);
+		if (clientIp) {
+			return clientIp;
+		}
+	}
+
+	if (realIp) {
+		return realIp.trim();
+	}
+
+	if (typeof event.getClientAddress === "function") {
+		try {
+			return event.getClientAddress();
+		} catch {
+			return null;
+		}
+	}
+
+	return null;
+}
+
 function badRequest(message: string, status = 400) {
 	return json({ message }, { status });
 }
@@ -20,7 +46,9 @@ function parseId(idText: string): number | null {
 	return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export async function handleRankingCollectionRequest({ request, url }: ApiRequestEvent): Promise<Response> {
+export async function handleRankingCollectionRequest(
+	{ request, url, getClientAddress }: ApiRequestEvent & Partial<Pick<RequestEvent, "getClientAddress">>
+): Promise<Response> {
 	if (request.method === "GET") {
 		const gameCodeText = url.searchParams.get("gameCode");
 		const limitText = url.searchParams.get("limit");
@@ -55,7 +83,8 @@ export async function handleRankingCollectionRequest({ request, url }: ApiReques
 		}
 
 		try {
-			const ranking = await createRanking(payload);
+			const clientIp = extractClientIp({ request, getClientAddress });
+			const ranking = await createRanking(payload, clientIp);
 			const body: RankingMutationResponse = { ranking };
 			return json(body, { status: 201 });
 		} catch (error) {

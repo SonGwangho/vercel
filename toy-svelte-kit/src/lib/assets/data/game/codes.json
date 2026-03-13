@@ -1,0 +1,29 @@
+[
+  {
+    "id": "jjaprimgosu",
+    "name": "짭림고수",
+    "path": "/game/jjaprimgosu",
+    "order": 10,
+    "gameCode": 100,
+    "gameName": "짭림고수",
+    "hasRanking": true
+  },
+  {
+    "id": "suika",
+    "name": "수박게임",
+    "path": "/game/suika",
+    "order": 20,
+    "gameCode": 200,
+    "gameName": "수박게임",
+    "hasRanking": true
+  },
+  {
+    "id": "apple",
+    "name": "사과게임",
+    "path": "/game/apple",
+    "order": 30,
+    "gameCode": 300,
+    "gameName": "사과게임",
+    "hasRanking": true
+  }
+]

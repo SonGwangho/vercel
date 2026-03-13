@@ -12,6 +12,7 @@ type RankingRow = {
 	game_name: string;
 	user_name: string;
 	score: number;
+	ip_address: string | null;
 	created_at: string;
 	updated_at: string;
 };
@@ -51,9 +52,14 @@ export async function ensureRankingTable(): Promise<void> {
 					game_name TEXT NOT NULL,
 					user_name TEXT NOT NULL,
 					score DOUBLE PRECISION NOT NULL,
+					ip_address TEXT,
 					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 				)
+			`;
+			await sql`
+				ALTER TABLE game_rankings
+				ADD COLUMN IF NOT EXISTS ip_address TEXT
 			`;
 			await sql`
 				CREATE INDEX IF NOT EXISTS idx_game_rankings_game_score
@@ -73,7 +79,7 @@ export async function listRankings(gameCode: number, limit = 10): Promise<Rankin
 
 	const sql = getNeonSql();
 	const rows = (await sql`
-		SELECT id, game_code, game_name, user_name, score, created_at::text, updated_at::text
+		SELECT id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
 		FROM game_rankings
 		WHERE game_code = ${gameCode}
 		ORDER BY score DESC, created_at ASC
@@ -91,7 +97,7 @@ export async function getRankingById(id: number): Promise<RankingRecord | null> 
 
 	const sql = getNeonSql();
 	const rows = (await sql`
-		SELECT id, game_code, game_name, user_name, score, created_at::text, updated_at::text
+		SELECT id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
 		FROM game_rankings
 		WHERE id = ${id}
 		LIMIT 1
@@ -100,7 +106,7 @@ export async function getRankingById(id: number): Promise<RankingRecord | null> 
 	return rows[0] ? mapRankingRow(rows[0]) : null;
 }
 
-export async function createRanking(input: RankingCreateRequest): Promise<RankingRecord> {
+export async function createRanking(input: RankingCreateRequest, ipAddress: string | null): Promise<RankingRecord> {
 	await ensureRankingTable();
 
 	const gameCode = Number(input.gameCode);
@@ -122,9 +128,9 @@ export async function createRanking(input: RankingCreateRequest): Promise<Rankin
 
 	const sql = getNeonSql();
 	const rows = (await sql`
-		INSERT INTO game_rankings (game_code, game_name, user_name, score)
-		VALUES (${gameCode}, ${gameName}, ${userName}, ${score})
-		RETURNING id, game_code, game_name, user_name, score, created_at::text, updated_at::text
+		INSERT INTO game_rankings (game_code, game_name, user_name, score, ip_address)
+		VALUES (${gameCode}, ${gameName}, ${userName}, ${score}, ${ipAddress})
+		RETURNING id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
 	`) as RankingRow[];
 
 	return mapRankingRow(rows[0]);
@@ -155,7 +161,7 @@ export async function updateRanking(
 			score = ${nextScore},
 			updated_at = NOW()
 		WHERE id = ${id}
-		RETURNING id, game_code, game_name, user_name, score, created_at::text, updated_at::text
+		RETURNING id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
 	`) as RankingRow[];
 
 	return rows[0] ? mapRankingRow(rows[0]) : null;

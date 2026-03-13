@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import appleConfigJson from '$lib/assets/data/apple/config.json';
 	import appleImageUrl from '$lib/assets/data/apple/img/apple.png';
+	import { requireGameCode } from '$lib/gameCodes';
 	import type {
 		AppleGameCell,
 		AppleGameConfig,
@@ -10,7 +11,8 @@
 		RankingListResponse
 	} from '$lib';
 
-	const GAME_CODE = 300;
+	const gameMeta = requireGameCode('apple');
+	const GAME_CODE = gameMeta.gameCode;
 	const GAME_DURATION_SECONDS = 120;
 	const BOARD_WIDTH = 1142;
 	const BOARD_HEIGHT = 700;
@@ -398,7 +400,7 @@
 		try {
 			const payload: AppleScoreRequest = {
 				gameCode: GAME_CODE,
-				gameName: '사과게임',
+				gameName: gameMeta.gameName,
 				userName: userName.trim(),
 				score
 			};

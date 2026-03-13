@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { requireGameCode } from "$lib/gameCodes";
   import fruitDefs from "$lib/assets/data/suika/fruits.json";
   import type {
     RankingListResponse,
@@ -20,8 +21,9 @@
     mergedAt: number;
   };
 
-  const GAME_NAME = "수박게임";
-  const GAME_CODE = 200;
+  const gameMeta = requireGameCode("suika");
+  const GAME_NAME = gameMeta.gameName;
+  const GAME_CODE = gameMeta.gameCode;
   const BOARD_WIDTH = 430;
   const BOARD_HEIGHT = 560;
   const DROP_LINE_Y = 74;

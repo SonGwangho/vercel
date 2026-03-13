@@ -1,32 +1,20 @@
 [
   {
-    "id": "pokemon",
-    "name": "pokemon",
-    "path": "/game/pokemon",
-    "order": 10
-  },
-  {
-    "id": "tarot",
-    "name": "Tarot",
-    "path": "/game/tarot",
-    "order": 20
-  },
-  {
     "id": "jjaprimgosu",
     "name": "짭림고수",
     "path": "/game/jjaprimgosu",
-    "order": 30
+    "order": 10
   },
   {
     "id": "suika",
     "name": "수박게임",
     "path": "/game/suika",
-    "order": 40
+    "order": 20
   },
   {
     "id": "apple",
     "name": "사과게임",
     "path": "/game/apple",
-    "order": 50
+    "order": 30
   }
 ]

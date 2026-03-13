@@ -1,0 +1,14 @@
+[
+  {
+    "id": "pokemon",
+    "name": "pokemon",
+    "path": "/info/pokemon",
+    "order": 10
+  },
+  {
+    "id": "tarot",
+    "name": "Tarot",
+    "path": "/info/tarot",
+    "order": 20
+  }
+]

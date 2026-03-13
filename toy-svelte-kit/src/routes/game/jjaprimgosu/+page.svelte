@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { requireGameCode } from "$lib/gameCodes";
   import type {
     JjaprimGosuRankingItem,
     JjaprimGosuScoreRequest,
@@ -18,8 +19,9 @@
     rotation: number;
   };
 
-  const GAME_NAME = "짭림고수";
-  const GAME_CODE = 100;
+  const gameMeta = requireGameCode("jjaprimgosu");
+  const GAME_NAME = gameMeta.gameName;
+  const GAME_CODE = gameMeta.gameCode;
   const ARENA_WIDTH = 800;
   const ARENA_HEIGHT = 600;
   const PLAYER_SIZE = 28;
