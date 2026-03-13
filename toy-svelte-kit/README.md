@@ -1,42 +1,36 @@
-# sv
+# toy-svelte-kit
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit toy project with Neon-backed APIs as the default server data layer.
 
-## Creating a project
+## Data architecture
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Use client storage first when the feature can stay local.
+- Use Neon Postgres for normal CRUD and server-side persistence.
+- Use SvelteKit `src/routes/api/*` for app-owned APIs.
+- Use the external server at `http://168.107.31.65:8080` only for real-time or bidirectional communication such as WebSocket, SSE, or long-lived streaming connections.
+
+## Routing rules
+
+- `/api/*`: handled by this SvelteKit project
+- `/realtime/*`: rewritten by Vercel to `http://168.107.31.65:8080/*`
+
+This keeps regular APIs on Neon and reserves the external server for cases where a persistent connection is actually needed.
+
+## Neon
+
+- Connection env var: `DATABASE_URL`
+- Server access helper: [`src/lib/server/neon.ts`](./src/lib/server/neon.ts)
+- Example Neon CRUD API: [`src/routes/api/rankings/+server.ts`](./src/routes/api/rankings/+server.ts)
+
+## Development
 
 ```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv create --template minimal --types ts --install npm toy-svelte-kit
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+npm install
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
-
-To create a production version of your app:
+## Checks
 
 ```sh
-npm run build
+npm run check
 ```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.

@@ -42,8 +42,11 @@
 - 로컬에 데이터를 저장할 때는 localStorage가 아닌 `src/lib/utils/Storage.ts`의 IndexedDB를 사용한다.
 
 **서버 데이터**
-- 서버 API 호출은 /api/{endpoint} 규칙을 따른다.
-- 서버 API는 *http://168.107.31.65:8080/swagger-ui/index.html*에 스웨거로 정의되어 있으므로 필요시 확인한다.
+- 서버 API 호출은 `/api/{endpoint}` 규칙을 따른다.
+- `/api/*` 는 SvelteKit 서버 라우트에서 직접 처리하고, 단순 CRUD 및 일반 조회는 Neon Postgres를 우선 사용한다.
+- 외부 서버(`http://168.107.31.65:8080`)는 웹소켓, SSE, 스트리밍, 장시간 연결 등 양방향/실시간 통신이 필요한 경우에만 사용한다.
+- 외부 서버가 필요한 경우 경로는 `/realtime/{endpoint}` 또는 해당 서버의 직접 주소를 사용하고, 일반 API를 `/api/*` rewrite로 우회하지 않는다.
+- 서버 API는 필요시 *http://168.107.31.65:8080/swagger-ui/index.html* 의 스웨거를 참고한다.
 
 **데이터베이스**
 - 데이터베이스는 Neon Postgres를 사용한다.

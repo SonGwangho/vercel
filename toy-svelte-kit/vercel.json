@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
+      "source": "/realtime/:path*",
       "destination": "http://168.107.31.65:8080/:path*"
     }
   ]
