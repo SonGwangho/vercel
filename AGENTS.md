@@ -43,7 +43,7 @@
 
 **서버 데이터**
 - 서버 API 호출은 /api/{endpoint} 규칙을 따른다.
-- 서버 API는 http://168.107.31.65:8080/swagger-ui/index.html에 스웨거로 정의되어 있으므로 필요시 확인한다.
+- 서버 API는 *http://168.107.31.65:8080/swagger-ui/index.html*에 스웨거로 정의되어 있으므로 필요시 확인한다.
 
 **데이터베이스**
 - 데이터베이스는 Neon Postgres를 사용한다.
