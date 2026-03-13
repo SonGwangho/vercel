@@ -26,10 +26,14 @@
   const BOARD_HEIGHT = 560;
   const DROP_LINE_Y = 74;
   const GRAVITY = 1800;
-  const RESTITUTION = 0.14;
-  const FRICTION = 0.996;
-  const FIXED_TIMESTEP = 1 / 120;
-  const MAX_STEPS = 6;
+  const RESTITUTION = 0.08;
+  const FRICTION = 0.994;
+  const COLLISION_SURFACE_FRICTION = 0.025;
+  const POSITIONAL_SLOP = 0.04;
+  const POSITIONAL_CORRECTION = 0.86;
+  const STACKING_BIAS = 0.72;
+  const FIXED_TIMESTEP = 1 / 180;
+  const MAX_STEPS = 8;
   const DROP_MOVE_SPEED = 520;
   const STARTER_MAX_LEVEL = 4;
   const WALL_PADDING = 14;
@@ -173,6 +177,11 @@
     }
   }
 
+  function getFruitMass(body: FruitBody) {
+    const normalizedRadius = Math.max(body.radius / 18, 1);
+    return normalizedRadius * normalizedRadius;
+  }
+
   function simulateStep(deltaSeconds: number, now: number) {
     const bodies = fruits.map((fruit) => {
       const vy = fruit.vy + GRAVITY * deltaSeconds;
@@ -216,24 +225,54 @@
 
           const nx = dx / distance;
           const ny = dy / distance;
-          const overlap = minDistance - distance + 0.15;
-          const correction = overlap / 2;
+          const rawOverlap = minDistance - distance;
+          const overlap = Math.max(0, rawOverlap - POSITIONAL_SLOP) * POSITIONAL_CORRECTION;
 
-          a.x -= nx * correction;
-          a.y -= ny * correction;
-          b.x += nx * correction;
-          b.y += ny * correction;
+          if (overlap <= 0) {
+            continue;
+          }
+
+          const massA = getFruitMass(a);
+          const massB = getFruitMass(b);
+          const inverseMassA = 1 / massA;
+          const inverseMassB = 1 / massB;
+          const inverseMassSum = inverseMassA + inverseMassB;
+          const mostlyVertical = Math.abs(ny) > 0.45;
+          const aIsUpper = a.y < b.y;
+          const biasA = mostlyVertical ? (aIsUpper ? 1 + STACKING_BIAS : 1 - STACKING_BIAS * 0.35) : 1;
+          const biasB = mostlyVertical ? (aIsUpper ? 1 - STACKING_BIAS * 0.35 : 1 + STACKING_BIAS) : 1;
+          const weightedInverseMassA = inverseMassA * biasA;
+          const weightedInverseMassB = inverseMassB * biasB;
+          const weightedInverseMassSum = weightedInverseMassA + weightedInverseMassB;
+          const correctionA = overlap * (weightedInverseMassA / weightedInverseMassSum);
+          const correctionB = overlap * (weightedInverseMassB / weightedInverseMassSum);
+
+          a.x -= nx * correctionA;
+          a.y -= ny * correctionA;
+          b.x += nx * correctionB;
+          b.y += ny * correctionB;
 
           const relativeVx = b.vx - a.vx;
           const relativeVy = b.vy - a.vy;
           const separatingVelocity = relativeVx * nx + relativeVy * ny;
 
           if (separatingVelocity < 0) {
-            const impulse = (-(1 + RESTITUTION) * separatingVelocity) / 2;
-            a.vx -= nx * impulse;
-            a.vy -= ny * impulse;
-            b.vx += nx * impulse;
-            b.vy += ny * impulse;
+            const impulse = (-(1 + RESTITUTION) * separatingVelocity) / inverseMassSum;
+            a.vx -= nx * impulse * inverseMassA;
+            a.vy -= ny * impulse * inverseMassA;
+            b.vx += nx * impulse * inverseMassB;
+            b.vy += ny * impulse * inverseMassB;
+
+            const tangentX = -ny;
+            const tangentY = nx;
+            const tangentVelocity = relativeVx * tangentX + relativeVy * tangentY;
+            const tangentImpulse =
+              (tangentVelocity * COLLISION_SURFACE_FRICTION) / inverseMassSum;
+
+            a.vx += tangentX * tangentImpulse * inverseMassA;
+            a.vy += tangentY * tangentImpulse * inverseMassA;
+            b.vx -= tangentX * tangentImpulse * inverseMassB;
+            b.vy -= tangentY * tangentImpulse * inverseMassB;
           }
         }
       }
