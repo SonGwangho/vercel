@@ -14,6 +14,43 @@ export interface StoredItem {
 class StorageDB {
     private db: IDBDatabase | null = null
 
+    private async index(mode: IDBTransactionMode) {
+        const store = await this.store(mode)
+        return store.index('key')
+    }
+
+    private async deleteByKey(key: string) {
+        const store = await this.store('readwrite')
+        const index = store.index('key')
+
+        return new Promise<void>((resolve, reject) => {
+            const request = index.openCursor(IDBKeyRange.only(key))
+
+            request.onsuccess = () => {
+                const cursor = request.result
+
+                if (!cursor) {
+                    resolve()
+                    return
+                }
+
+                const deleteRequest = cursor.delete()
+
+                deleteRequest.onsuccess = () => {
+                    cursor.continue()
+                }
+
+                deleteRequest.onerror = () => {
+                    reject(deleteRequest.error)
+                }
+            }
+
+            request.onerror = () => {
+                reject(request.error)
+            }
+        })
+    }
+
     private async open(): Promise<IDBDatabase> {
         if (!browser) {
             throw new Error('IndexedDB is only available in browser')
@@ -54,6 +91,7 @@ class StorageDB {
     }
 
     async set(key: string, value: unknown) {
+        await this.deleteByKey(key)
         const store = await this.store('readwrite')
 
         return new Promise<void>((resolve, reject) => {
@@ -69,8 +107,7 @@ class StorageDB {
     }
 
     async get<T = unknown>(key: string): Promise<T | null> {
-        const store = await this.store('readonly')
-        const index = store.index('key')
+        const index = await this.index('readonly')
 
         return new Promise((resolve, reject) => {
             const request = index.get(key)
@@ -87,23 +124,7 @@ class StorageDB {
     }
 
     async remove(key: string) {
-        const store = await this.store('readwrite')
-        const index = store.index('key')
-
-        return new Promise<void>((resolve, reject) => {
-            const request = index.get(key)
-
-            request.onsuccess = () => {
-                if (request.result !== undefined) {
-                    store.delete(request.result as IDBValidKey)
-                }
-                resolve()
-            }
-
-            request.onerror = () => {
-                reject(request.error)
-            }
-        })
+        await this.deleteByKey(key)
     }
 
     async clear() {

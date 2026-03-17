@@ -10,5 +10,11 @@
     "name": "Tarot",
     "path": "/info/tarot",
     "order": 20
+  },
+  {
+    "id": "lotto",
+    "name": "Lotto",
+    "path": "/info/lotto",
+    "order": 30
   }
 ]
