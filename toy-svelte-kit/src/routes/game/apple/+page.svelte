@@ -32,6 +32,8 @@
 	const rows = config.rows;
 	const cols = config.cols;
 	const targetSum = config.targetSum ?? 10;
+	const minValue = config.minValue ?? 1;
+	const maxValue = config.maxValue ?? 9;
 	const cellGap = 8;
 
 	let board: BoardCell[][] = [];
@@ -82,13 +84,34 @@
 		return (cellSize / BOARD_HEIGHT) * 100;
 	}
 
+	function randomInt(min: number, max: number): number {
+		return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+
+	function shuffle<T>(items: T[]): T[] {
+		const next = [...items];
+
+		for (let index = next.length - 1; index > 0; index -= 1) {
+			const swapIndex = Math.floor(Math.random() * (index + 1));
+			[next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+		}
+
+		return next;
+	}
+
+	function createRandomValues(count: number): number[] {
+		return shuffle(Array.from({ length: count }, () => randomInt(minValue, maxValue)));
+	}
+
 	function createBoard(): BoardCell[][] {
+		const values = createRandomValues(rows * cols);
+
 		return Array.from({ length: rows }, (_, row) =>
 			Array.from({ length: cols }, (_, col) => ({
 				id: row * cols + col + 1,
 				row,
 				col,
-				value: ((row + col) % 9) + 1,
+				value: values[row * cols + col],
 				removed: false
 			}))
 		);
