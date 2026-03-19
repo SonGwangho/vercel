@@ -26,6 +26,7 @@
   const ARENA_HEIGHT = 600;
   const PLAYER_SIZE = 28;
   const PLAYER_SPEED = 290;
+  const MAX_SIMULATION_STEP_MS = 10;
 
   let gameStatus = $state<GameStatus>("idle");
   let player = $state({
@@ -43,7 +44,6 @@
   let rankingError = $state("");
 
   let animationFrameId: number | null = null;
-  let startedAt = 0;
   let lastFrameAt = 0;
   let spawnElapsed = 0;
   let nextSpawnDelay = 0;
@@ -77,8 +77,7 @@
     arrows = [];
     resetPlayer();
 
-    startedAt = performance.now();
-    lastFrameAt = startedAt;
+    lastFrameAt = performance.now();
     animationFrameId = window.requestAnimationFrame(loop);
   }
 
@@ -223,18 +222,12 @@
   function killPlayer(now: number) {
     stopLoop();
     gameStatus = "dead";
-    finalScore = now - startedAt;
+    finalScore = now;
     elapsedMs = finalScore;
   }
 
-  function loop(now: number) {
-    if (gameStatus !== "running") {
-      return;
-    }
-
-    const deltaMs = now - lastFrameAt;
-    lastFrameAt = now;
-    elapsedMs = now - startedAt;
+  function advanceFrame(deltaMs: number) {
+    elapsedMs += deltaMs;
     spawnElapsed += deltaMs;
 
     movePlayer(deltaMs / 1000);
@@ -269,9 +262,27 @@
           arrow.y < ARENA_HEIGHT + 48,
       );
 
-    if (collisionDetected || arrows.some(hasCollision)) {
-      killPlayer(now);
+    return collisionDetected || arrows.some(hasCollision);
+  }
+
+  function loop(now: number) {
+    if (gameStatus !== "running") {
       return;
+    }
+
+    const deltaMs = now - lastFrameAt;
+    lastFrameAt = now;
+    let remainingMs = deltaMs;
+
+    while (remainingMs > 0) {
+      const stepMs = Math.min(remainingMs, MAX_SIMULATION_STEP_MS);
+
+      if (advanceFrame(stepMs)) {
+        killPlayer(elapsedMs);
+        return;
+      }
+
+      remainingMs -= stepMs;
     }
 
     animationFrameId = window.requestAnimationFrame(loop);
