@@ -101,13 +101,50 @@ function firstMenuPath(menus: TreeMenu[], key: string): string {
   return all[0]?.path || `/${key}`;
 }
 
+function buildAdminMenus(url: URL): TreeMenu[] {
+  const segments = url.pathname.split("/").filter(Boolean);
+  const password = segments[1];
+
+  if (!password) {
+    return [];
+  }
+
+  const basePath = `/admin/${password}`;
+
+  return [
+    {
+      id: "admin-overview",
+      name: "Overview",
+      path: basePath,
+      order: 10,
+    },
+    {
+      id: "admin-rankings",
+      name: "Ranking Ops",
+      path: `${basePath}/rankings`,
+      order: 20,
+    },
+    {
+      id: "admin-ip-bans",
+      name: "IP Ban Ops",
+      path: `${basePath}/ip-bans`,
+      order: 30,
+    },
+  ];
+}
+
 export const load = async ({ url }: { url: URL }) => {
   const menuMap = buildMenuMap();
   const keys = [...menuMap.keys()].sort((a, b) => a.localeCompare(b));
   const pathFirstSegment = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase();
   const activeMenu =
     pathFirstSegment && menuMap.has(pathFirstSegment) ? pathFirstSegment : "home";
-  const menus = activeMenu ? (menuMap.get(activeMenu) ?? []) : [];
+  const menus =
+    activeMenu === "admin"
+      ? buildAdminMenus(url)
+      : activeMenu
+        ? (menuMap.get(activeMenu) ?? [])
+        : [];
   const menuTabs: MenuTab[] = [
     {
       key: "home",
