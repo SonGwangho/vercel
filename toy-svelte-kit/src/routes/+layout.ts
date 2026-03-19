@@ -6,6 +6,8 @@ type MenuTab = {
   path: string;
 };
 
+const HIDDEN_MENU_KEYS = new Set(["admin"]);
+
 const menuRawFiles = import.meta.glob("$lib/assets/data/*.json", {
   query: "?raw",
   import: "default",
@@ -112,10 +114,12 @@ export const load = async ({ url }: { url: URL }) => {
       label: "Home",
       path: "/",
     },
-    ...keys.map((key) => ({
+    ...keys
+      .filter((key) => activeMenu === key || !HIDDEN_MENU_KEYS.has(key))
+      .map((key) => ({
       key,
       label: menuLabelFromKey(key),
-      path: firstMenuPath(menuMap.get(key) ?? [], key),
+      path: key === activeMenu ? url.pathname : firstMenuPath(menuMap.get(key) ?? [], key),
     })),
   ];
 

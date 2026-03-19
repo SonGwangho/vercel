@@ -1,5 +1,7 @@
 import { json, type RequestEvent } from "@sveltejs/kit";
 
+import { requireAdminSession } from "$lib/server/adminAccess";
+import { extractClientIp } from "$lib/server/requestIp";
 import { createRanking, deleteRanking, getRankingById, listRankings, updateRanking } from "$lib/server/rankings";
 import type {
 	RankingCreateRequest,
@@ -10,32 +12,6 @@ import type {
 } from "$lib";
 
 type ApiRequestEvent = Pick<RequestEvent, "params" | "request" | "url">;
-
-function extractClientIp(event: Pick<RequestEvent, "request"> & Partial<Pick<RequestEvent, "getClientAddress">>) {
-	const forwardedFor = event.request.headers.get("x-forwarded-for");
-	const realIp = event.request.headers.get("x-real-ip");
-
-	if (forwardedFor) {
-		const [clientIp] = forwardedFor.split(",").map((value) => value.trim()).filter(Boolean);
-		if (clientIp) {
-			return clientIp;
-		}
-	}
-
-	if (realIp) {
-		return realIp.trim();
-	}
-
-	if (typeof event.getClientAddress === "function") {
-		try {
-			return event.getClientAddress();
-		} catch {
-			return null;
-		}
-	}
-
-	return null;
-}
 
 function badRequest(message: string, status = 400) {
 	return json({ message }, { status });
@@ -89,7 +65,12 @@ export async function handleRankingCollectionRequest(
 			return json(body, { status: 201 });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Failed to create ranking.";
-			const status = message.includes("required") || message.includes("must be") ? 400 : 500;
+			const status =
+				message.includes("banned")
+					? 403
+					: message.includes("required") || message.includes("must be")
+						? 400
+						: 500;
 			return json({ message }, { status });
 		}
 	}
@@ -97,7 +78,9 @@ export async function handleRankingCollectionRequest(
 	return json({ message: "Method not allowed." }, { status: 405 });
 }
 
-export async function handleRankingItemRequest({ params, request }: ApiRequestEvent): Promise<Response> {
+export async function handleRankingItemRequest(
+	{ params, request, cookies }: ApiRequestEvent & Pick<RequestEvent, "cookies">
+): Promise<Response> {
 	const id = parseId(params.id ?? "");
 
 	if (id === null) {
@@ -121,6 +104,8 @@ export async function handleRankingItemRequest({ params, request }: ApiRequestEv
 	}
 
 	if (request.method === "PATCH") {
+		requireAdminSession({ cookies });
+
 		let payload: RankingUpdateRequest;
 
 		try {
@@ -146,6 +131,8 @@ export async function handleRankingItemRequest({ params, request }: ApiRequestEv
 	}
 
 	if (request.method === "DELETE") {
+		requireAdminSession({ cookies });
+
 		try {
 			const deleted = await deleteRanking(id);
 

@@ -1,10 +1,12 @@
 import { getNeonSql } from "$lib/server/neon";
+import { isIpBanned } from "$lib/server/ipBans";
 import type {
+	AdminRankingRecord,
 	RankingCreateRequest,
 	RankingListItem,
 	RankingRecord,
 	RankingUpdateRequest
-} from "$lib/types/Ranking";
+} from "$lib";
 
 type RankingRow = {
 	id: number;
@@ -38,6 +40,13 @@ function mapRankingRow(row: RankingRow): RankingRecord {
 		score: Number(row.score),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at
+	};
+}
+
+function mapAdminRankingRow(row: RankingRow): AdminRankingRecord {
+	return {
+		...mapRankingRow(row),
+		ipAddress: row.ip_address
 	};
 }
 
@@ -109,6 +118,10 @@ export async function getRankingById(id: number): Promise<RankingRecord | null> 
 export async function createRanking(input: RankingCreateRequest, ipAddress: string | null): Promise<RankingRecord> {
 	await ensureRankingTable();
 
+	if (await isIpBanned(ipAddress)) {
+		throw new Error("This IP address is banned.");
+	}
+
 	const gameCode = Number(input.gameCode);
 	const gameName = input.gameName.trim();
 	const userName = input.userName.trim();
@@ -134,6 +147,43 @@ export async function createRanking(input: RankingCreateRequest, ipAddress: stri
 	`) as RankingRow[];
 
 	return mapRankingRow(rows[0]);
+}
+
+export async function listAdminRankings(options?: {
+	gameCode?: number;
+	limit?: number;
+}): Promise<AdminRankingRecord[]> {
+	await ensureRankingTable();
+
+	const sql = getNeonSql();
+	const limit = Math.min(Math.max(Number(options?.limit ?? 100), 1), 500);
+
+	if (options?.gameCode !== undefined) {
+		const gameCode = Number(options.gameCode);
+
+		if (!Number.isInteger(gameCode)) {
+			throw new Error("gameCode must be an integer.");
+		}
+
+		const rows = (await sql`
+			SELECT id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
+			FROM game_rankings
+			WHERE game_code = ${gameCode}
+			ORDER BY score DESC, created_at ASC
+			LIMIT ${limit}
+		`) as RankingRow[];
+
+		return rows.map(mapAdminRankingRow);
+	}
+
+	const rows = (await sql`
+		SELECT id, game_code, game_name, user_name, score, ip_address, created_at::text, updated_at::text
+		FROM game_rankings
+		ORDER BY game_code ASC, score DESC, created_at ASC
+		LIMIT ${limit}
+	`) as RankingRow[];
+
+	return rows.map(mapAdminRankingRow);
 }
 
 export async function updateRanking(

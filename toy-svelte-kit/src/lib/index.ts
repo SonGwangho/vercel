@@ -14,3 +14,4 @@ export * from "./types/Neon.ts";
 export * from "./types/Ranking.ts";
 export * from "./types/Game.ts";
 export * from "./types/Lotto.ts";
+export * from "./types/Admin.ts";

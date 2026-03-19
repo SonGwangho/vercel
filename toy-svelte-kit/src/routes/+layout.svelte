@@ -12,7 +12,7 @@
   const tree = $derived(buildTree(data.menus ?? []));
   const menuTabs = $derived(data.menuTabs ?? []);
   const activeMenu = $derived(data.activeMenu ?? "");
-  const showSidebar = $derived(activeMenu !== "home");
+  const showSidebar = $derived(activeMenu !== "home" && tree.length > 0);
 
   let isMobile = $state(false);
   let drawerOpen = $state(false);
