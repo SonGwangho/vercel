@@ -1,15 +1,16 @@
-import type { PageLoad } from "./$types";
+﻿import type { PageLoad } from "./$types";
 
-import type { GameCodeListResponse, GameRankingBoard, RankingListResponse } from "$lib";
+import type { CurrentWeather, GameCodeListResponse, GameRankingBoard, RankingListResponse } from "$lib";
 
 const HOME_RANKING_LIMIT = 5;
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch, data }) => {
 	try {
 		const codesResponse = await fetch("/api/games/codes");
 
 		if (!codesResponse.ok) {
 			return {
+				weather: (data.weather ?? null) as CurrentWeather | null,
 				rankingBoards: [] as GameRankingBoard[]
 			};
 		}
@@ -45,10 +46,12 @@ export const load: PageLoad = async ({ fetch }) => {
 		);
 
 		return {
+			weather: (data.weather ?? null) as CurrentWeather | null,
 			rankingBoards: boardResults
 		};
 	} catch {
 		return {
+			weather: (data.weather ?? null) as CurrentWeather | null,
 			rankingBoards: [] as GameRankingBoard[]
 		};
 	}

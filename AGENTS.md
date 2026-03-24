@@ -2,6 +2,7 @@
 
 * AGENTS.md 파일을 무조건 참조한다.
 * 아래 버전에 따라 개발한다.
+* 모든 파일 인코딩은 UTF-8 기준으로 작성한다.
 
 ## 버전 관리
 - 기준 프로젝트: `toy-svelte-kit`
@@ -21,7 +22,7 @@
 ## 경로 관리
 **타입 경로**
 - 타입은 `/src/lib/types`에 모두 정의한다.
-- 정의한 타입은 `/src/lib/index.ts`에서 모두 `export *` 한다.
+- 정의한 타입은 `/src/li  b/index.ts`에서 모두 `export *` 한다.
 
 **PAGE 경로**
 - 페이지는 `/src/{MENU_DIR}/{MENU_TITLE}` 경로에 폴더를 만들어서 작성한다.
