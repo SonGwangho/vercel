@@ -4,7 +4,6 @@
   import type {
     CurrentWeather,
     CurrentWeatherResponse,
-    GameCodeEntry,
     GameCodeListResponse,
     HomeRankingBoardState,
     RankingListResponse,
@@ -25,7 +24,8 @@
   }
 
   function metricTone(status: string): string {
-    if (status.includes("매우나쁨") || status.includes("매우 나쁨")) return "very-bad";
+    if (status.includes("매우나쁨") || status.includes("매우 나쁨"))
+      return "very-bad";
     if (status.includes("나쁨")) return "bad";
     if (status.includes("좋음")) return "good";
     return "normal";
@@ -89,10 +89,16 @@
               throw new Error("Failed to load rankings.");
             }
 
-            const rankingData = (await rankingResponse.json()) as RankingListResponse;
+            const rankingData =
+              (await rankingResponse.json()) as RankingListResponse;
             rankingBoards = rankingBoards.map((board) =>
               board.game.gameCode === game.gameCode
-                ? { ...board, rankings: rankingData.rankings, loading: false, error: false }
+                ? {
+                    ...board,
+                    rankings: rankingData.rankings,
+                    loading: false,
+                    error: false,
+                  }
                 : board,
             );
           } catch {
@@ -192,21 +198,15 @@
             </div>
           {/if}
         </div>
-
-        <div class="sun-row">
-          {#if weather.sunrise}
-            <span>일출 {weather.sunrise}</span>
-          {/if}
-          {#if weather.sunset}
-            <span>일몰 {weather.sunset}</span>
-          {/if}
-        </div>
       </div>
 
       {#if weather.airQuality.length > 0}
         <div class="air-quality-grid">
           {#each weather.airQuality as metric}
-            <article class={`air-card air-card--${metricTone(metric.status)}`} style={metricProgress(metric.level)}>
+            <article
+              class={`air-card air-card--${metricTone(metric.status)}`}
+              style={metricProgress(metric.level)}
+            >
               <div class="air-ring">
                 <div class="air-ring__inner">
                   <strong>{metric.value}</strong>
@@ -411,13 +411,21 @@
     height: 96px;
     margin: 0 auto 14px;
     border-radius: 50%;
-    background: conic-gradient(var(--tone) 0 var(--progress), rgba(191, 219, 254, 0.8) var(--progress) 100%);
+    background: conic-gradient(
+      var(--tone) 0 var(--progress),
+      rgba(191, 219, 254, 0.8) var(--progress) 100%
+    );
     display: grid;
     place-items: center;
   }
 
   .air-ring--skeleton {
-    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background: linear-gradient(
+      90deg,
+      rgba(226, 232, 240, 0.8),
+      rgba(241, 245, 249, 1),
+      rgba(226, 232, 240, 0.8)
+    );
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -466,7 +474,10 @@
 
   .home-ranking {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(clamp(240px, 26vw, 340px), 1fr));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(clamp(240px, 26vw, 340px), 1fr)
+    );
     gap: 18px;
     align-items: start;
   }
@@ -537,7 +548,12 @@
 
   .skeleton {
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background: linear-gradient(
+      90deg,
+      rgba(226, 232, 240, 0.8),
+      rgba(241, 245, 249, 1),
+      rgba(226, 232, 240, 0.8)
+    );
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -648,7 +664,12 @@
 
   :global(html[data-theme="dark"]) .skeleton,
   :global(html[data-theme="dark"]) .air-ring--skeleton {
-    background: linear-gradient(90deg, rgba(51, 65, 85, 0.88), rgba(71, 85, 105, 1), rgba(51, 65, 85, 0.88));
+    background: linear-gradient(
+      90deg,
+      rgba(51, 65, 85, 0.88),
+      rgba(71, 85, 105, 1),
+      rgba(51, 65, 85, 0.88)
+    );
     background-size: 200% 100%;
   }
 
