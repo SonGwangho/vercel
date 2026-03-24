@@ -24,8 +24,7 @@
   }
 
   function metricTone(status: string): string {
-    if (status.includes("매우나쁨") || status.includes("매우 나쁨"))
-      return "very-bad";
+    if (status.includes("매우나쁨") || status.includes("매우 나쁨")) return "very-bad";
     if (status.includes("나쁨")) return "bad";
     if (status.includes("좋음")) return "good";
     return "normal";
@@ -89,16 +88,10 @@
               throw new Error("Failed to load rankings.");
             }
 
-            const rankingData =
-              (await rankingResponse.json()) as RankingListResponse;
+            const rankingData = (await rankingResponse.json()) as RankingListResponse;
             rankingBoards = rankingBoards.map((board) =>
               board.game.gameCode === game.gameCode
-                ? {
-                    ...board,
-                    rankings: rankingData.rankings,
-                    loading: false,
-                    error: false,
-                  }
+                ? { ...board, rankings: rankingData.rankings, loading: false, error: false }
                 : board,
             );
           } catch {
@@ -148,10 +141,6 @@
             <div class="skeleton skeleton-label"></div>
             <div class="skeleton skeleton-value"></div>
           </div>
-        </div>
-        <div class="sun-row">
-          <div class="skeleton skeleton-sun"></div>
-          <div class="skeleton skeleton-sun"></div>
         </div>
       </div>
       <div class="air-quality-grid">
@@ -203,10 +192,7 @@
       {#if weather.airQuality.length > 0}
         <div class="air-quality-grid">
           {#each weather.airQuality as metric}
-            <article
-              class={`air-card air-card--${metricTone(metric.status)}`}
-              style={metricProgress(metric.level)}
-            >
+            <article class={`air-card air-card--${metricTone(metric.status)}`} style={metricProgress(metric.level)}>
               <div class="air-ring">
                 <div class="air-ring__inner">
                   <strong>{metric.value}</strong>
@@ -368,15 +354,6 @@
     font-size: 1.05rem;
   }
 
-  .sun-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 18px;
-    flex-wrap: wrap;
-    color: #111827;
-    font-size: 1rem;
-  }
-
   .air-quality-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -411,21 +388,13 @@
     height: 96px;
     margin: 0 auto 14px;
     border-radius: 50%;
-    background: conic-gradient(
-      var(--tone) 0 var(--progress),
-      rgba(191, 219, 254, 0.8) var(--progress) 100%
-    );
+    background: conic-gradient(var(--tone) 0 var(--progress), rgba(191, 219, 254, 0.8) var(--progress) 100%);
     display: grid;
     place-items: center;
   }
 
   .air-ring--skeleton {
-    background: linear-gradient(
-      90deg,
-      rgba(226, 232, 240, 0.8),
-      rgba(241, 245, 249, 1),
-      rgba(226, 232, 240, 0.8)
-    );
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -474,10 +443,7 @@
 
   .home-ranking {
     display: grid;
-    grid-template-columns: repeat(
-      auto-fit,
-      minmax(clamp(240px, 26vw, 340px), 1fr)
-    );
+    grid-template-columns: repeat(auto-fit, minmax(clamp(240px, 26vw, 340px), 1fr));
     gap: 18px;
     align-items: start;
   }
@@ -548,12 +514,7 @@
 
   .skeleton {
     border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      rgba(226, 232, 240, 0.8),
-      rgba(241, 245, 249, 1),
-      rgba(226, 232, 240, 0.8)
-    );
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -584,11 +545,6 @@
     width: 90px;
     height: 22px;
     margin: 0 auto;
-  }
-
-  .skeleton-sun {
-    width: 110px;
-    height: 22px;
   }
 
   .skeleton-air-title {
@@ -635,7 +591,6 @@
   :global(html[data-theme="dark"]) .weather-summary,
   :global(html[data-theme="dark"]) .weather-label,
   :global(html[data-theme="dark"]) .weather-stat strong,
-  :global(html[data-theme="dark"]) .sun-row,
   :global(html[data-theme="dark"]) .air-ring__inner strong,
   :global(html[data-theme="dark"]) .air-ring__inner span,
   :global(html[data-theme="dark"]) .air-card h3,
@@ -664,12 +619,7 @@
 
   :global(html[data-theme="dark"]) .skeleton,
   :global(html[data-theme="dark"]) .air-ring--skeleton {
-    background: linear-gradient(
-      90deg,
-      rgba(51, 65, 85, 0.88),
-      rgba(71, 85, 105, 1),
-      rgba(51, 65, 85, 0.88)
-    );
+    background: linear-gradient(90deg, rgba(51, 65, 85, 0.88), rgba(71, 85, 105, 1), rgba(51, 65, 85, 0.88));
     background-size: 200% 100%;
   }
 
@@ -692,10 +642,6 @@
     .weather-stat--divider {
       border-left: 0;
       padding: 0;
-    }
-
-    .sun-row {
-      justify-content: flex-start;
     }
 
     .air-quality-grid {
