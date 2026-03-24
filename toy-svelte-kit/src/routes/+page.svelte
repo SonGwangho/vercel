@@ -1,55 +1,164 @@
 ﻿<script lang="ts">
+  import { onMount } from "svelte";
+
   import type {
-    AirQualityMetric,
     CurrentWeather,
-    GameRankingBoard,
+    CurrentWeatherResponse,
+    GameCodeEntry,
+    GameCodeListResponse,
+    HomeRankingBoardState,
+    RankingListResponse,
   } from "$lib";
 
-  let {
-    data,
-  }: {
-    data: {
-      weather?: CurrentWeather | null;
-      rankingBoards?: GameRankingBoard[];
-    };
-  } = $props();
+  const HOME_RANKING_LIMIT = 5;
+  const INITIAL_SKELETON_COUNT = 3;
 
-  const weather = $derived((data.weather ?? null) as CurrentWeather | null);
-  const rankingBoards = $derived(
-    (data.rankingBoards ?? []) as GameRankingBoard[],
-  );
+  let weather = $state<CurrentWeather | null>(null);
+  let weatherLoading = $state(true);
+  let weatherError = $state(false);
+
+  let rankingBoards = $state<HomeRankingBoardState[]>([]);
+  let rankingsLoading = $state(true);
 
   function formatScore(score: number): string {
     return Number(score).toLocaleString();
   }
 
-  function metricTone(metric: AirQualityMetric): string {
-    if (
-      metric.status.includes("매우나쁨") ||
-      metric.status.includes("매우 나쁨")
-    ) {
-      return "very-bad";
-    }
-
-    if (metric.status.includes("나쁨")) {
-      return "bad";
-    }
-
-    if (metric.status.includes("좋음")) {
-      return "good";
-    }
-
+  function metricTone(status: string): string {
+    if (status.includes("매우나쁨") || status.includes("매우 나쁨")) return "very-bad";
+    if (status.includes("나쁨")) return "bad";
+    if (status.includes("좋음")) return "good";
     return "normal";
   }
 
-  function metricProgress(metric: AirQualityMetric): string {
-    const progress = Math.min(100, Math.max(24, metric.level * 25));
+  function metricProgress(level: number): string {
+    const progress = Math.min(100, Math.max(24, level * 25));
     return `--progress:${progress}%;`;
   }
+
+  async function loadWeather() {
+    weatherLoading = true;
+    weatherError = false;
+
+    try {
+      const response = await fetch("/api/weather/current");
+
+      if (!response.ok) {
+        throw new Error("Failed to load weather.");
+      }
+
+      const payload = (await response.json()) as CurrentWeatherResponse;
+      weather = payload.weather;
+    } catch {
+      weather = null;
+      weatherError = true;
+    } finally {
+      weatherLoading = false;
+    }
+  }
+
+  async function loadRankings() {
+    rankingsLoading = true;
+
+    try {
+      const codesResponse = await fetch("/api/games/codes");
+
+      if (!codesResponse.ok) {
+        throw new Error("Failed to load games.");
+      }
+
+      const codesData = (await codesResponse.json()) as GameCodeListResponse;
+      const rankedGames = codesData.games.filter((game) => game.hasRanking);
+
+      rankingBoards = rankedGames.map((game) => ({
+        game,
+        rankings: [],
+        loading: true,
+        error: false,
+      }));
+      rankingsLoading = false;
+
+      await Promise.all(
+        rankedGames.map(async (game) => {
+          try {
+            const rankingResponse = await fetch(
+              `/api/rankings?gameCode=${game.gameCode}&limit=${HOME_RANKING_LIMIT}`,
+            );
+
+            if (!rankingResponse.ok) {
+              throw new Error("Failed to load rankings.");
+            }
+
+            const rankingData = (await rankingResponse.json()) as RankingListResponse;
+            rankingBoards = rankingBoards.map((board) =>
+              board.game.gameCode === game.gameCode
+                ? { ...board, rankings: rankingData.rankings, loading: false, error: false }
+                : board,
+            );
+          } catch {
+            rankingBoards = rankingBoards.map((board) =>
+              board.game.gameCode === game.gameCode
+                ? { ...board, rankings: [], loading: false, error: true }
+                : board,
+            );
+          }
+        }),
+      );
+    } catch {
+      rankingBoards = [];
+      rankingsLoading = false;
+    }
+  }
+
+  onMount(() => {
+    loadWeather();
+    loadRankings();
+  });
+
+  const rankingSkeletons = $derived(
+    Array.from({ length: INITIAL_SKELETON_COUNT }, (_, index) => index),
+  );
 </script>
 
-{#if weather}
-  <section class="home-weather-card">
+<section class="home-weather-card">
+  {#if weatherLoading}
+    <div class="weather-panel weather-panel--loading">
+      <div class="weather-main">
+        <div class="weather-hero weather-hero--skeleton">
+          <div class="skeleton skeleton-temp"></div>
+          <div class="skeleton skeleton-feels"></div>
+        </div>
+        <div class="skeleton skeleton-summary"></div>
+        <div class="weather-stats">
+          <div class="weather-stat">
+            <div class="skeleton skeleton-label"></div>
+            <div class="skeleton skeleton-value"></div>
+          </div>
+          <div class="weather-stat weather-stat--divider">
+            <div class="skeleton skeleton-label"></div>
+            <div class="skeleton skeleton-value"></div>
+          </div>
+          <div class="weather-stat weather-stat--divider">
+            <div class="skeleton skeleton-label"></div>
+            <div class="skeleton skeleton-value"></div>
+          </div>
+        </div>
+        <div class="sun-row">
+          <div class="skeleton skeleton-sun"></div>
+          <div class="skeleton skeleton-sun"></div>
+        </div>
+      </div>
+      <div class="air-quality-grid">
+        {#each [0, 1, 2] as item}
+          <article class="air-card">
+            <div class="air-ring air-ring--skeleton"></div>
+            <div class="skeleton skeleton-air-title"></div>
+            <div class="skeleton skeleton-air-status"></div>
+          </article>
+        {/each}
+      </div>
+    </div>
+  {:else if weather}
     <div class="weather-panel">
       <div class="weather-main">
         <div class="weather-hero">
@@ -83,15 +192,21 @@
             </div>
           {/if}
         </div>
+
+        <div class="sun-row">
+          {#if weather.sunrise}
+            <span>일출 {weather.sunrise}</span>
+          {/if}
+          {#if weather.sunset}
+            <span>일몰 {weather.sunset}</span>
+          {/if}
+        </div>
       </div>
 
       {#if weather.airQuality.length > 0}
         <div class="air-quality-grid">
           {#each weather.airQuality as metric}
-            <article
-              class={`air-card air-card--${metricTone(metric)}`}
-              style={metricProgress(metric)}
-            >
+            <article class={`air-card air-card--${metricTone(metric.status)}`} style={metricProgress(metric.level)}>
               <div class="air-ring">
                 <div class="air-ring__inner">
                   <strong>{metric.value}</strong>
@@ -109,16 +224,37 @@
         <p class="air-source">{weather.airQualitySource}</p>
       {/if}
     </div>
-  </section>
-{/if}
+  {:else if weatherError}
+    <div class="weather-panel weather-panel--empty">
+      <p class="empty-state">날씨 정보를 불러오지 못했습니다.</p>
+    </div>
+  {/if}
+</section>
 
 <section class="home-ranking">
-  {#if rankingBoards.length > 0}
+  {#if rankingsLoading && rankingBoards.length === 0}
+    {#each rankingSkeletons as item}
+      <article class="ranking-block ranking-block--loading">
+        <div class="skeleton skeleton-title"></div>
+        <div class="ranking-list ranking-list--loading">
+          <div class="skeleton skeleton-row"></div>
+          <div class="skeleton skeleton-row"></div>
+          <div class="skeleton skeleton-row"></div>
+        </div>
+      </article>
+    {/each}
+  {:else if rankingBoards.length > 0}
     {#each rankingBoards as board}
       <article class="ranking-block">
         <h2>{board.game.name}</h2>
 
-        {#if board.rankings.length > 0}
+        {#if board.loading}
+          <div class="ranking-list ranking-list--loading">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        {:else if board.rankings.length > 0}
           <ol class="ranking-list">
             {#each board.rankings as ranking}
               <li>
@@ -128,6 +264,8 @@
               </li>
             {/each}
           </ol>
+        {:else if board.error}
+          <p class="empty-state">랭킹 정보를 불러오지 못했습니다.</p>
         {:else}
           <p class="empty-state">랭킹 정보가 없습니다.</p>
         {/if}
@@ -150,6 +288,17 @@
     background: #fff;
   }
 
+  .weather-panel--loading,
+  .ranking-block--loading {
+    overflow: hidden;
+  }
+
+  .weather-panel--empty {
+    display: grid;
+    place-items: center;
+    min-height: 180px;
+  }
+
   .weather-main {
     display: grid;
     gap: 18px;
@@ -161,6 +310,10 @@
     justify-content: center;
     gap: 18px;
     text-align: center;
+  }
+
+  .weather-hero--skeleton {
+    align-items: end;
   }
 
   .weather-temp {
@@ -258,12 +411,15 @@
     height: 96px;
     margin: 0 auto 14px;
     border-radius: 50%;
-    background: conic-gradient(
-      var(--tone) 0 var(--progress),
-      rgba(191, 219, 254, 0.8) var(--progress) 100%
-    );
+    background: conic-gradient(var(--tone) 0 var(--progress), rgba(191, 219, 254, 0.8) var(--progress) 100%);
     display: grid;
     place-items: center;
+  }
+
+  .air-ring--skeleton {
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite linear;
   }
 
   .air-ring__inner {
@@ -310,10 +466,7 @@
 
   .home-ranking {
     display: grid;
-    grid-template-columns: repeat(
-      auto-fit,
-      minmax(clamp(240px, 26vw, 340px), 1fr)
-    );
+    grid-template-columns: repeat(auto-fit, minmax(clamp(240px, 26vw, 340px), 1fr));
     gap: 18px;
     align-items: start;
   }
@@ -338,6 +491,10 @@
     margin: 0;
     padding: 0;
     display: grid;
+    gap: 10px;
+  }
+
+  .ranking-list--loading {
     gap: 10px;
   }
 
@@ -378,6 +535,79 @@
     grid-column: 1 / -1;
   }
 
+  .skeleton {
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite linear;
+  }
+
+  .skeleton-temp {
+    width: 140px;
+    height: 56px;
+  }
+
+  .skeleton-feels {
+    width: 110px;
+    height: 30px;
+  }
+
+  .skeleton-summary {
+    width: min(320px, 100%);
+    height: 26px;
+    margin: 0 auto;
+  }
+
+  .skeleton-label {
+    width: 70px;
+    height: 18px;
+    margin: 0 auto;
+  }
+
+  .skeleton-value {
+    width: 90px;
+    height: 22px;
+    margin: 0 auto;
+  }
+
+  .skeleton-sun {
+    width: 110px;
+    height: 22px;
+  }
+
+  .skeleton-air-title {
+    width: 120px;
+    height: 20px;
+    margin: 0 auto 8px;
+  }
+
+  .skeleton-air-status {
+    width: 70px;
+    height: 20px;
+    margin: 0 auto;
+  }
+
+  .skeleton-title {
+    width: 55%;
+    height: 24px;
+    margin-bottom: 14px;
+  }
+
+  .skeleton-row {
+    height: 46px;
+    border-radius: 14px;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
   :global(html[data-theme="dark"]) .weather-panel,
   :global(html[data-theme="dark"]) .ranking-block {
     border-color: rgba(148, 163, 184, 0.18);
@@ -414,6 +644,12 @@
 
   :global(html[data-theme="dark"]) .ranking-list span {
     color: #8ec5ff;
+  }
+
+  :global(html[data-theme="dark"]) .skeleton,
+  :global(html[data-theme="dark"]) .air-ring--skeleton {
+    background: linear-gradient(90deg, rgba(51, 65, 85, 0.88), rgba(71, 85, 105, 1), rgba(51, 65, 85, 0.88));
+    background-size: 200% 100%;
   }
 
   @media (max-width: 720px) {

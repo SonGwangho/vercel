@@ -16,3 +16,4 @@ export * from "./types/Game.ts";
 export * from "./types/Lotto.ts";
 export * from "./types/Admin.ts";
 export * from "./types/Weather.ts";
+export * from "./types/Home.ts";
