@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { TarotCard } from "$lib";
   import tarotCards from "$lib/assets/data/tarot/cards.json";
 
@@ -176,25 +176,25 @@
   .tarot-page {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 14px 0 32px;
+    padding: 18px 0 36px;
     color: #0f172a;
   }
 
   .live-result {
-    margin-top: 12px;
+    margin-top: 14px;
     border: 1px solid #bfdbfe;
-    border-radius: 14px;
-    padding: 10px;
+    border-radius: 18px;
+    padding: 14px;
     background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
     display: grid;
-    grid-template-columns: 1.5fr minmax(0, 150px);
-    gap: 10px;
+    grid-template-columns: 1.5fr minmax(0, 164px);
+    gap: 14px;
     align-items: center;
   }
 
   .live-label {
     margin: 0;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.08em;
     color: #0369a1;
@@ -203,16 +203,16 @@
 
   .live-info h2 {
     margin: 4px 0 0;
-    font-size: 22px;
+    font-size: 24px;
     line-height: 1.08;
   }
 
   .direction {
     display: inline-flex;
-    margin: 6px 0 0;
+    margin: 8px 0 0;
     border-radius: 999px;
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 12px;
     font-weight: 800;
   }
 
@@ -229,10 +229,10 @@
   }
 
   .fortune {
-    margin: 6px 0 0;
-    font-size: 13px;
+    margin: 8px 0 0;
+    font-size: 14px;
     color: #334155;
-    line-height: 1.35;
+    line-height: 1.45;
   }
 
   .preview-wrap {
@@ -241,8 +241,8 @@
   }
 
   .preview-card {
-    width: min(128px, 100%);
-    border-radius: 10px;
+    width: min(140px, 100%);
+    border-radius: 12px;
     border: 1px solid #cbd5e1;
     box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
     transform-origin: center;
@@ -254,69 +254,69 @@
   }
 
   .toolbar {
-    margin-top: 12px;
+    margin-top: 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 14px;
   }
 
   .toolbar-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
   }
 
   .shuffle-btn {
     border: 1px solid #94a3b8;
-    height: 40px;
-    padding: 0 14px;
+    height: 42px;
+    padding: 0 16px;
     border-radius: 999px;
     background: #fff;
     color: #1e293b;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
   }
 
   .random-btn {
     border: none;
-    height: 40px;
-    padding: 0 14px;
+    height: 42px;
+    padding: 0 16px;
     border-radius: 999px;
     background: linear-gradient(135deg, #f59e0b 0%, #0ea5e9 100%);
     color: #fff;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
   }
 
   .count {
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
     color: #475569;
     font-weight: 700;
   }
 
   .card-grid {
-    margin: 12px 0 0;
+    margin: 14px 0 0;
     padding: 0;
     list-style: none;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    gap: 14px;
     justify-items: center;
   }
 
   .card-grid li {
-    width: min(100%, 180px);
+    width: min(100%, 188px);
   }
 
   .deck-card {
     position: relative;
     width: 100%;
     border: 1px solid #cbd5e1;
-    border-radius: 14px;
+    border-radius: 18px;
     background: transparent;
     padding: 0;
     cursor: pointer;
@@ -345,7 +345,7 @@
     z-index: 3;
     border-radius: 999px;
     padding: 2px 7px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     background: rgba(255, 255, 255, 0.95);
     color: #0f172a;
@@ -394,8 +394,8 @@
     left: 8px;
     top: 8px;
     border-radius: 999px;
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 12px;
     font-weight: 800;
     border: 1px solid transparent;
     background: #fff;

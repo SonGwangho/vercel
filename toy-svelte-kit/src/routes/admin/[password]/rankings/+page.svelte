@@ -173,7 +173,6 @@
 		</div>
 
 		<div class="section-summary">
-			<p>랭킹 수정 전용 화면입니다. 게임별 점수와 유저명을 개별 편집할 수 있습니다.</p>
 			<a href={`${data.adminBasePath}/ip-bans`} class="summary-link">Go To IP Ban</a>
 		</div>
 
@@ -268,12 +267,12 @@
 
 	.panel {
 		border: 1px solid var(--line);
-		border-radius: 28px;
-		padding: 22px;
+		border-radius: var(--panel-radius);
+		padding: 24px;
 		background:
 			radial-gradient(circle at top right, rgba(249, 115, 22, 0.08), transparent 28%),
 			linear-gradient(180deg, var(--card) 0%, var(--surface) 100%);
-		box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+		box-shadow: var(--shadow-card);
 	}
 
 	.topbar,
@@ -295,7 +294,7 @@
 
 	h2 {
 		margin: 0;
-		font-size: clamp(26px, 3vw, 34px);
+		font-size: clamp(28px, 3vw, 36px);
 		line-height: 1.05;
 		letter-spacing: -0.04em;
 	}
@@ -304,7 +303,6 @@
 		margin-top: 14px;
 	}
 
-	.section-summary p,
 	.message,
 	.empty-state {
 		margin: 0;
@@ -328,13 +326,13 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 10px;
-		margin-top: 18px;
+		margin-top: 20px;
 	}
 
 	.tab-btn {
-		padding: 12px 16px;
+		padding: 12px 18px;
 		border: 1px solid var(--line);
-		border-radius: 16px;
+		border-radius: 18px;
 		background: #fff7ed;
 		color: #7c2d12;
 		font-size: 14px;
@@ -352,7 +350,7 @@
 	.ranking-table {
 		display: grid;
 		gap: 10px;
-		margin-top: 18px;
+		margin-top: 20px;
 	}
 
 	.table-head,
@@ -373,8 +371,8 @@
 	}
 
 	.table-row {
-		padding: 12px;
-		border-radius: 20px;
+		padding: 14px;
+		border-radius: 24px;
 		border: 1px solid var(--line);
 		background: rgba(255, 255, 255, 0.78);
 	}
@@ -417,10 +415,10 @@
 
 	input {
 		width: 100%;
-		height: 46px;
-		padding: 0 14px;
+		height: 48px;
+		padding: 0 16px;
 		border: 1px solid var(--line);
-		border-radius: 16px;
+		border-radius: 18px;
 		background: #fff;
 		color: var(--ink);
 		font-size: 14px;
@@ -434,8 +432,8 @@
 	.save-btn,
 	.neutral-btn,
 	.danger-btn {
-		height: 40px;
-		padding: 0 14px;
+		min-height: 42px;
+		padding: 0 16px;
 		border-radius: 999px;
 		font-size: 13px;
 		font-weight: 900;
@@ -473,13 +471,13 @@
 		}
 
 		.panel {
-			padding: 18px;
+			padding: 20px;
 		}
 
 		.table-row {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 12px;
-			padding: 16px;
+			padding: 18px;
 		}
 
 		.cell {
@@ -498,8 +496,8 @@
 
 	@media (max-width: 640px) {
 		.panel {
-			padding: 16px;
-			border-radius: 22px;
+			padding: 18px;
+			border-radius: 24px;
 		}
 
 		.tab-strip {
@@ -544,3 +542,5 @@
 		color: #e2e8f0;
 	}
 </style>
+
+

@@ -15,41 +15,45 @@
   .loading-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.42);
     z-index: 9999;
     display: grid;
     place-items: center;
     padding: 16px;
+    background: rgba(12, 18, 30, 0.32);
+    backdrop-filter: blur(10px);
   }
 
   .loading-modal {
-    min-width: 240px;
-    max-width: 92vw;
-    border: 1px solid rgba(203, 213, 225, 0.9);
-    border-radius: 12px;
-    background: #fff;
-    color: #0f172a;
+    min-width: 260px;
+    max-width: min(92vw, 420px);
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.22);
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    color: var(--text-strong);
+    box-shadow:
+      inset 0 0 0 1px var(--line),
+      var(--shadow-float);
   }
 
   .spinner {
-    width: 20px;
-    height: 20px;
-    border: 3px solid #cbd5e1;
-    border-top-color: #2563eb;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    border: 3px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
+    border-top-color: var(--brand);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
-    flex-shrink: 0;
   }
 
   p {
     margin: 0;
-    font-size: 14px;
-    font-weight: 600;
+    color: var(--text-strong);
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.5;
   }
 
   @keyframes spin {

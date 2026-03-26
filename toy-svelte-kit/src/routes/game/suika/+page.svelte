@@ -536,8 +536,7 @@
 
         <section class="ranking-board">
           <div class="ranking-board-head">
-            <p>오늘의 순위</p>
-            <button type="button" class="tiny-btn" onclick={fetchRanking}>R</button>
+            <p>랭킹</p>
           </div>
 
           {#if isRankingLoading}
@@ -608,7 +607,7 @@
                 {#if gameStatus === "over"}
                   <label class="name-field">
                     <span>이름</span>
-                    <input bind:value={userName} maxlength="20" placeholder="userName" />
+                    <input bind:value={userName} maxlength="20" placeholder="?? ??" />
                   </label>
                   <button
                     type="button"
@@ -667,7 +666,7 @@
 
   h1 {
     margin: 0;
-    font-size: 28px;
+    font-size: clamp(30px, 3vw, 36px);
     letter-spacing: -0.03em;
   }
 
@@ -680,14 +679,14 @@
   .stage {
     position: relative;
     width: 100%;
-    min-width: 1024px;
-    max-width: 1074px;
+    min-width: 1080px;
+    max-width: 1120px;
     margin: 0 auto;
-    height: 768px;
+    height: 792px;
     display: grid;
-    grid-template-columns: minmax(200px, 1fr) 430px minmax(200px, 1fr);
-    gap: 20px;
-    padding: 24px 22px 18px;
+    grid-template-columns: minmax(220px, 1fr) 430px minmax(220px, 1fr);
+    gap: 24px;
+    padding: 28px 24px 22px;
     box-sizing: border-box;
     border-radius: 28px;
     background:
@@ -719,8 +718,8 @@
 
   .score-bubble,
   .next-bubble {
-    width: 172px;
-    height: 172px;
+    width: 184px;
+    height: 184px;
     justify-self: center;
     display: grid;
     place-items: center;
@@ -731,7 +730,7 @@
 
   .bubble-label {
     margin: 0;
-    font-size: 28px;
+    font-size: clamp(30px, 3vw, 36px);
     font-weight: 900;
     color: #fff8e9;
     text-shadow: 0 2px 0 rgba(104, 64, 23, 0.28);
@@ -740,7 +739,7 @@
   .score-bubble strong {
     display: block;
     margin-top: -8px;
-    font-size: 54px;
+    font-size: 56px;
     line-height: 1;
     color: #fff9ef;
     text-shadow: 0 4px 0 rgba(103, 57, 16, 0.22);
@@ -748,18 +747,18 @@
 
   .bubble-sub {
     margin: 0;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 800;
     color: rgba(255, 249, 237, 0.92);
   }
 
   .ranking-board {
-    width: min(100%, 280px);
+    width: min(100%, 300px);
     max-width: 100%;
-    min-height: 280px;
+    min-height: 304px;
     justify-self: stretch;
     border-radius: 26px;
-    padding: 12px 10px 14px;
+    padding: 16px 14px 18px;
     box-sizing: border-box;
     background: linear-gradient(180deg, rgba(255, 253, 244, 0.88) 0%, rgba(246, 230, 196, 0.76) 100%);
   }
@@ -767,28 +766,16 @@
   .ranking-board-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+        gap: 8px;
     margin-bottom: 10px;
   }
 
   .ranking-board-head p {
     margin: 0;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 900;
     color: #9d6c34;
-  }
-
-  .tiny-btn {
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.66);
-    color: #8f6633;
-    font-weight: 900;
-    cursor: pointer;
-  }
+  }
 
   .ranking-strip {
     list-style: none;
@@ -803,9 +790,9 @@
     grid-template-columns: 46px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    min-height: 42px;
+    min-height: 48px;
     border-radius: 12px;
-    padding: 0 8px;
+    padding: 0 10px;
     background: rgba(255, 255, 255, 0.56);
     color: #7b552b;
     font-weight: 800;
@@ -846,7 +833,7 @@
     display: grid;
     justify-items: center;
     align-content: start;
-    padding-top: 22px;
+    padding-top: 28px;
   }
 
   .board {
@@ -969,10 +956,10 @@
   }
 
   .overlay-panel {
-    width: min(320px, calc(100% - 28px));
+    width: min(340px, calc(100% - 28px));
     display: grid;
     gap: 10px;
-    padding: 18px;
+    padding: 20px;
     border-radius: 20px;
     background: rgba(255, 251, 245, 0.95);
     color: #3a2615;
@@ -992,7 +979,7 @@
   }
 
   .name-field input {
-    height: 40px;
+    height: 44px;
     border-radius: 12px;
     border: 1px solid #e7cfbc;
     background: #fff;
@@ -1001,7 +988,7 @@
   }
 
   .submit-btn {
-    height: 42px;
+    height: 44px;
     border: none;
     border-radius: 999px;
     color: #fffaf0;
@@ -1031,10 +1018,10 @@
   }
 
   .evolution-card {
-    width: 196px;
-    height: 250px;
+    width: 210px;
+    height: 268px;
     border-radius: 34px;
-    padding: 14px 10px;
+    padding: 16px 12px;
     box-sizing: border-box;
     display: grid;
     justify-items: center;
@@ -1114,7 +1101,6 @@
   :global(html[data-theme="dark"]) .suika-page .evolution-card,
   :global(html[data-theme="dark"]) .suika-page .overlay-panel,
   :global(html[data-theme="dark"]) .suika-page .name-field input,
-  :global(html[data-theme="dark"]) .suika-page .tiny-btn,
   :global(html[data-theme="dark"]) .suika-page .ranking-strip li {
     background: #111827;
     color: #f5eadb;

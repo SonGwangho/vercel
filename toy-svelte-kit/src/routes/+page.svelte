@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { onMount } from "svelte";
 
   import type {
@@ -269,9 +269,10 @@
 
   .weather-panel {
     padding: 28px 26px 24px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(104, 128, 168, 0.16);
     border-radius: 22px;
-    background: #fff;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    box-shadow: 0 16px 34px rgba(24, 39, 75, 0.06);
   }
 
   .weather-panel--loading,
@@ -306,20 +307,20 @@
     font-size: clamp(2.8rem, 5vw, 4rem);
     line-height: 1;
     font-weight: 800;
-    color: #0f172a;
+    color: var(--text);
   }
 
   .weather-feels {
     font-size: clamp(1.3rem, 2vw, 1.8rem);
     font-weight: 700;
-    color: #111827;
+    color: var(--text);
   }
 
   .weather-summary {
     margin: 0;
     text-align: center;
     font-size: 1.1rem;
-    color: #111827;
+    color: var(--text);
   }
 
   .weather-summary :global(strong) {
@@ -340,17 +341,17 @@
   }
 
   .weather-stat--divider {
-    border-left: 1px solid rgba(15, 23, 42, 0.16);
+    border-left: 1px solid color-mix(in srgb, var(--line) 100%, transparent);
   }
 
   .weather-label {
-    color: #0f172a;
+    color: var(--text);
     font-size: 1rem;
     font-weight: 600;
   }
 
   .weather-stat strong {
-    color: #0f172a;
+    color: var(--text);
     font-size: 1.05rem;
   }
 
@@ -388,7 +389,7 @@
     height: 96px;
     margin: 0 auto 14px;
     border-radius: 50%;
-    background: conic-gradient(var(--tone) 0 var(--progress), rgba(191, 219, 254, 0.8) var(--progress) 100%);
+    background: conic-gradient(var(--tone) 0 var(--progress), color-mix(in srgb, var(--surface-strong) 85%, white) var(--progress) 100%);
     display: grid;
     place-items: center;
   }
@@ -403,7 +404,7 @@
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: white;
+    background: color-mix(in srgb, var(--surface) 98%, transparent);
     display: grid;
     place-items: center;
     align-content: center;
@@ -412,18 +413,18 @@
 
   .air-ring__inner strong {
     font-size: 1.85rem;
-    color: #0f172a;
+    color: var(--text);
   }
 
   .air-ring__inner span {
     font-size: 0.82rem;
     font-weight: 700;
-    color: #0f172a;
+    color: var(--text);
   }
 
   .air-card h3 {
     margin: 0 0 6px;
-    color: #0f172a;
+    color: var(--text);
     font-size: 1.05rem;
   }
 
@@ -437,7 +438,7 @@
   .air-source {
     margin: 16px 0 0;
     text-align: right;
-    color: #334155;
+    color: var(--muted);
     font-size: 0.94rem;
   }
 
@@ -450,9 +451,10 @@
 
   .ranking-block {
     padding: 20px 20px 18px;
-    border: 1px solid rgba(17, 24, 39, 0.08);
+    border: 1px solid rgba(104, 128, 168, 0.16);
     border-radius: 20px;
-    background: rgba(255, 255, 255, 0.92);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow: 0 16px 34px rgba(24, 39, 75, 0.06);
     min-width: 0;
     height: 100%;
   }
@@ -461,6 +463,7 @@
     margin: 0 0 14px;
     font-size: 1.05rem;
     line-height: 1.3;
+    color: var(--text);
   }
 
   .ranking-list {
@@ -482,16 +485,16 @@
     align-items: center;
     padding: 10px 12px;
     border-radius: 14px;
-    background: rgba(16, 57, 92, 0.06);
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
   }
 
   .ranking-list span {
     font-weight: 700;
-    color: #10395c;
+    color: var(--brand-strong);
   }
 
   .ranking-list strong {
-    color: #0f172a;
+    color: var(--text);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -500,7 +503,7 @@
 
   .ranking-list b,
   .empty-state {
-    color: #526071;
+    color: var(--muted);
     font-size: 0.95rem;
   }
 
@@ -582,8 +585,8 @@
 
   :global(html[data-theme="dark"]) .weather-panel,
   :global(html[data-theme="dark"]) .ranking-block {
-    border-color: rgba(148, 163, 184, 0.18);
-    background: rgba(15, 23, 42, 0.9);
+    border-color: rgba(177, 197, 255, 0.14);
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
   }
 
   :global(html[data-theme="dark"]) .weather-temp,
@@ -596,25 +599,25 @@
   :global(html[data-theme="dark"]) .air-card h3,
   :global(html[data-theme="dark"]) .ranking-block h2,
   :global(html[data-theme="dark"]) .ranking-list strong {
-    color: #e5eef8;
+    color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .air-ring__inner {
-    background: rgba(15, 23, 42, 0.96);
+    background: color-mix(in srgb, var(--surface) 98%, transparent);
   }
 
   :global(html[data-theme="dark"]) .air-source,
   :global(html[data-theme="dark"]) .ranking-list b,
   :global(html[data-theme="dark"]) .empty-state {
-    color: #a7b4c5;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .ranking-list li {
-    background: rgba(148, 163, 184, 0.12);
+    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
   }
 
   :global(html[data-theme="dark"]) .ranking-list span {
-    color: #8ec5ff;
+    color: var(--brand);
   }
 
   :global(html[data-theme="dark"]) .skeleton,

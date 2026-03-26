@@ -153,8 +153,8 @@
 
 <section class="pokemon-page">
   <div class="hero">
-    <p class="eyebrow">Pokemon Explorer</p>
-    <h1>Pokebook</h1>
+    <p class="eyebrow">포켓몬 도감</p>
+    <h1>포켓북</h1>
     {#if !loading && !errorMessage}
       <p class="meta">{items.length}마리 | {fetchedAtLabel}</p>
     {/if}
@@ -263,18 +263,18 @@
     --ink: #0f172a;
     --muted: #475569;
     --surface: #ffffff;
-    --line: rgba(148, 163, 184, 0.3);
+    --line: rgba(148, 163, 184, 0.26);
     --teal: #0f766e;
     --rose: #be123c;
-    max-width: 1140px;
+    max-width: 1180px;
     margin: 0 auto;
-    padding: 20px 0 32px;
+    padding: 24px 0 36px;
   }
 
   .hero {
-    margin-bottom: 12px;
-    padding: 14px 16px;
-    border-radius: 18px;
+    margin-bottom: 16px;
+    padding: 18px 20px;
+    border-radius: 22px;
     background: radial-gradient(
         circle at 0% 0%,
         rgba(14, 165, 233, 0.25),
@@ -291,7 +291,7 @@
 
   .eyebrow {
     margin: 0;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -300,7 +300,7 @@
 
   h1 {
     margin: 6px 0 0;
-    font-size: 38px;
+    font-size: 42px;
     line-height: 1.02;
     letter-spacing: -0.03em;
     color: #0f172a;
@@ -308,7 +308,7 @@
 
   .meta {
     margin: 8px 0 0;
-    font-size: 13px;
+    font-size: 14px;
     color: #334155;
     font-weight: 700;
   }
@@ -316,23 +316,23 @@
   .search {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
   .search label {
     display: grid;
-    gap: 4px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 13px;
     font-weight: 700;
     color: #334155;
   }
 
   .search input {
-    height: 40px;
+    height: 44px;
     border: 1px solid #cbd5e1;
-    border-radius: 12px;
-    padding: 0 11px;
+    border-radius: 14px;
+    padding: 0 13px;
     font-size: 14px;
     color: #0f172a;
     background: #fff;
@@ -345,7 +345,7 @@
   }
 
   .result {
-    margin: 0 0 12px;
+    margin: 0 0 14px;
     color: #334155;
     font-size: 14px;
     font-weight: 700;
@@ -362,7 +362,7 @@
 
   .card {
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 18px;
     background: radial-gradient(
         circle at 100% 0%,
         rgba(186, 230, 253, 0.25),
@@ -370,7 +370,7 @@
       ),
       var(--surface);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.09);
-    padding: 12px;
+    padding: 14px;
     transition:
       transform 0.18s ease,
       box-shadow 0.18s ease;
@@ -393,21 +393,21 @@
     font-family: "Consolas", "Courier New", monospace;
     color: var(--muted);
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   h2 {
     margin: 0;
-    font-size: 22px;
+    font-size: 24px;
     line-height: 1.1;
     color: var(--ink);
   }
 
   .photo-wrap {
     margin-top: 10px;
-    height: 164px;
+    height: 176px;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    border-radius: 14px;
     background: radial-gradient(
         circle at 20% 20%,
         rgba(14, 165, 233, 0.16),
@@ -434,9 +434,9 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 10px;
-    margin-top: 8px;
-    font-size: 13px;
+    gap: 12px;
+    margin-top: 10px;
+    font-size: 14px;
   }
 
   .row strong {
@@ -467,7 +467,7 @@
 
   .stat span {
     display: block;
-    font-size: 11px;
+    font-size: 12px;
     color: #64748b;
     font-weight: 700;
   }
@@ -475,7 +475,7 @@
   .stat b {
     display: block;
     margin-top: 3px;
-    font-size: 16px;
+    font-size: 17px;
     color: var(--ink);
   }
 
@@ -488,10 +488,10 @@
   }
 
   .evo-btn {
-    height: 30px;
+    height: 34px;
     border-radius: 999px;
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 0 12px;
+    font-size: 13px;
     font-weight: 700;
     cursor: pointer;
     border: 1px solid transparent;
@@ -522,6 +522,7 @@
   }
 
   .status {
+    font-weight: 600;
     margin: 0;
     color: #334155;
     font-size: 14px;

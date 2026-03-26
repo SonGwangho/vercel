@@ -460,7 +460,7 @@
               {#if gameStatus === "dead"}
                 <label class="name-field">
                   <span>이름</span>
-                  <input bind:value={userName} maxlength="20" placeholder="userName" />
+                  <input bind:value={userName} maxlength="20" placeholder="?? ??" />
                 </label>
                 <button
                   type="button"
@@ -487,11 +487,7 @@
 
     <aside class="ranking-card">
       <div class="ranking-head">
-        <div>
-          <p class="ranking-label">Server Ranking</p>
-          <h2>gameCode 100</h2>
-        </div>
-        <button type="button" class="ghost-btn" onclick={fetchRanking}>새로고침</button>
+        <h2>랭킹</h2>
       </div>
 
       {#if isRankingLoading}
@@ -520,12 +516,12 @@
 <style>
   .jjaprim-page {
     display: grid;
-    gap: 12px;
+    gap: 16px;
     color: #10261f;
   }
 
   .hero {
-    padding: 10px 4px 2px;
+    padding: 12px 4px 4px;
     background:
       none;
     color: #10261f;
@@ -534,32 +530,21 @@
 
   .hero h1 {
     margin: 0;
-    font-size: clamp(24px, 3vw, 32px);
+    font-size: clamp(28px, 3.2vw, 36px);
     line-height: 0.98;
     letter-spacing: -0.03em;
   }
-
-  .submit-btn,
-  .ghost-btn {
+  .submit-btn {
     border: none;
     border-radius: 999px;
     cursor: pointer;
     font-weight: 700;
-  }
-
-  .ranking-label {
-    margin: 0;
-    font-size: 12px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #86efac;
-    font-weight: 700;
-  }
+  }
 
   .game-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.85fr) 260px;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1.85fr) 280px;
+    gap: 16px;
     align-items: start;
   }
 
@@ -567,8 +552,8 @@
   .ranking-card {
     background: linear-gradient(180deg, #fdfcf6 0%, #f4f8f2 100%);
     border: 1px solid #d8e5d6;
-    border-radius: 22px;
-    padding: 12px;
+    border-radius: 24px;
+    padding: 16px;
     box-shadow: 0 16px 30px rgba(16, 38, 31, 0.08);
   }
 
@@ -722,10 +707,10 @@
   }
 
   .overlay-panel {
-    width: min(360px, calc(100% - 32px));
+    width: min(380px, calc(100% - 32px));
     display: grid;
-    gap: 10px;
-    padding: 18px;
+    gap: 12px;
+    padding: 20px;
     border-radius: 18px;
     background: rgba(252, 252, 248, 0.92);
     color: #10261f;
@@ -741,21 +726,21 @@
   .name-field {
     display: grid;
     gap: 6px;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
   }
 
   .name-field input {
-    height: 38px;
+    height: 42px;
     border: 1px solid #b9cec0;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 0 12px;
     font: inherit;
     background: #fff;
   }
 
   .submit-btn {
-    height: 40px;
+    height: 44px;
     color: #f8fafc;
     background: linear-gradient(135deg, #1f5d48 0%, #134e4a 100%);
   }
@@ -766,38 +751,30 @@
   }
 
   .submit-message {
-    font-size: 14px;
+    font-size: 15px;
     color: #14532d;
   }
 
   .guide {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 14px;
-    margin-top: 10px;
+    gap: 8px 16px;
+    margin-top: 12px;
     color: #446253;
-    font-size: 12px;
+    font-size: 15px;
   }
 
   .ranking-head {
     display: flex;
-    justify-content: space-between;
-    gap: 10px;
+        gap: 12px;
     align-items: center;
-    margin-bottom: 10px;
-  }
-
-  .ghost-btn {
-    padding: 8px 12px;
-    color: #163c33;
-    background: #eef8f0;
-    border: 1px solid #c8dfcc;
-  }
+    margin-bottom: 14px;
+  }
 
   .ranking-empty {
     margin: 14px 0 0;
     color: #4b6358;
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .ranking-list {
@@ -805,22 +782,22 @@
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 8px;
+    gap: 10px;
   }
 
   .ranking-list li {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
     background: linear-gradient(180deg, #f6fbf7 0%, #edf7ef 100%);
     border: 1px solid #d4e7d7;
   }
 
   .rank-no {
-    min-width: 42px;
+    min-width: 46px;
     text-align: center;
     padding: 6px 8px;
     border-radius: 999px;
@@ -835,12 +812,12 @@
   }
 
   .rank-body strong {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .rank-body span {
     color: #4b6358;
-    font-size: 13px;
+    font-size: 15px;
   }
 
   @media (max-width: 920px) {
@@ -854,7 +831,7 @@
     .hero,
     .arena-card,
     .ranking-card {
-      padding: 12px;
+      padding: 16px;
       border-radius: 16px;
     }
 
@@ -870,7 +847,6 @@
   :global(html[data-theme="dark"]) .jjaprim-page .arena-card,
   :global(html[data-theme="dark"]) .jjaprim-page .ranking-card,
   :global(html[data-theme="dark"]) .jjaprim-page .ranking-list li,
-  :global(html[data-theme="dark"]) .jjaprim-page .ghost-btn,
   :global(html[data-theme="dark"]) .jjaprim-page .overlay-panel,
   :global(html[data-theme="dark"]) .jjaprim-page .name-field input {
     background: #111827;

@@ -1,8 +1,13 @@
-﻿# AGENTS.md 지침
+# AGENTS.md 지침
 
 * AGENTS.md 파일을 무조건 참조한다.
 * 아래 버전에 따라 개발한다.
 * 모든 파일 인코딩은 UTF-8 기준으로 작성한다.
+* 구현한 Card, Component, Page 등에 요구사항 문구를 description으로 그대로 적지 않는다.
+* 개발자가 아닌 실제 사이트 사용자 기준에 맞춰서 개발한다.
+
+## 디자인
+* DESIGN.md 파일을 참조한다.
 
 ## 버전 관리
 - 기준 프로젝트: `toy-svelte-kit`

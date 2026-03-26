@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { onMount } from "svelte";
 
 	import { Storage, type LottoLatestResponse, type LottoLine, type LottoSheet } from "$lib";
@@ -194,7 +194,7 @@
 			pickerMessage = LABEL_SAVE_OK;
 		} catch (error) {
 			pickerMessage =
-				error instanceof Error ? error.message : "Failed to save the lotto sheet.";
+				error instanceof Error ? error.message : "?? ?? ??? ??????.";
 		}
 	}
 
@@ -207,7 +207,7 @@
 			const data = (await response.json()) as LottoLatestResponse & { message?: string };
 
 			if (!response.ok) {
-				throw new Error(data.message || "Failed to load the latest lotto result.");
+				throw new Error(data.message || "?? ?? ??? ???? ?????.");
 			}
 
 			latest = data.latest;
@@ -215,7 +215,7 @@
 		} catch (error) {
 			latest = null;
 			errorMessage =
-				error instanceof Error ? error.message : "Failed to load the latest lotto result.";
+				error instanceof Error ? error.message : "?? ?? ??? ???? ?????.";
 		} finally {
 			loading = false;
 		}
@@ -229,7 +229,7 @@
 <section class="lotto-page">
 	{#if loading}
 		<div class="panel status-panel">
-			<p>Loading the latest lotto result.</p>
+			<p>?? ??? ???? ????.</p>
 		</div>
 	{:else if errorMessage}
 		<div class="panel status-panel error">
@@ -353,7 +353,7 @@
 												type="button"
 												class="remove-btn"
 												onclick={() => removeDraftLine(line.id)}
-												aria-label="Remove line"
+												aria-label="? ??"
 											>
 												<span>X</span>
 											</button>
@@ -379,7 +379,7 @@
 				<div class="saved-header">
 					<div>
 						<p class="saved-kicker">{LABEL_SAVED_SHEETS}</p>
-						<h2>Saved Sheets</h2>
+						<h2>??? ??</h2>
 					</div>
 				</div>
 
@@ -403,7 +403,7 @@
 						<div class="sheet-detail">
 							<div class="sheet-detail-head">
 								<strong>{selectedSheet.targetRound}{LABEL_ROUND_SUFFIX} {LABEL_VIEW_SHEET}</strong>
-								<span>{selectedSheet.lines.length} lines</span>
+								<span>{selectedSheet.lines.length}?</span>
 							</div>
 
 								<div class="sheet-lines">
@@ -428,23 +428,23 @@
 <style>
 	.lotto-page {
 		--lotto-ink: #171717;
-		max-width: 1040px;
+		max-width: 1080px;
 		margin: 0 auto;
-		padding: 8px 0 36px;
+		padding: 12px 0 40px;
 		color: var(--lotto-ink);
 	}
 
 	.panel {
 		margin-top: 12px;
-		border-radius: 24px;
+		border-radius: 26px;
 		border: 1px solid rgba(226, 232, 240, 0.9);
 		background: #fff;
-		box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+		box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
 	}
 
 	.status-panel {
-		padding: 24px 20px;
-		font-size: 15px;
+		padding: 26px 22px;
+		font-size: 16px;
 		font-weight: 700;
 		color: #3f3f46;
 	}
@@ -458,14 +458,14 @@
 	.result-panel,
 	.picker-panel,
 	.saved-panel {
-		padding: 18px;
+		padding: 24px;
 	}
 
 	.result-card,
 	.picker-card,
 	.saved-card {
-		padding: 20px;
-		border-radius: 20px;
+		padding: 24px;
+		border-radius: 22px;
 		background: #fff;
 	}
 
@@ -475,7 +475,7 @@
 
 	.section-label {
 		margin: 0;
-		font-size: 15px;
+		font-size: 16px;
 		font-weight: 700;
 		color: #64748b;
 	}
@@ -516,7 +516,7 @@
 	.main-numbers {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
+		gap: 12px;
 	}
 
 	.ball {
@@ -588,7 +588,7 @@
 
 	h2 {
 		margin: 0;
-		font-size: 28px;
+		font-size: 30px;
 		line-height: 1.05;
 		letter-spacing: -0.03em;
 		color: #020617;
@@ -597,14 +597,14 @@
 	.picker-workspace {
 		display: grid;
 		grid-template-columns: minmax(0, 1.02fr) minmax(360px, 1fr);
-		gap: 16px;
-		margin-top: 18px;
+		gap: 18px;
+		margin-top: 20px;
 		align-items: start;
 	}
 
 	.selection-preview {
-		padding: 18px;
-		border-radius: 20px;
+		padding: 24px;
+		border-radius: 22px;
 		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 		border: 1px solid #dbe5f1;
 	}
@@ -628,7 +628,7 @@
 	.preview-balls {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
+		gap: 12px;
 		margin-top: 14px;
 	}
 
@@ -644,13 +644,13 @@
 	.number-grid {
 		display: grid;
 		grid-template-columns: repeat(9, minmax(0, 1fr));
-		gap: 10px;
+		gap: 12px;
 		margin-top: 14px;
 	}
 
 	.number-chip {
-		height: 48px;
-		border-radius: 10px;
+		height: 50px;
+		border-radius: 12px;
 		border: none;
 		font-size: 16px;
 		font-weight: 900;
@@ -676,13 +676,13 @@
 	.picker-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
-		margin-top: 18px;
+		gap: 12px;
+		margin-top: 20px;
 	}
 
 	.action-btn {
-		height: 44px;
-		padding: 0 18px;
+		height: 46px;
+		padding: 0 20px;
 		border-radius: 999px;
 		font-size: 14px;
 		font-weight: 800;
@@ -723,14 +723,14 @@
 	}
 
 	.draft-line {
-		padding: 14px 16px;
+		padding: 16px 18px;
 		border-radius: 18px;
 		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 		border: 1px solid #dbe5f1;
 	}
 
 	.sheet-detail-head strong {
-		font-size: 15px;
+		font-size: 16px;
 		color: #0f172a;
 	}
 
@@ -782,7 +782,7 @@
 		display: grid;
 		place-items: center;
 		min-height: 220px;
-		padding: 20px;
+		padding: 24px;
 		border-radius: 18px;
 		border: 1px dashed #cbd5e1;
 		background: #f8fafc;
@@ -809,16 +809,16 @@
 	.saved-sheet-list {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
-		margin-top: 18px;
+		gap: 12px;
+		margin-top: 20px;
 	}
 
 	.sheet-tab {
 		display: grid;
 		gap: 2px;
-		min-width: 110px;
-		padding: 12px 14px;
-		border-radius: 16px;
+		min-width: 120px;
+		padding: 14px 16px;
+		border-radius: 18px;
 		border: 1px solid #e2e8f0;
 		background: #fff;
 		text-align: left;
@@ -845,9 +845,9 @@
 	}
 
 	.sheet-detail {
-		margin-top: 18px;
-		padding: 16px;
-		border-radius: 20px;
+		margin-top: 20px;
+		padding: 18px;
+		border-radius: 22px;
 		background: #f8fafc;
 		border: 1px solid #e2e8f0;
 	}
@@ -859,7 +859,7 @@
 	}
 
 	.sheet-line {
-		padding: 14px;
+		padding: 16px;
 		border-radius: 18px;
 		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 		border: 1px solid #dbe5f1;
@@ -916,7 +916,7 @@
 		}
 
 		.number-chip {
-			height: 44px;
+			height: 46px;
 		}
 	}
 

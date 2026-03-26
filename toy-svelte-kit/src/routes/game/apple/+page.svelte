@@ -582,7 +582,6 @@
 		<aside class="ranking-card">
 			<div class="ranking-header">
 				<h2>랭킹</h2>
-				<span>TOP 10</span>
 			</div>
 
 			{#if rankingLoading}
@@ -614,8 +613,8 @@
 	.apple-page {
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
-		padding: 20px 24px 32px;
+		gap: 24px;
+		padding: 24px 24px 40px;
 		color: var(--text, #1f2937);
 	}
 
@@ -627,14 +626,14 @@
 
 	.page-header h1 {
 		margin: 0;
-		font-size: 1.25rem;
+		font-size: 1.45rem;
 		font-weight: 800;
 	}
 
 	.game-layout {
 		display: grid;
-		grid-template-columns: minmax(0, 1142px) 320px;
-		gap: 20px;
+		grid-template-columns: minmax(0, 1142px) 340px;
+		gap: 24px;
 		align-items: start;
 		justify-content: center;
 	}
@@ -643,12 +642,12 @@
 	.ranking-card {
 		background: var(--surface, #ffffff);
 		border: 1px solid color-mix(in srgb, var(--text, #1f2937) 10%, transparent);
-		border-radius: 24px;
+		border-radius: 26px;
 		box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
 	}
 
 	.start-card {
-		min-height: 820px;
+		min-height: 860px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -659,12 +658,12 @@
 		align-items: center;
 		justify-content: center;
 		width: 100%;
-		min-height: 780px;
+		min-height: 820px;
 	}
 
 	.start-apple {
-		width: 280px;
-		height: 280px;
+		width: 300px;
+		height: 300px;
 		border: 0;
 		border-radius: 50%;
 		background-color: #fff7ed;
@@ -697,16 +696,16 @@
 	.status-bar {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 12px;
-		padding: 20px 20px 0;
+		gap: 14px;
+		padding: 22px 22px 0;
 	}
 
 	.status-card {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		padding: 14px 16px;
-		border-radius: 18px;
+		padding: 16px 18px;
+		border-radius: 20px;
 		background: #f8fafc;
 		border: 1px solid rgba(15, 23, 42, 0.08);
 	}
@@ -717,7 +716,7 @@
 	}
 
 	.status-card strong {
-		font-size: 1.35rem;
+		font-size: 1.45rem;
 		color: #0f172a;
 	}
 
@@ -726,8 +725,8 @@
 		width: min(1142px, calc(100% - 40px));
 		aspect-ratio: 1142 / 700;
 		height: auto;
-		margin: 20px auto;
-		border-radius: 24px;
+		margin: 22px auto;
+		border-radius: 26px;
 		background: #ffffff;
 		border: 1px solid rgba(15, 23, 42, 0.08);
 		overflow: hidden;
@@ -794,7 +793,7 @@
 	.overlay-card {
 		width: min(420px, calc(100% - 32px));
 		padding: 28px;
-		border-radius: 24px;
+		border-radius: 26px;
 		background: rgba(255, 255, 255, 0.96);
 		text-align: center;
 		box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
@@ -822,7 +821,7 @@
 
 	.submit-row {
 		display: flex;
-		gap: 10px;
+		gap: 12px;
 		margin-top: 18px;
 	}
 
@@ -836,7 +835,7 @@
 
 	.submit-row input {
 		flex: 1;
-		padding: 12px 14px;
+		padding: 14px 16px;
 		background: #ffffff;
 	}
 
@@ -854,7 +853,7 @@
 	}
 
 	.ranking-card {
-		padding: 20px;
+		padding: 24px;
 		position: sticky;
 		top: 20px;
 	}
@@ -863,17 +862,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 16px;
+		margin-bottom: 18px;
 	}
 
-	.ranking-header h2,
-	.ranking-header span {
+	.ranking-header h2 {
 		margin: 0;
-	}
-
-	.ranking-header span {
-		color: #64748b;
-		font-size: 0.9rem;
 	}
 
 	.ranking-message {
@@ -891,16 +884,16 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 	}
 
 	.ranking-list li {
 		display: grid;
 		grid-template-columns: 32px minmax(0, 1fr) auto;
 		align-items: center;
-		gap: 10px;
-		padding: 12px 14px;
-		border-radius: 16px;
+		gap: 12px;
+		padding: 14px 16px;
+		border-radius: 18px;
 		background: #f8fafc;
 	}
 
@@ -969,7 +962,6 @@
 	}
 
 	:global(html[data-theme='dark']) .overlay-card p,
-	:global(html[data-theme='dark']) .ranking-header span,
 	:global(html[data-theme='dark']) .ranking-message {
 		color: #cbd5e1;
 	}
