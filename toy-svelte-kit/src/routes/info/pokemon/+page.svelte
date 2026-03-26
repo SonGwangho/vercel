@@ -152,14 +152,6 @@
 </script>
 
 <section class="pokemon-page">
-  <div class="hero">
-    <p class="eyebrow">포켓몬 도감</p>
-    <h1>포켓북</h1>
-    {#if !loading && !errorMessage}
-      <p class="meta">{items.length}마리 | {fetchedAtLabel}</p>
-    {/if}
-  </div>
-
   {#if loading}
     <p class="status">데이터 준비 중...</p>
   {:else if errorMessage}
@@ -269,50 +261,7 @@
     max-width: 1180px;
     margin: 0 auto;
     padding: 24px 0 36px;
-  }
-
-  .hero {
-    margin-bottom: 16px;
-    padding: 18px 20px;
-    border-radius: 22px;
-    background: radial-gradient(
-        circle at 0% 0%,
-        rgba(14, 165, 233, 0.25),
-        transparent 36%
-      ),
-      radial-gradient(
-        circle at 100% 100%,
-        rgba(16, 185, 129, 0.2),
-        transparent 34%
-      ),
-      linear-gradient(160deg, #f8fafc 0%, #ffffff 52%, #eef2ff 100%);
-    border: 1px solid #dbeafe;
-  }
-
-  .eyebrow {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #0369a1;
-  }
-
-  h1 {
-    margin: 6px 0 0;
-    font-size: 42px;
-    line-height: 1.02;
-    letter-spacing: -0.03em;
-    color: #0f172a;
-  }
-
-  .meta {
-    margin: 8px 0 0;
-    font-size: 14px;
-    color: #334155;
-    font-weight: 700;
-  }
-
+  }
   .search {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -552,9 +501,6 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
-    h1 {
-      font-size: 32px;
-    }
   }
 
   :global(html[data-theme="dark"]) .pokemon-page {
@@ -564,19 +510,6 @@
     --line: rgba(148, 163, 184, 0.22);
   }
 
-  :global(html[data-theme="dark"]) .pokemon-page .hero {
-    background:
-      radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.18), transparent 36%),
-      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.14), transparent 34%),
-      linear-gradient(160deg, #0f172a 0%, #111827 52%, #172033 100%);
-    border-color: rgba(96, 165, 250, 0.22);
-  }
-
-  :global(html[data-theme="dark"]) .pokemon-page .eyebrow {
-    color: #7dd3fc;
-  }
-
-  :global(html[data-theme="dark"]) .pokemon-page h1,
   :global(html[data-theme="dark"]) .pokemon-page h2,
   :global(html[data-theme="dark"]) .pokemon-page .row span,
   :global(html[data-theme="dark"]) .pokemon-page .stat b,
@@ -584,7 +517,6 @@
     color: #f8fbff;
   }
 
-  :global(html[data-theme="dark"]) .pokemon-page .meta,
   :global(html[data-theme="dark"]) .pokemon-page .result,
   :global(html[data-theme="dark"]) .pokemon-page .search label,
   :global(html[data-theme="dark"]) .pokemon-page .row strong,
