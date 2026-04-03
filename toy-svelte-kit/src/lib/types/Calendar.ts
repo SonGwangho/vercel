@@ -6,3 +6,11 @@ export type DayOffItem = {
 export type DayOffYearGroup = {
   dayOffs: DayOffItem[];
 };
+
+export type CalendarMarkColor = "default" | "red" | "orange" | "yellow" | "green";
+
+export type PersonalDayOffItem = {
+  date: string;
+  name: string;
+  color: CalendarMarkColor;
+};
