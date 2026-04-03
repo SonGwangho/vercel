@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import type {
     CalendarMarkColor,
@@ -45,6 +45,7 @@
   let editorName = $state("");
   let editorColor = $state<CalendarMarkColor>("default");
   let editorNameError = $state(false);
+  let editorNameInput = $state<HTMLInputElement | null>(null);
   const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
 
   const dayOffItems = $derived(readDayOffItems(dayOffSource, visibleYearKey));
@@ -260,23 +261,37 @@
     selectedDateKey = selectedDateKey === cell.key ? null : cell.key;
   }
 
+  function toPlainPersonalDayOffItems(items: PersonalDayOffItem[]) {
+    return items.map((item) => ({
+      date: item.date,
+      name: item.name,
+      color: item.color,
+    }));
+  }
+
   async function loadPersonalDayOffs() {
     const stored =
       (await Storage.get<PersonalDayOffItem[]>(PERSONAL_DAY_OFFS_KEY)) ?? [];
-    personalDayOffs = stored.filter(isPersonalDayOffItem);
+    personalDayOffs = toPlainPersonalDayOffItems(
+      stored.filter(isPersonalDayOffItem),
+    );
   }
 
   async function persistPersonalDayOffs(nextItems: PersonalDayOffItem[]) {
-    personalDayOffs = nextItems;
-    await Storage.set(PERSONAL_DAY_OFFS_KEY, nextItems);
+    const plainItems = toPlainPersonalDayOffItems(nextItems);
+    personalDayOffs = plainItems;
+    await Storage.set(PERSONAL_DAY_OFFS_KEY, plainItems);
   }
 
-  function openEditor(cell: CalendarCell) {
+  async function openEditor(cell: CalendarCell) {
     editorDateKey = cell.key;
     editorName = cell.customName;
     editorColor = cell.customColor ?? "default";
     editorNameError = false;
     selectedDateKey = cell.key;
+    await tick();
+    editorNameInput?.focus();
+    editorNameInput?.select();
   }
 
   function closeEditor() {
@@ -411,12 +426,19 @@
       <label class="editor-field">
         <span>메모</span>
         <input
+          bind:this={editorNameInput}
           bind:value={editorName}
           class:error={editorNameError}
           type="text"
           maxlength="20"
           placeholder="예: 병원, 약속, 휴가"
           oninput={() => (editorNameError = false)}
+          onkeydown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void saveEditor();
+            }
+          }}
           aria-invalid={editorNameError}
           title={editorNameError
             ? "메모는 필수 입력입니다."
