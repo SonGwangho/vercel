@@ -669,7 +669,9 @@
     line-height: 1.35;
     font-weight: 700;
     color: #94a3b8;
-    word-break: keep-all;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .weekdays div:first-child,
