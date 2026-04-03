@@ -16,5 +16,11 @@
     "name": "Lotto",
     "path": "/info/lotto",
     "order": 30
+  },
+  {
+    "id": "calendar",
+    "name": "Calendar",
+    "path": "/info/calendar",
+    "order": 40
   }
 ]
