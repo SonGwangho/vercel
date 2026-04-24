@@ -33,7 +33,7 @@
 	const ALLY_SPAWN_Y = FIELD_HEIGHT - 80;
 	const ENEMY_SPAWN_Y = 190;
 	const CASTLE_MAX_HP = 960;
-	const GEM_SCORE = 10;
+	const GEM_SCORE = 20;
 	const ENEMY_SPAWN_SECONDS = 6.2;
 	const MAX_ENEMIES = 8;
 	const LANE_OFFSETS = [-64, -32, 0, 32, 64];
