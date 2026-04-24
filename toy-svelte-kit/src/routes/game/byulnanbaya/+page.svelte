@@ -89,6 +89,7 @@
 	let rankingModalOpen = $state(false);
 	let submittingRecord = $state(false);
 	let recordSubmitted = $state(false);
+	let userName = $state("");
 	let followResumeHandle: ReturnType<typeof setTimeout> | null = null;
 	let fieldScroller: HTMLDivElement | null = null;
 	let swipeStart: SwipeStart | null = null;
@@ -137,7 +138,7 @@
 	}
 
 	async function submitClearRecord() {
-		if (clearTimeMs === null || submittingRecord || recordSubmitted) {
+		if (clearTimeMs === null || !userName.trim() || submittingRecord || recordSubmitted) {
 			return;
 		}
 
@@ -153,7 +154,7 @@
 				body: JSON.stringify({
 					gameCode: GAME_CODE,
 					gameName: gameMeta.gameName,
-					userName: "익명",
+					userName: userName.trim(),
 					score: rankingScoreFromTime(clearTimeMs)
 				})
 			});
@@ -551,7 +552,6 @@
 			clearTimeMs = Math.max(0, Math.round(performance.now() - gameStartTime));
 			status = "victory";
 			stopLoop();
-			void submitClearRecord();
 		} else if (units.some((unit) => unit.team === "enemy" && unit.y > ALLY_SPAWN_Y + 20)) {
 			status = "defeat";
 			stopLoop();
@@ -585,6 +585,7 @@
 		clearTimeMs = null;
 		recordSubmitted = false;
 		submittingRecord = false;
+		userName = "";
 		matchedIndexes = new Set();
 		fallingIndexes = new Set();
 		isResolving = false;
@@ -721,13 +722,25 @@
 							</p>
 							{#if status === "victory" && clearTimeMs !== null}
 								<strong class="clear-time">{formatClearTime(clearTimeMs)}</strong>
-								<small class:error={Boolean(rankingError)}>
-									{submittingRecord
-										? "기록 등록 중"
-										: recordSubmitted
-											? "기록 등록 완료"
-											: rankingError || "기록 대기 중"}
-								</small>
+								<div class="submit-row">
+									<input
+										type="text"
+										maxlength="12"
+										bind:value={userName}
+										placeholder="이름 입력"
+										disabled={recordSubmitted || submittingRecord}
+									/>
+									<button
+										type="button"
+										onclick={submitClearRecord}
+										disabled={!userName.trim() || recordSubmitted || submittingRecord}
+									>
+										{recordSubmitted ? "등록 완료" : submittingRecord ? "등록 중" : "기록 등록"}
+									</button>
+								</div>
+								{#if rankingError}
+									<small class="error">{rankingError}</small>
+								{/if}
 							{/if}
 							<button type="button" onclick={startGame}>{status === "ready" ? "시작" : "다시 시작"}</button>
 						</div>
@@ -1127,6 +1140,43 @@
 
 	.result-card small.error {
 		color: #be123c;
+	}
+
+	.submit-row {
+		width: 100%;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 8px;
+	}
+
+	.submit-row input,
+	.submit-row button {
+		min-height: 38px;
+		border-radius: 999px;
+		font: inherit;
+		font-weight: 900;
+	}
+
+	.submit-row input {
+		min-width: 0;
+		border: 1px solid rgba(36, 68, 159, 0.22);
+		padding: 0 12px;
+		background: #fff;
+		color: #182033;
+	}
+
+	.submit-row button {
+		border: 0;
+		padding: 0 12px;
+		background: #24449f;
+		color: #fff;
+		cursor: pointer;
+	}
+
+	.submit-row button:disabled,
+	.submit-row input:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
 	}
 
 	.result-card button {
