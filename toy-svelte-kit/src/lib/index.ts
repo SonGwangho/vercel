@@ -18,3 +18,4 @@ export * from "./types/Admin.ts";
 export * from "./types/Weather.ts";
 export * from "./types/Home.ts";
 export * from "./types/Calendar.ts";
+export * from "./types/Byulnanbaya.ts";

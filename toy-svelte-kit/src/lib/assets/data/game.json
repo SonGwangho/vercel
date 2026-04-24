@@ -16,5 +16,11 @@
     "name": "사과게임",
     "path": "/game/apple",
     "order": 30
+  },
+  {
+    "id": "byulnanbaya",
+    "name": "별난바야",
+    "path": "/game/byulnanbaya",
+    "order": 40
   }
 ]

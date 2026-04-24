@@ -1,4 +1,4 @@
-import { getNeonSql } from "$lib/server/neon";
+import { getNeonSql, hasNeonDatabaseUrl } from "$lib/server/neon";
 import type { IpBanCreateRequest, IpBanRecord } from "$lib";
 
 type IpBanRow = {
@@ -90,6 +90,10 @@ export async function listIpBans(): Promise<IpBanRecord[]> {
 
 export async function isIpBanned(ipAddress: string | null): Promise<boolean> {
 	if (!ipAddress) {
+		return false;
+	}
+
+	if (!hasNeonDatabaseUrl()) {
 		return false;
 	}
 
