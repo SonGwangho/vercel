@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
+	import { requireGameCode } from "$lib/gameCodes";
 	import type {
 		ByulnanbayaFieldUnit,
 		ByulnanbayaStatus,
-		ByulnanbayaUnitDefinition
+		ByulnanbayaUnitDefinition,
+		RankingListItem,
+		RankingListResponse
 	} from "$lib";
 
 	type GemKind = "ruby" | "sun" | "leaf" | "wave" | "violet";
@@ -34,6 +37,9 @@
 	const ENEMY_SPAWN_SECONDS = 6.2;
 	const MAX_ENEMIES = 8;
 	const LANE_OFFSETS = [-64, -32, 0, 32, 64];
+	const RANKING_LIMIT = 10;
+	const gameMeta = requireGameCode("byulnanbaya");
+	const GAME_CODE = gameMeta.gameCode;
 
 	const gemKinds: GemKind[] = ["ruby", "sun", "leaf", "wave", "violet"];
 	const gemLabel: Record<GemKind, string> = {
@@ -75,6 +81,14 @@
 	let loopHandle: number | null = null;
 	let lastFrame = 0;
 	let enemySpawnElapsed = 0;
+	let gameStartTime = 0;
+	let clearTimeMs = $state<number | null>(null);
+	let rankings = $state<RankingListItem[]>([]);
+	let rankingLoading = $state(false);
+	let rankingError = $state("");
+	let rankingModalOpen = $state(false);
+	let submittingRecord = $state(false);
+	let recordSubmitted = $state(false);
 	let followResumeHandle: ReturnType<typeof setTimeout> | null = null;
 	let fieldScroller: HTMLDivElement | null = null;
 	let swipeStart: SwipeStart | null = null;
@@ -84,6 +98,82 @@
 
 	function wait(ms: number) {
 		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	function formatClearTime(ms: number) {
+		const totalCentiseconds = Math.max(0, Math.round(ms / 10));
+		const minutes = Math.floor(totalCentiseconds / 6000);
+		const seconds = Math.floor((totalCentiseconds % 6000) / 100);
+		const centiseconds = totalCentiseconds % 100;
+
+		return `${minutes}:${String(seconds).padStart(2, "0")}.${String(centiseconds).padStart(2, "0")}`;
+	}
+
+	function rankingScoreFromTime(ms: number) {
+		return -Math.max(0, Math.round(ms));
+	}
+
+	function rankingTime(ranking: RankingListItem) {
+		return formatClearTime(Math.abs(ranking.score));
+	}
+
+	async function loadRankings() {
+		rankingLoading = true;
+		rankingError = "";
+
+		try {
+			const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=${RANKING_LIMIT}`);
+			if (!response.ok) {
+				throw new Error("랭킹을 불러오지 못했습니다.");
+			}
+
+			const data = (await response.json()) as RankingListResponse;
+			rankings = data.rankings;
+		} catch (error) {
+			rankingError = error instanceof Error ? error.message : "랭킹을 불러오지 못했습니다.";
+		} finally {
+			rankingLoading = false;
+		}
+	}
+
+	async function submitClearRecord() {
+		if (clearTimeMs === null || submittingRecord || recordSubmitted) {
+			return;
+		}
+
+		submittingRecord = true;
+		rankingError = "";
+
+		try {
+			const response = await fetch("/api/rankings", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({
+					gameCode: GAME_CODE,
+					gameName: gameMeta.gameName,
+					userName: "익명",
+					score: rankingScoreFromTime(clearTimeMs)
+				})
+			});
+
+			if (!response.ok) {
+				throw new Error("기록 등록에 실패했습니다.");
+			}
+
+			recordSubmitted = true;
+			await loadRankings();
+		} catch (error) {
+			rankingError = error instanceof Error ? error.message : "기록 등록에 실패했습니다.";
+		} finally {
+			submittingRecord = false;
+		}
+	}
+
+	function openRankingModal() {
+		rankingModalOpen = true;
+		void loadRankings();
 	}
 
 	function randomGem(): Gem {
@@ -458,8 +548,10 @@
 			.filter((unit) => unit.hp > 0 && unit.y > 120 && unit.y < FIELD_HEIGHT + 60);
 
 		if (castleHp <= 0) {
+			clearTimeMs = Math.max(0, Math.round(performance.now() - gameStartTime));
 			status = "victory";
 			stopLoop();
+			void submitClearRecord();
 		} else if (units.some((unit) => unit.team === "enemy" && unit.y > ALLY_SPAWN_Y + 20)) {
 			status = "defeat";
 			stopLoop();
@@ -490,6 +582,9 @@
 		currency = 100;
 		castleHp = CASTLE_MAX_HP;
 		units = [];
+		clearTimeMs = null;
+		recordSubmitted = false;
+		submittingRecord = false;
 		matchedIndexes = new Set();
 		fallingIndexes = new Set();
 		isResolving = false;
@@ -497,7 +592,8 @@
 		swapMotion = null;
 		enemySpawnElapsed = 2.5;
 		createBoard();
-		lastFrame = performance.now();
+		gameStartTime = performance.now();
+		lastFrame = gameStartTime;
 		loopHandle = requestAnimationFrame(loop);
 		void tick().then(() => scrollToBottom());
 	}
@@ -541,6 +637,7 @@
 
 	onMount(() => {
 		createBoard();
+		void loadRankings();
 		void tick().then(scrollToBottom);
 
 		return () => {
@@ -563,9 +660,12 @@
 				<button type="button" class="expand-button" onclick={toggleExpanded} aria-label={isExpanded ? "게임 화면 축소" : "게임 화면 확대"}>
 					<span class:contract={isExpanded} class="expand-icon"></span>
 				</button>
-				<div class="currency-pill">
-					<span>재화</span>
-					<strong>{currency}</strong>
+				<div class="hud-actions">
+					<button type="button" class="ranking-button" onclick={openRankingModal}>랭킹보기</button>
+					<div class="currency-pill">
+						<span>재화</span>
+						<strong>{currency}</strong>
+					</div>
 				</div>
 			</header>
 
@@ -617,8 +717,18 @@
 									? "적의 성을 격파했습니다."
 									: status === "defeat"
 										? "적이 소환 지점까지 내려왔습니다."
-										: "보석을 밀어 재화를 모으고 유닛을 올려 보내세요."}
+										: "아래 보석으로 애니팡을 즐기고 좌측에서 몬스터를 뽑아 적을 물리쳐보세요."}
 							</p>
+							{#if status === "victory" && clearTimeMs !== null}
+								<strong class="clear-time">{formatClearTime(clearTimeMs)}</strong>
+								<small class:error={Boolean(rankingError)}>
+									{submittingRecord
+										? "기록 등록 중"
+										: recordSubmitted
+											? "기록 등록 완료"
+											: rankingError || "기록 대기 중"}
+								</small>
+							{/if}
 							<button type="button" onclick={startGame}>{status === "ready" ? "시작" : "다시 시작"}</button>
 						</div>
 					</div>
@@ -645,6 +755,35 @@
 					{/each}
 				</div>
 			</section>
+
+			{#if rankingModalOpen}
+				<div class="modal-backdrop">
+					<div class="ranking-modal" role="dialog" aria-modal="true" aria-label="별난바야 랭킹" tabindex="-1">
+						<header>
+							<h2>랭킹</h2>
+							<button type="button" onclick={() => (rankingModalOpen = false)} aria-label="랭킹 닫기">×</button>
+						</header>
+
+						{#if rankingLoading}
+							<p class="ranking-message">불러오는 중</p>
+						{:else if rankingError}
+							<p class="ranking-message error">{rankingError}</p>
+						{:else if rankings.length === 0}
+							<p class="ranking-message">아직 기록이 없습니다.</p>
+						{:else}
+							<ol class="ranking-list">
+								{#each rankings.slice(0, RANKING_LIMIT) as ranking}
+									<li>
+										<span class="rank">{ranking.rank}</span>
+										<span class="runner">{ranking.userName || "익명"}</span>
+										<strong>{rankingTime(ranking)}</strong>
+									</li>
+								{/each}
+							</ol>
+						{/if}
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 </section>
@@ -690,7 +829,14 @@
 		backdrop-filter: blur(8px);
 	}
 
+	.hud-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+	}
+
 	.expand-button,
+	.ranking-button,
 	.currency-pill {
 		min-height: 34px;
 		border-radius: 999px;
@@ -704,6 +850,14 @@
 		display: grid;
 		place-items: center;
 		color: #24449f;
+		cursor: pointer;
+	}
+
+	.ranking-button {
+		padding: 0 11px;
+		color: #24449f;
+		font-size: 12px;
+		font-weight: 900;
 		cursor: pointer;
 	}
 
@@ -958,6 +1112,23 @@
 		line-height: 1.55;
 	}
 
+	.clear-time {
+		font-size: 22px;
+		font-variant-numeric: tabular-nums;
+		color: #24449f;
+	}
+
+	.result-card small {
+		min-height: 16px;
+		color: #64748b;
+		font-size: 12px;
+		font-weight: 800;
+	}
+
+	.result-card small.error {
+		color: #be123c;
+	}
+
 	.result-card button {
 		min-height: 40px;
 		border: 0;
@@ -967,6 +1138,113 @@
 		color: #fff;
 		font-weight: 900;
 		cursor: pointer;
+	}
+
+	.modal-backdrop {
+		position: absolute;
+		inset: 0;
+		z-index: 12;
+		display: grid;
+		place-items: center;
+		padding: 18px;
+		background: rgba(15, 23, 42, 0.42);
+		backdrop-filter: blur(5px);
+	}
+
+	.ranking-modal {
+		width: min(360px, 100%);
+		max-height: min(520px, calc(100% - 28px));
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 14px;
+		padding: 18px;
+		border-radius: 18px;
+		background: rgba(255, 255, 255, 0.96);
+		box-shadow: 0 22px 48px rgba(15, 23, 42, 0.28);
+	}
+
+	.ranking-modal header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.ranking-modal h2 {
+		margin: 0;
+		font-size: 20px;
+	}
+
+	.ranking-modal header button {
+		width: 34px;
+		aspect-ratio: 1;
+		border: 0;
+		border-radius: 999px;
+		background: #eef2ff;
+		color: #24449f;
+		font-size: 22px;
+		font-weight: 900;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.ranking-message {
+		margin: 0;
+		padding: 28px 0;
+		text-align: center;
+		color: #64748b;
+		font-weight: 800;
+	}
+
+	.ranking-message.error {
+		color: #be123c;
+	}
+
+	.ranking-list {
+		min-height: 0;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 8px;
+		overflow-y: auto;
+		list-style: none;
+	}
+
+	.ranking-list li {
+		display: grid;
+		grid-template-columns: 34px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 10px;
+		padding: 10px;
+		border-radius: 12px;
+		background: #f8fafc;
+	}
+
+	.rank {
+		width: 28px;
+		aspect-ratio: 1;
+		display: grid;
+		place-items: center;
+		border-radius: 999px;
+		background: #24449f;
+		color: #fff;
+		font-size: 12px;
+		font-weight: 900;
+	}
+
+	.runner {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #334155;
+		font-weight: 900;
+	}
+
+	.ranking-list strong {
+		font-variant-numeric: tabular-nums;
+		color: #111827;
+		font-size: 14px;
 	}
 
 	.match-board {

@@ -25,5 +25,14 @@
     "gameCode": 300,
     "gameName": "사과게임",
     "hasRanking": true
+  },
+  {
+    "id": "byulnanbaya",
+    "name": "별난바야",
+    "path": "/game/byulnanbaya",
+    "order": 40,
+    "gameCode": 400,
+    "gameName": "별난바야",
+    "hasRanking": true
   }
 ]
