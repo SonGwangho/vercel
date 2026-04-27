@@ -18,6 +18,12 @@
     "order": 30
   },
   {
+    "id": "mApple",
+    "name": "모바일 사과게임",
+    "path": "/game/mApple",
+    "order": 31
+  },
+  {
     "id": "byulnanbaya",
     "name": "별난바야",
     "path": "/game/byulnanbaya",
