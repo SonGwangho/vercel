@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
 
-  import fitnessSource from "$lib/assets/data/fitness.json";
   import type { FitnessCalendarData, FitnessRecord, FitnessRecordSaveResponse } from "$lib";
 
   type CalendarCell = {
@@ -19,11 +18,12 @@
 
   const WEEK_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
   const today = startOfDay(new Date());
-  const fitnessData = fitnessSource as FitnessCalendarData;
 
   let visibleMonth = $state(new Date(today.getFullYear(), today.getMonth(), 1));
   let selectedDateKey = $state(toDateKey(today));
-  let editableRecords = $state<FitnessRecord[]>(readFitnessRecords(fitnessData));
+  let editableRecords = $state<FitnessRecord[]>([]);
+  let recordsLoading = $state(true);
+  let recordsError = $state("");
   let editorDateKey = $state<string | null>(null);
   let editorHasPt = $state(false);
   let editorMemo = $state("");
@@ -141,17 +141,23 @@
   }
 
   async function loadFitnessRecords() {
+    recordsLoading = true;
+    recordsError = "";
+
     try {
       const response = await fetch("/api/fitness");
 
       if (!response.ok) {
+        recordsError = "운동 기록을 불러오지 못했습니다.";
         return;
       }
 
       const data = (await response.json()) as FitnessRecordSaveResponse;
       editableRecords = toPlainFitnessRecords(data.records);
     } catch {
-      // The imported JSON still renders the page if the API is unavailable.
+      recordsError = "운동 기록을 불러오지 못했습니다.";
+    } finally {
+      recordsLoading = false;
     }
   }
 
@@ -262,6 +268,18 @@
   </div>
 
   <div class="calendar-panel">
+    {#if recordsLoading}
+      <div class="records-status" role="status" aria-live="polite">
+        <span class="loading-spinner"></span>
+        <span>운동 기록을 불러오는 중</span>
+      </div>
+    {:else if recordsError}
+      <div class="records-status is-error" role="alert">
+        <span>{recordsError}</span>
+        <button type="button" onclick={() => void loadFitnessRecords()}>다시 시도</button>
+      </div>
+    {/if}
+
     <div class="weekdays" aria-hidden="true">
       {#each WEEK_LABELS as label}
         <div>{label}</div>
@@ -429,6 +447,53 @@
     border-radius: 22px;
     background: #fff;
     box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  }
+
+  .records-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 42px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f0fdf4;
+    color: #15803d;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .records-status.is-error {
+    justify-content: space-between;
+    padding: 0 12px;
+    background: #fef2f2;
+    color: #dc2626;
+  }
+
+  .records-status button {
+    border: 1px solid rgba(220, 38, 38, 0.24);
+    border-radius: 999px;
+    background: #fff;
+    color: #dc2626;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+
+  .loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(21, 128, 61, 0.2);
+    border-top-color: #16a34a;
+    border-radius: 999px;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .weekdays,
@@ -824,6 +889,23 @@
   :global(html[data-theme="dark"]) .calendar-cell.is-selected {
     background: #1d3246;
     box-shadow: inset 0 0 0 2px rgba(125, 179, 255, 0.6);
+  }
+
+  :global(html[data-theme="dark"]) .records-status {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(20, 83, 45, 0.34);
+    color: #86efac;
+  }
+
+  :global(html[data-theme="dark"]) .records-status.is-error {
+    background: rgba(127, 29, 29, 0.35);
+    color: #fca5a5;
+  }
+
+  :global(html[data-theme="dark"]) .records-status button {
+    background: #1c1917;
+    border-color: rgba(252, 165, 165, 0.28);
+    color: #fca5a5;
   }
 
   :global(html[data-theme="dark"]) .weekdays div:first-child,
