@@ -12,6 +12,7 @@
   const tree = $derived(buildTree(data.menus ?? []));
   const menuTabs = $derived(data.menuTabs ?? []);
   const activeMenu = $derived(data.activeMenu ?? "");
+  const hideChrome = $derived(data.hideChrome ?? false);
   const showSidebar = $derived(activeMenu !== "home" && tree.length > 0);
 
   let isMobile = $state(false);
@@ -100,89 +101,95 @@
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-<header class="topbar">
-  <div class="topbar-left">
-    <nav aria-label="Top menus" class="top-menu">
-      {#each menuTabs as menu}
-        <a
-          href={menu.path}
-          class={`top-menu-link ${activeMenu === menu.key ? "active" : ""}`}
-          onclick={closeDrawer}
-        >
-          {menu.label}
-        </a>
-      {/each}
-    </nav>
-  </div>
-
-  {#if showSidebar}
-  <button
-    type="button"
-    class="hamburger"
-    aria-label="Open menu"
-    aria-expanded={drawerOpen}
-    onclick={toggleDrawer}
-  >
-    &#9776;
-  </button>
-  {/if}
-
-  <button
-    type="button"
-    class="theme-toggle"
-    aria-label="Toggle dark mode"
-    aria-pressed={isDarkMode}
-    onclick={toggleTheme}
-  >
-    {isDarkMode ? "☀️" : "🌙"}
-  </button>
-</header>
-
-<div
-  class={`wiki-shell ${showSidebar ? "has-sidebar" : "no-sidebar"} ${desktopSidebarCollapsed ? "sidebar-collapsed" : ""}`}
->
-  {#if showSidebar && isMobile && drawerOpen}
-    <button
-      type="button"
-      class="drawer-backdrop"
-      aria-label="Close menu"
-      onclick={closeDrawer}
-    ></button>
-  {/if}
-
-  {#if showSidebar}
-    <aside class={`sidebar ${isMobile && drawerOpen ? "open" : ""} ${!isMobile && desktopSidebarCollapsed ? "desktop-collapsed" : ""}`}>
-      {#if !isMobile}
-        <button
-          type="button"
-          class="sidebar-toggle-desktop"
-          aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!desktopSidebarCollapsed}
-          onclick={toggleDrawer}
-        >
-          {desktopSidebarCollapsed ? "›" : "‹"}
-        </button>
-      {/if}
-
-      <nav aria-label="Side menu" class="menu-nav">
-        <ul class="menu-root">
-          {#each tree as node}
-            <ResponsiveMenuItem
-              {node}
-              {isMobile}
-              {expandedIds}
-              onToggle={toggleSubmenu}
-              onNavigate={closeDrawer}
-            />
-          {/each}
-        </ul>
-      </nav>
-    </aside>
-  {/if}
-
-  <main class="content">
+{#if hideChrome}
+  <main class="standalone-content">
     {@render children()}
   </main>
-</div>
+{:else}
+  <header class="topbar">
+    <div class="topbar-left">
+      <nav aria-label="Top menus" class="top-menu">
+        {#each menuTabs as menu}
+          <a
+            href={menu.path}
+            class={`top-menu-link ${activeMenu === menu.key ? "active" : ""}`}
+            onclick={closeDrawer}
+          >
+            {menu.label}
+          </a>
+        {/each}
+      </nav>
+    </div>
+
+    {#if showSidebar}
+    <button
+      type="button"
+      class="hamburger"
+      aria-label="Open menu"
+      aria-expanded={drawerOpen}
+      onclick={toggleDrawer}
+    >
+      &#9776;
+    </button>
+    {/if}
+
+    <button
+      type="button"
+      class="theme-toggle"
+      aria-label="Toggle dark mode"
+      aria-pressed={isDarkMode}
+      onclick={toggleTheme}
+    >
+      {isDarkMode ? "☀️" : "🌙"}
+    </button>
+  </header>
+
+  <div
+    class={`wiki-shell ${showSidebar ? "has-sidebar" : "no-sidebar"} ${desktopSidebarCollapsed ? "sidebar-collapsed" : ""}`}
+  >
+    {#if showSidebar && isMobile && drawerOpen}
+      <button
+        type="button"
+        class="drawer-backdrop"
+        aria-label="Close menu"
+        onclick={closeDrawer}
+      ></button>
+    {/if}
+
+    {#if showSidebar}
+      <aside class={`sidebar ${isMobile && drawerOpen ? "open" : ""} ${!isMobile && desktopSidebarCollapsed ? "desktop-collapsed" : ""}`}>
+        {#if !isMobile}
+          <button
+            type="button"
+            class="sidebar-toggle-desktop"
+            aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!desktopSidebarCollapsed}
+            onclick={toggleDrawer}
+          >
+            {desktopSidebarCollapsed ? "›" : "‹"}
+          </button>
+        {/if}
+
+        <nav aria-label="Side menu" class="menu-nav">
+          <ul class="menu-root">
+            {#each tree as node}
+              <ResponsiveMenuItem
+                {node}
+                {isMobile}
+                {expandedIds}
+                onToggle={toggleSubmenu}
+                onNavigate={closeDrawer}
+              />
+            {/each}
+          </ul>
+        </nav>
+      </aside>
+    {/if}
+
+    <main class="content">
+      {@render children()}
+    </main>
+  </div>
+{/if}
 
 <GlobalLoadingModal />

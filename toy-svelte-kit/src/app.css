@@ -301,6 +301,13 @@ html[data-theme="dark"] .drawer-backdrop {
   padding: 20px;
 }
 
+.standalone-content {
+  min-height: 100vh;
+  min-height: 100svh;
+  width: 100%;
+  padding: 0;
+}
+
 .content > :global(.home-dashboard),
 .content > :global(.admin-gate),
 .content > :global(.page-grid),
