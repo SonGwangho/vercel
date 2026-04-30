@@ -32,7 +32,7 @@
 **PAGE 경로**
 - 페이지는 `/src/{MENU_DIR}/{MENU_TITLE}` 경로에 폴더를 만들어서 작성한다.
 - 페이지 타입은 `TreeMenu.ts` 파일에 정의된 `TreeMenu`를 따른다.
-- 메뉴는 직접 생성하지 않고 `src\\lib\\assets\\data\\*.json` 경로에 작성한다.
+- 메뉴는 직접 생성하지 않고 `src\\lib\\assets\\data\\menu.json` 경로에 작성한다.
 
 
 ## 데이터 관리

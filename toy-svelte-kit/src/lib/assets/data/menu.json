@@ -1,0 +1,26 @@
+[
+  {
+    "id": "home",
+    "name": "Home",
+    "path": "/",
+    "order": 0
+  },
+  {
+    "id": "game",
+    "name": "Game",
+    "path": "/game/jjaprimgosu",
+    "order": 10
+  },
+  {
+    "id": "info",
+    "name": "Info",
+    "path": "/info/pokemon",
+    "order": 20
+  },
+  {
+    "id": "wiki",
+    "name": "Wiki",
+    "path": "/wiki/2026-01",
+    "order": 30
+  }
+]

@@ -1,4 +1,5 @@
 import type { TreeMenu } from "$lib";
+import topMenuSource from "$lib/assets/data/menu.json";
 
 type MenuTab = {
   key: string;
@@ -6,7 +7,7 @@ type MenuTab = {
   path: string;
 };
 
-const HIDDEN_MENU_KEYS = new Set(["admin"]);
+const topMenus = [...(topMenuSource as TreeMenu[])].filter(isTreeMenu).sort((a, b) => a.order - b.order);
 
 const menuRawFiles = import.meta.glob("$lib/assets/data/*.json", {
   query: "?raw",
@@ -74,11 +75,14 @@ function buildMenuMap(): Map<string, TreeMenu[]> {
 
   for (const [path, raw] of Object.entries(menuRawFiles)) {
     const key = menuKeyFromPath(path);
-    if (!key) {
+    if (!key || key === "menu") {
       continue;
     }
 
-    map.set(key, parseMenus(raw));
+    const menus = parseMenus(raw);
+    if (menus.length > 0) {
+      map.set(key, menus);
+    }
   }
 
   return map;
@@ -137,30 +141,23 @@ export const load = async ({ url }: { url: URL }) => {
   const chromeHiddenPaths = new Set(["/info/fitness"]);
   const hideChrome = chromeHiddenPaths.has(url.pathname);
   const menuMap = buildMenuMap();
-  const keys = [...menuMap.keys()].sort((a, b) => a.localeCompare(b));
+  const topMenuKeys = new Set(topMenus.map((menu) => menu.id.toLowerCase()));
   const pathFirstSegment = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase();
   const activeMenu =
-    pathFirstSegment && menuMap.has(pathFirstSegment) ? pathFirstSegment : "home";
+    pathFirstSegment && (topMenuKeys.has(pathFirstSegment) || pathFirstSegment === "admin")
+      ? pathFirstSegment
+      : "home";
   const menus =
     activeMenu === "admin"
       ? buildAdminMenus(url)
       : activeMenu
         ? (menuMap.get(activeMenu) ?? [])
         : [];
-  const menuTabs: MenuTab[] = [
-    {
-      key: "home",
-      label: "Home",
-      path: "/",
-    },
-    ...keys
-      .filter((key) => activeMenu === key || !HIDDEN_MENU_KEYS.has(key))
-      .map((key) => ({
-      key,
-      label: menuLabelFromKey(key),
-      path: key === activeMenu ? url.pathname : firstMenuPath(menuMap.get(key) ?? [], key),
-    })),
-  ];
+  const menuTabs: MenuTab[] = topMenus.map((menu) => ({
+    key: menu.id,
+    label: menu.name || menuLabelFromKey(menu.id),
+    path: menu.id === activeMenu ? url.pathname : menu.path || firstMenuPath(menuMap.get(menu.id) ?? [], menu.id),
+  }));
 
   return {
     menus,
