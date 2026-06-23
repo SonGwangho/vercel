@@ -19,23 +19,30 @@
   } = $props();
 
   const hasChildren = $derived(node.children.length > 0);
-  let isExpanded = $state(false);
+  let isExpanded = $state(Boolean(node.defaultOpen));
 </script>
 
 <li class={`menu-item level-${level}`}>
   <div class="menu-entry">
     {#if hasChildren}
+      <a
+        href={node.path}
+        class="menu-link menu-link-parent"
+        onclick={() => isMobile && onNavigate?.()}
+      >
+        {node.name}
+      </a>
       <button
         type="button"
-        class="menu-parent"
+        class="submenu-toggle"
+        aria-label={isExpanded ? "Close submenu" : "Open submenu"}
         aria-expanded={isExpanded}
         onclick={() => {
           isExpanded = !isExpanded;
           onToggle?.(node.id);
         }}
       >
-        <span>{node.name}</span>
-        <span class="submenu-indicator">{isExpanded ? "-" : "+"}</span>
+        {isExpanded ? "-" : "+"}
       </button>
     {:else}
       <a href={node.path} class="menu-link" onclick={() => isMobile && onNavigate?.()}>

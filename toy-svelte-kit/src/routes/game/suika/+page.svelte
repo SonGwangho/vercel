@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { createRanking, loadRankings as loadRankingList } from "$lib";
   import { requireGameCode } from "$lib/gameCodes";
   import fruitDefs from "$lib/assets/data/suika/fruits.json";
   import type {
-    RankingListResponse,
     SuikaFruitDefinition,
     SuikaRankingItem,
     SuikaScoreRequest,
@@ -381,12 +381,7 @@
     rankingError = "";
 
     try {
-      const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=5`);
-      if (!response.ok) {
-        throw new Error(`ranking fetch failed: ${response.status}`);
-      }
-
-      const data = (await response.json()) as RankingListResponse;
+      const data = await loadRankingList(GAME_CODE, 5);
       rankings = data.rankings as SuikaRankingItem[];
     } catch (error) {
       rankings = [];
@@ -413,18 +408,7 @@
     };
 
     try {
-      const response = await fetch("/api/rankings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`submit failed: ${response.status}`);
-      }
-
+      await createRanking(payload);
       await fetchRanking();
       resetGame();
     } catch (error) {

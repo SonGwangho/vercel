@@ -4,6 +4,7 @@ export type TreeMenu = {
   path: string;
   parent?: string;
   description?: string;
+  defaultOpen?: boolean;
   order: number;
 };
 

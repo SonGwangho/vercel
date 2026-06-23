@@ -1,3 +1,5 @@
+import type { GameCodeEntry } from "./Game";
+
 export type RankingRecord = {
 	id: number;
 	gameCode: number;
@@ -23,6 +25,15 @@ export type RankingUpdateRequest = Partial<Pick<RankingCreateRequest, "gameName"
 
 export type RankingListResponse = {
 	rankings: RankingListItem[];
+};
+
+export type RankingBoard = {
+	game: GameCodeEntry;
+	rankings: RankingListItem[];
+};
+
+export type RankingBoardListResponse = {
+	boards: RankingBoard[];
 };
 
 export type RankingMutationResponse = {

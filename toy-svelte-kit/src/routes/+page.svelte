@@ -4,10 +4,9 @@
   import type {
     CurrentWeather,
     CurrentWeatherResponse,
-    GameCodeListResponse,
     HomeRankingBoardState,
-    RankingListResponse,
   } from "$lib";
+  import { loadRankingBoards } from "$lib";
 
   const HOME_RANKING_LIMIT = 5;
   const INITIAL_SKELETON_COUNT = 3;
@@ -60,49 +59,13 @@
     rankingsLoading = true;
 
     try {
-      const codesResponse = await fetch("/api/games/codes");
-
-      if (!codesResponse.ok) {
-        throw new Error("Failed to load games.");
-      }
-
-      const codesData = (await codesResponse.json()) as GameCodeListResponse;
-      const rankedGames = codesData.games.filter((game) => game.hasRanking);
-
-      rankingBoards = rankedGames.map((game) => ({
-        game,
-        rankings: [],
-        loading: true,
+      const data = await loadRankingBoards(HOME_RANKING_LIMIT);
+      rankingBoards = data.boards.map((board) => ({
+        ...board,
+        loading: false,
         error: false,
       }));
       rankingsLoading = false;
-
-      await Promise.all(
-        rankedGames.map(async (game) => {
-          try {
-            const rankingResponse = await fetch(
-              `/api/rankings?gameCode=${game.gameCode}&limit=${HOME_RANKING_LIMIT}`,
-            );
-
-            if (!rankingResponse.ok) {
-              throw new Error("Failed to load rankings.");
-            }
-
-            const rankingData = (await rankingResponse.json()) as RankingListResponse;
-            rankingBoards = rankingBoards.map((board) =>
-              board.game.gameCode === game.gameCode
-                ? { ...board, rankings: rankingData.rankings, loading: false, error: false }
-                : board,
-            );
-          } catch {
-            rankingBoards = rankingBoards.map((board) =>
-              board.game.gameCode === game.gameCode
-                ? { ...board, rankings: [], loading: false, error: true }
-                : board,
-            );
-          }
-        }),
-      );
     } catch {
       rankingBoards = [];
       rankingsLoading = false;

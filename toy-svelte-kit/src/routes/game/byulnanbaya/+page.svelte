@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
+	import { createRanking, loadRankings as loadRankingList } from "$lib";
 	import { requireGameCode } from "$lib/gameCodes";
 	import type {
 		ByulnanbayaFieldUnit,
 		ByulnanbayaStatus,
 		ByulnanbayaUnitDefinition,
-		RankingListItem,
-		RankingListResponse
+		RankingListItem
 	} from "$lib";
 
 	type GemKind = "ruby" | "sun" | "leaf" | "wave" | "violet";
@@ -123,12 +123,7 @@
 		rankingError = "";
 
 		try {
-			const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=${RANKING_LIMIT}`);
-			if (!response.ok) {
-				throw new Error("랭킹을 불러오지 못했습니다.");
-			}
-
-			const data = (await response.json()) as RankingListResponse;
+			const data = await loadRankingList(GAME_CODE, RANKING_LIMIT);
 			rankings = data.rankings;
 		} catch (error) {
 			rankingError = error instanceof Error ? error.message : "랭킹을 불러오지 못했습니다.";
@@ -146,23 +141,12 @@
 		rankingError = "";
 
 		try {
-			const response = await fetch("/api/rankings", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json"
-				},
-				body: JSON.stringify({
-					gameCode: GAME_CODE,
-					gameName: gameMeta.gameName,
-					userName: userName.trim(),
-					score: rankingScoreFromTime(clearTimeMs)
-				})
+			await createRanking({
+				gameCode: GAME_CODE,
+				gameName: gameMeta.gameName,
+				userName: userName.trim(),
+				score: rankingScoreFromTime(clearTimeMs)
 			});
-
-			if (!response.ok) {
-				throw new Error("기록 등록에 실패했습니다.");
-			}
-
 			recordSubmitted = true;
 			await loadRankings();
 		} catch (error) {

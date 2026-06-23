@@ -15,14 +15,14 @@
   - 명시 버전: `toy-svelte-kit/package.json` (`^` 포함)
   - 설치 버전: `toy-svelte-kit/package-lock.json` (실제 설치)
 - 주요 스택 버전
-  - `@sveltejs/kit`: `^2.50.1` (installed: `2.50.2`)
-  - `svelte`: `^5.48.2` (installed: `5.49.2`)
+  - `@sveltejs/kit`: `^2.50.1` (installed: `2.55.0`)
+  - `svelte`: `^5.48.2` (installed: `5.53.11`)
   - `@sveltejs/vite-plugin-svelte`: `^6.2.4` (installed: `6.2.4`)
   - `@sveltejs/adapter-auto`: `^7.0.0` (installed: `7.0.0`)
   - `vite`: `^7.3.1` (installed: `7.3.1`)
   - `svelte-check`: `^4.3.5` (installed: `4.3.6`)
   - `typescript`: `^5.9.3` (installed: `5.9.3`)
-  - `neon`: `2.21.2` (intalled: `2.21.2`)
+  - `@neondatabase/serverless`: `^1.0.2` (installed: `1.0.2`)
 
 ## 경로 관리
 **타입 경로**

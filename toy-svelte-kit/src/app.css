@@ -276,8 +276,22 @@ html[data-theme="dark"] .drawer-backdrop {
 }
 
 .submenu-toggle {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.submenu-toggle:hover {
+  background: var(--surface-strong);
+  color: var(--text);
 }
 
 .submenu {

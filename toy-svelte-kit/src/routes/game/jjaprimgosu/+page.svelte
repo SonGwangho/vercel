@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { createRanking, loadRankings as loadRankingList } from "$lib";
   import { requireGameCode } from "$lib/gameCodes";
   import type {
     JjaprimGosuRankingItem,
     JjaprimGosuScoreRequest,
-    RankingListResponse,
   } from "$lib";
 
   type GameStatus = "idle" | "running" | "dead";
@@ -337,12 +337,7 @@
     rankingError = "";
 
     try {
-      const response = await fetch(`/api/rankings?gameCode=${GAME_CODE}&limit=5`);
-      if (!response.ok) {
-        throw new Error(`ranking fetch failed: ${response.status}`);
-      }
-
-      const data = (await response.json()) as RankingListResponse;
+      const data = await loadRankingList(GAME_CODE, 5);
       rankings = data.rankings as JjaprimGosuRankingItem[];
     } catch (error) {
       rankings = [];
@@ -371,18 +366,7 @@
     };
 
     try {
-      const response = await fetch("/api/rankings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`score submit failed: ${response.status}`);
-      }
-
+      await createRanking(payload);
       await fetchRanking();
       resetToIdle();
     } catch (error) {

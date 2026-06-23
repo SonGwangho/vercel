@@ -1,4 +1,13 @@
-import { json, type Handle } from "@sveltejs/kit";
+import { isHttpError, json, type Handle } from "@sveltejs/kit";
+
+function errorResponse(error: unknown): Response {
+	if (isHttpError(error)) {
+		return json({ message: error.body.message }, { status: error.status });
+	}
+
+	const message = error instanceof Error ? error.message : "Internal server error.";
+	return json({ message }, { status: 500 });
+}
 
 export const apiHandle: Handle = async ({ event, resolve }) => {
 	try {
@@ -15,8 +24,7 @@ export const apiHandle: Handle = async ({ event, resolve }) => {
 			throw error;
 		}
 
-		const message = error instanceof Error ? error.message : "Internal server error.";
-		return json({ message }, { status: 500 });
+		return errorResponse(error);
 	}
 };
 
@@ -27,8 +35,7 @@ export function withApiHook<T extends (event: Parameters<T>[0]) => Response | Pr
 		try {
 			return await handler(event);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "Internal server error.";
-			return json({ message }, { status: 500 });
+			return errorResponse(error);
 		}
 	}) as T;
 }

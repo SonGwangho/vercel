@@ -18,6 +18,12 @@
     "order": 20
   },
   {
+    "id": "books",
+    "name": "Books",
+    "path": "/books",
+    "order": 25
+  },
+  {
     "id": "wiki",
     "name": "Wiki",
     "path": "/wiki/2026-01",

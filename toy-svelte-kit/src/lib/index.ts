@@ -1,7 +1,12 @@
 ﻿// place files you want to import through the `$lib` alias in this folder.
 export * from "./utils/Utils.ts";
 export * from "./utils/Storage.ts";
+export * from "./client/api.ts";
+export * from "./client/rankings.ts";
 export { default as Table } from "./components/Table/Table.svelte";
+export { default as ButtonLink } from "./components/UI/ButtonLink.svelte";
+export { default as PageCard } from "./components/UI/PageCard.svelte";
+export { default as TextInput } from "./components/UI/TextInput.svelte";
 export * from "./types/User.ts";
 export * from "./types/Table.ts";
 export * from "./types/TreeMenu.ts";
@@ -20,3 +25,4 @@ export * from "./types/Home.ts";
 export * from "./types/Calendar.ts";
 export * from "./types/Byulnanbaya.ts";
 export * from "./types/Fitness.ts";
+export * from "./types/Book.ts";
