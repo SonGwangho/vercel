@@ -225,6 +225,14 @@ html[data-theme="dark"] .drawer-backdrop {
   padding: 0;
 }
 
+.menu-empty {
+  margin: 0;
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .menu-item {
   position: relative;
 }

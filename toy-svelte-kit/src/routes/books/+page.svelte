@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto, invalidateAll } from "$app/navigation";
-	import type { BookListResponse, BookRecord, BookSaveResponse, BookSortKey } from "$lib";
+	import type { BookListResponse, BookQuoteRecord, BookRecord, BookSaveResponse, BookSortKey } from "$lib";
 
 	type PageData = BookListResponse & {
 		selectedBookId: number | null;
@@ -8,9 +8,13 @@
 		loadError: string;
 	};
 
+	type RecordMode = "book" | "quote";
+
 	let { data } = $props<{ data: PageData }>();
 
 	let dialog: HTMLDialogElement | null = null;
+	let passwordDialog: HTMLDialogElement | null = null;
+	let recordMode = $state<RecordMode>("book");
 	let draftBookId = $state<number | null>(null);
 	let title = $state("");
 	let author = $state("");
@@ -24,15 +28,21 @@
 	let savePassword = $state("");
 	let saving = $state(false);
 	let saveMessage = $state("");
+	let passwordMessage = $state("");
 
 	const books = $derived(data.books);
 	const selectedBook = $derived(
-		books.find((book) => book.id === data.selectedBookId) ?? books[0] ?? null
+		books.find((book: BookRecord) => book.id === data.selectedBookId) ?? books[0] ?? null
 	);
 	const selectedQuote = $derived(
-		selectedBook?.quotes.find((item) => item.id === data.selectedQuoteId) ?? null
+		selectedBook?.quotes.find((item: BookQuoteRecord) => item.id === data.selectedQuoteId) ?? null
 	);
-	const totalQuotes = $derived(books.reduce((total, book) => total + book.quotes.length, 0));
+
+	function todayDate() {
+		const now = new Date();
+		const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+		return localDate.toISOString().slice(0, 10);
+	}
 
 	function formatDate(value: string | null) {
 		if (!value) {
@@ -80,28 +90,35 @@
 		return `/books?${params.toString()}`;
 	}
 
-	function fillBookDraft(book: BookRecord | null) {
+	function fillBookDraft(book: BookRecord | null, mode: RecordMode) {
+		recordMode = mode;
 		draftBookId = book?.id ?? null;
 		title = book?.title ?? "";
 		author = book?.author ?? "";
 		publisher = book?.publisher ?? "";
 		memo = book?.memo ?? "";
-		readAt = book?.readAt ?? "";
+		readAt = mode === "book" ? (book?.readAt ?? todayDate()) : (book?.readAt ?? "");
 		quote = "";
 		page = "";
 		tags = "";
 		note = "";
 		savePassword = "";
 		saveMessage = "";
+		passwordMessage = "";
 	}
 
-	function openRecordDialog() {
-		fillBookDraft(selectedBook);
+	function openBookRecordDialog() {
+		fillBookDraft(null, "book");
 		dialog?.showModal();
 	}
 
-	function startNewBook() {
-		fillBookDraft(null);
+	function openQuoteRecordDialog() {
+		if (!selectedBook) {
+			return;
+		}
+
+		fillBookDraft(selectedBook, "quote");
+		dialog?.showModal();
 	}
 
 	function parseTags() {
@@ -111,13 +128,35 @@
 			.filter(Boolean);
 	}
 
+	function requestSavePassword() {
+		if (recordMode === "book" && !title.trim()) {
+			saveMessage = "책 제목을 입력해 주세요.";
+			return;
+		}
+
+		if (recordMode === "quote" && !draftBookId) {
+			saveMessage = "책을 먼저 선택해 주세요.";
+			return;
+		}
+
+		if (recordMode === "quote" && !quote.trim()) {
+			saveMessage = "글귀를 입력해 주세요.";
+			return;
+		}
+
+		savePassword = "";
+		saveMessage = "";
+		passwordMessage = "";
+		passwordDialog?.showModal();
+	}
+
 	async function saveRecord() {
 		if (saving) {
 			return;
 		}
 
 		saving = true;
-		saveMessage = "";
+		passwordMessage = "";
 
 		try {
 			const response = await fetch("/api/books", {
@@ -132,10 +171,10 @@
 					publisher,
 					memo,
 					readAt,
-					quote,
-					page,
-					tags: parseTags(),
-					note,
+					quote: recordMode === "quote" ? quote : "",
+					page: recordMode === "quote" ? page : "",
+					tags: recordMode === "quote" ? parseTags() : [],
+					note: recordMode === "quote" ? note : "",
 					savePassword
 				})
 			});
@@ -156,10 +195,11 @@
 				params.set("quote", String(payload.quote.id));
 			}
 
+			passwordDialog?.close();
 			dialog?.close();
 			await goto(`/books?${params.toString()}`);
 		} catch (error) {
-			saveMessage = error instanceof Error ? error.message : "저장하지 못했습니다.";
+			passwordMessage = error instanceof Error ? error.message : "저장하지 못했습니다.";
 		} finally {
 			saving = false;
 		}
@@ -171,54 +211,58 @@
 </svelte:head>
 
 <section class="books-page">
-	<header class="books-header">
-		<div>
-			<p class="page-eyebrow">Books</p>
-			<h1>읽은 책과 남겨둔 문장</h1>
-			<p>책별 독후감과 마음에 남은 글귀를 한곳에 쌓아둡니다.</p>
+	<div class="books-actions">
+		<nav aria-label="책 정렬" class="sort-links">
+			<a class:active={data.sort === "recent"} href={sortHref("recent")}>최근순</a>
+			<a class:active={data.sort === "readAt"} href={sortHref("readAt")}>읽은순</a>
+			<a class:active={data.sort === "title"} href={sortHref("title")}>제목순</a>
+		</nav>
+		<div class="record-actions">
+			{#if selectedBook}
+				<button type="button" class="secondary-btn" onclick={openBookRecordDialog}>책 기록</button>
+				<button type="button" class="primary-btn" onclick={openQuoteRecordDialog}>글귀 메모</button>
+			{:else}
+				<button type="button" class="primary-btn" onclick={openBookRecordDialog}>책 기록</button>
+			{/if}
 		</div>
-		<button type="button" class="primary-btn" onclick={openRecordDialog}>기록</button>
-	</header>
-
-	<div class="books-toolbar" aria-label="책 정렬">
-		<a class:active={data.sort === "recent"} href={sortHref("recent")}>최근 기록순</a>
-		<a class:active={data.sort === "readAt"} href={sortHref("readAt")}>읽은 날짜순</a>
-		<a class:active={data.sort === "title"} href={sortHref("title")}>제목순</a>
 	</div>
 
 	{#if data.loadError}
-		<section class="empty-panel">
+		<section class="book-document">
 			<h2>기록을 불러오지 못했습니다.</h2>
 			<p>{data.loadError}</p>
 		</section>
 	{:else if books.length === 0}
-		<section class="empty-panel">
-			<h2>아직 기록한 책이 없습니다.</h2>
-			<p>오른쪽 위 기록 버튼으로 첫 책과 문장을 남겨보세요.</p>
+		<section class="book-document">
+			<h2>기록 없음</h2>
+			<p>아직 기록한 책이 없습니다.</p>
 		</section>
 	{:else if selectedBook}
-		<section class="book-overview">
-			<div class="book-title-block">
-				<div>
-					<p class="book-count">{books.length}권 / {totalQuotes}문장</p>
-					<h2>{selectedBook.title}</h2>
-					<p>
-						{selectedBook.author ?? "저자 미상"}
-						{#if selectedBook.publisher}
-							<span>·</span>
-							{selectedBook.publisher}
-						{/if}
-					</p>
-				</div>
-				<div class="read-date">
-					<span>읽은 날짜</span>
-					<strong>{formatDate(selectedBook.readAt)}</strong>
-				</div>
-			</div>
+		<section class="book-document">
+			<header class="document-head">
+				<h1>{selectedBook.title}</h1>
+				<dl>
+					<div>
+						<dt>저자</dt>
+						<dd>{selectedBook.author ?? "저자 미상"}</dd>
+					</div>
+					<div>
+						<dt>출판사</dt>
+						<dd>{selectedBook.publisher ?? "출판사 없음"}</dd>
+					</div>
+					<div>
+						<dt>날짜</dt>
+						<dd>{formatDate(selectedBook.readAt)}</dd>
+					</div>
+					<div>
+						<dt>글귀</dt>
+						<dd>{selectedBook.quotes.length}</dd>
+					</div>
+				</dl>
+			</header>
 
 			{#if selectedQuote}
-				<article class="quote-detail">
-					<div class="quote-mark">“</div>
+				<article class="quote-detail" aria-label="글귀">
 					<p class="quote-text">{selectedQuote.quote}</p>
 					<div class="quote-meta">
 						<span>{selectedQuote.page || "쪽수 없음"}</span>
@@ -235,16 +279,13 @@
 					<a class="back-link" href={bookHref(selectedBook)}>책 개요로 돌아가기</a>
 				</article>
 			{:else}
-				<div class="memo-panel">
-					<h3>독후감</h3>
+				<section class="document-section">
+					<h2>독후감</h2>
 					<p>{selectedBook.memo || "아직 적어둔 독후감이 없습니다."}</p>
-				</div>
+				</section>
 
-				<div class="quote-list">
-					<div class="section-heading">
-						<h3>마음에 남은 문장</h3>
-						<span>{selectedBook.quotes.length}</span>
-					</div>
+				<section class="document-section">
+					<h2>글귀</h2>
 
 					{#if selectedBook.quotes.length === 0}
 						<p class="quiet-text">이 책에 저장된 글귀가 없습니다.</p>
@@ -261,7 +302,7 @@
 							</a>
 						{/each}
 					{/if}
-				</div>
+				</section>
 			{/if}
 		</section>
 	{/if}
@@ -271,59 +312,90 @@
 	<form method="dialog" class="dialog-shell" onsubmit={(event) => event.preventDefault()}>
 		<div class="dialog-head">
 			<div>
-				<p class="page-eyebrow">Record</p>
-				<h2>책 기록</h2>
+				<h2>{recordMode === "quote" ? "글귀 메모" : "책 독후감 기록"}</h2>
 			</div>
 			<button type="button" class="icon-btn" aria-label="닫기" onclick={() => dialog?.close()}>×</button>
 		</div>
 
-		<div class="form-grid">
-			<label>
-				<span>책 제목</span>
-				<input type="text" bind:value={title} required />
-			</label>
-			<label>
-				<span>저자</span>
-				<input type="text" bind:value={author} />
-			</label>
-			<label>
-				<span>출판사</span>
-				<input type="text" bind:value={publisher} />
-			</label>
-			<label>
-				<span>읽은 날짜</span>
-				<input type="date" bind:value={readAt} />
-			</label>
-		</div>
-
-		<label>
-			<span>독후감</span>
-			<textarea rows="5" bind:value={memo}></textarea>
-		</label>
-
-		<div class="quote-fields">
-			<div class="section-heading">
-				<h3>글귀</h3>
-				<span>선택 사항</span>
-			</div>
-			<label>
-				<span>문장</span>
-				<textarea rows="4" bind:value={quote}></textarea>
-			</label>
+		{#if recordMode === "book"}
 			<div class="form-grid">
 				<label>
-					<span>쪽수</span>
-					<input type="text" bind:value={page} placeholder="p.42" />
+					<span>책 제목</span>
+					<input type="text" bind:value={title} required />
 				</label>
 				<label>
-					<span>태그</span>
-					<input type="text" bind:value={tags} placeholder="성장, 태도" />
+					<span>저자</span>
+					<input type="text" bind:value={author} />
+				</label>
+				<label>
+					<span>출판사</span>
+					<input type="text" bind:value={publisher} />
+				</label>
+				<label>
+					<span>읽은 날짜</span>
+					<input type="date" bind:value={readAt} />
 				</label>
 			</div>
+
 			<label>
-				<span>글귀 메모</span>
-				<textarea rows="3" bind:value={note}></textarea>
+				<span>독후감</span>
+				<textarea rows="7" bind:value={memo}></textarea>
 			</label>
+		{:else}
+			<div class="selected-book-line">
+				<span>책</span>
+				<strong>{title}</strong>
+			</div>
+
+			<div class="quote-fields">
+				<label>
+					<span>글귀</span>
+					<textarea rows="5" bind:value={quote}></textarea>
+				</label>
+				<div class="form-grid">
+					<label>
+						<span>쪽수</span>
+						<input type="text" bind:value={page} placeholder="p.42" />
+					</label>
+					<label>
+						<span>태그</span>
+						<input type="text" bind:value={tags} placeholder="성장, 태도" />
+					</label>
+				</div>
+				<label>
+					<span>메모</span>
+					<textarea rows="4" bind:value={note}></textarea>
+				</label>
+			</div>
+		{/if}
+
+		{#if saveMessage}
+			<p class="save-message">{saveMessage}</p>
+		{/if}
+
+		<div class="dialog-actions">
+			<button type="button" class="secondary-btn" onclick={() => dialog?.close()}>취소</button>
+			<button type="button" class="primary-btn" onclick={requestSavePassword} disabled={saving}>
+				저장
+			</button>
+		</div>
+	</form>
+</dialog>
+
+<dialog bind:this={passwordDialog} class="password-dialog">
+	<form
+		method="dialog"
+		class="password-shell"
+		onsubmit={(event) => {
+			event.preventDefault();
+			void saveRecord();
+		}}
+	>
+		<div class="dialog-head">
+			<h2>비밀번호</h2>
+			<button type="button" class="icon-btn" aria-label="닫기" onclick={() => passwordDialog?.close()}>
+				×
+			</button>
 		</div>
 
 		<label>
@@ -331,14 +403,14 @@
 			<input type="password" bind:value={savePassword} autocomplete="off" />
 		</label>
 
-		{#if saveMessage}
-			<p class="save-message">{saveMessage}</p>
+		{#if passwordMessage}
+			<p class="save-message">{passwordMessage}</p>
 		{/if}
 
 		<div class="dialog-actions">
-			<button type="button" class="secondary-btn" onclick={startNewBook}>새 책으로 시작</button>
-			<button type="button" class="primary-btn" onclick={() => void saveRecord()} disabled={saving}>
-				{saving ? "저장 중" : "저장"}
+			<button type="button" class="secondary-btn" onclick={() => passwordDialog?.close()}>취소</button>
+			<button type="submit" class="primary-btn" disabled={saving}>
+				{saving ? "저장 중" : "확인"}
 			</button>
 		</div>
 	</form>
@@ -347,72 +419,47 @@
 <style>
 	.books-page {
 		display: grid;
-		gap: 18px;
-		width: min(100%, var(--content-wide));
+		gap: 12px;
+		width: min(100%, var(--content-narrow));
 		margin-inline: auto;
 	}
 
-	.books-header,
-	.book-overview,
-	.empty-panel {
-		border: 1px solid var(--line);
-		border-radius: var(--panel-radius);
-		background: color-mix(in srgb, var(--surface) 96%, transparent);
-		box-shadow: var(--shadow-card);
-	}
-
-	.books-header {
+	.books-actions {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 16px;
-		padding: 28px;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 10px;
 	}
 
-	.books-header h1,
-	.book-title-block h2,
-	.dialog-head h2 {
-		margin: 0;
-		color: var(--text);
-		line-height: 1.08;
-		letter-spacing: 0;
-	}
-
-	.books-header h1 {
-		font-size: clamp(30px, 4vw, 44px);
-	}
-
-	.books-header p,
-	.book-title-block p,
-	.quiet-text,
-	.empty-panel p {
-		margin: 10px 0 0;
-		color: var(--muted);
-		line-height: 1.7;
-	}
-
-	.books-toolbar {
+	.sort-links {
 		display: flex;
 		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.record-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
 		gap: 8px;
 	}
 
-	.books-toolbar a,
+	.sort-links a,
 	.back-link {
 		display: inline-flex;
 		align-items: center;
-		min-height: 38px;
-		padding: 0 14px;
+		min-height: 34px;
+		padding: 0 12px;
 		border: 1px solid var(--line);
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--surface) 94%, transparent);
+		background: color-mix(in srgb, var(--surface) 90%, transparent);
 		color: var(--muted);
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 800;
 		text-decoration: none;
 	}
 
-	.books-toolbar a.active,
+	.sort-links a.active,
 	.back-link:hover {
 		background: var(--surface-strong);
 		color: var(--brand-strong);
@@ -448,109 +495,104 @@
 		color: var(--brand-strong);
 	}
 
-	.book-overview {
+	.book-document {
 		display: grid;
-		gap: 20px;
+		gap: 26px;
 		padding: 28px;
+		border: 1px solid var(--line);
+		border-radius: var(--panel-radius);
+		background: color-mix(in srgb, var(--surface) 96%, transparent);
+		box-shadow: var(--shadow-card);
 	}
 
-	.book-title-block {
-		display: flex;
-		justify-content: space-between;
-		gap: 18px;
-		align-items: flex-start;
-	}
-
-	.book-title-block h2 {
-		font-size: clamp(28px, 4vw, 42px);
-	}
-
-	.book-count {
-		margin: 0 0 8px;
-		color: var(--accent-warm);
-		font-size: 12px;
-		font-weight: 900;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-
-	.read-date {
+	.document-head {
 		display: grid;
-		gap: 6px;
-		min-width: 142px;
-		padding: 14px;
-		border-radius: 14px;
-		background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-		text-align: right;
+		gap: 16px;
 	}
 
-	.read-date span,
+	.document-head h1 {
+		margin: 0;
+		color: var(--text);
+		font-size: clamp(30px, 4vw, 42px);
+		line-height: 1.12;
+		letter-spacing: 0;
+	}
+
+	.document-head dl {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 10px;
+		margin: 0;
+	}
+
+	.document-head div {
+		display: grid;
+		gap: 4px;
+		padding: 10px 0;
+		border-top: 1px solid var(--line);
+	}
+
+	.document-head dt,
 	.quote-meta span,
 	.quote-card span,
+	.selected-book-line span,
 	label span {
 		color: var(--muted);
 		font-size: 13px;
 		font-weight: 800;
 	}
 
-	.read-date strong {
-		color: var(--text);
-		font-size: 15px;
-	}
-
-	.memo-panel,
-	.quote-detail {
-		padding: 22px;
-		border-radius: 18px;
-		background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
-	}
-
-	.memo-panel h3,
-	.note-block h3,
-	.section-heading h3 {
+	.document-head dd {
 		margin: 0;
 		color: var(--text);
-		font-size: 16px;
+		font-size: 14px;
+		line-height: 1.5;
 	}
 
-	.memo-panel p,
-	.note-block p {
-		margin: 12px 0 0;
+	.document-section {
+		display: grid;
+		gap: 12px;
+	}
+
+	.document-section h2,
+	.note-block h3,
+	.dialog-head h2 {
+		margin: 0;
+		color: var(--text);
+		font-size: 18px;
+		line-height: 1.3;
+	}
+
+	.document-section p,
+	.note-block p,
+	.quiet-text,
+	.book-document > p {
+		margin: 0;
 		color: var(--text);
 		line-height: 1.8;
 		white-space: pre-wrap;
 	}
 
-	.quote-list {
-		display: grid;
-		gap: 10px;
-	}
-
-	.section-heading {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 12px;
-	}
-
-	.section-heading span {
+	.book-document > p {
 		color: var(--muted);
-		font-size: 13px;
-		font-weight: 800;
+	}
+
+	.document-section h2 + .quiet-text {
+		color: var(--muted);
 	}
 
 	.quote-card {
 		display: grid;
 		gap: 10px;
-		padding: 16px;
-		border-radius: 14px;
-		background: color-mix(in srgb, var(--surface) 96%, transparent);
+		padding: 14px 0;
+		border-top: 1px solid var(--line);
+		background: transparent;
 		color: inherit;
 		text-decoration: none;
 	}
 
 	.quote-card:hover {
-		background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+		background: color-mix(in srgb, var(--surface-strong) 38%, transparent);
 	}
 
 	.quote-card p {
@@ -580,17 +622,6 @@
 		position: relative;
 		display: grid;
 		gap: 16px;
-		overflow: hidden;
-	}
-
-	.quote-mark {
-		position: absolute;
-		top: -28px;
-		right: 18px;
-		color: color-mix(in srgb, var(--brand) 15%, transparent);
-		font-size: 120px;
-		font-weight: 900;
-		line-height: 1;
 	}
 
 	.quote-text {
@@ -607,13 +638,19 @@
 		position: relative;
 	}
 
-	.empty-panel {
-		padding: 28px;
+	.selected-book-line {
+		display: grid;
+		gap: 6px;
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
 	}
 
-	.empty-panel h2 {
-		margin: 0;
-		font-size: 24px;
+	.selected-book-line strong {
+		color: var(--text);
+		font-size: 15px;
+		line-height: 1.5;
 	}
 
 	.record-dialog {
@@ -627,14 +664,34 @@
 		box-shadow: var(--shadow-card);
 	}
 
+	.password-dialog {
+		width: min(360px, calc(100vw - 32px));
+		padding: 0;
+		border: 1px solid var(--line);
+		border-radius: 20px;
+		background: var(--surface);
+		color: var(--text);
+		box-shadow: var(--shadow-card);
+	}
+
 	.record-dialog::backdrop {
 		background: rgba(15, 23, 42, 0.42);
+	}
+
+	.password-dialog::backdrop {
+		background: rgba(15, 23, 42, 0.34);
 	}
 
 	.dialog-shell {
 		display: grid;
 		gap: 18px;
 		padding: 24px;
+	}
+
+	.password-shell {
+		display: grid;
+		gap: 16px;
+		padding: 20px;
 	}
 
 	.dialog-head,
@@ -708,17 +765,15 @@
 	}
 
 	@media (max-width: 720px) {
-		.books-header,
-		.book-title-block,
+		.books-actions,
+		.record-actions,
 		.dialog-head,
 		.dialog-actions {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr);
 		}
 
-		.books-header,
-		.book-overview,
-		.empty-panel {
+		.book-document {
 			padding: 20px;
 			border-radius: 20px;
 		}
@@ -728,8 +783,8 @@
 			width: 100%;
 		}
 
-		.read-date {
-			text-align: left;
+		.document-head dl {
+			grid-template-columns: 1fr;
 		}
 
 		.form-grid {

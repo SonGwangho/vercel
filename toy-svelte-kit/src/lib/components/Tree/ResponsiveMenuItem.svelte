@@ -19,7 +19,13 @@
   } = $props();
 
   const hasChildren = $derived(node.children.length > 0);
-  let isExpanded = $state(Boolean(node.defaultOpen));
+  let isExpanded = $state(false);
+
+  $effect(() => {
+    if (node.defaultOpen) {
+      isExpanded = true;
+    }
+  });
 </script>
 
 <li class={`menu-item level-${level}`}>

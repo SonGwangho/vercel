@@ -13,7 +13,7 @@
   const menuTabs = $derived(data.menuTabs ?? []);
   const activeMenu = $derived(data.activeMenu ?? "");
   const hideChrome = $derived(data.hideChrome ?? false);
-  const showSidebar = $derived(activeMenu !== "home" && tree.length > 0);
+  const showSidebar = $derived(activeMenu === "books" || (activeMenu !== "home" && tree.length > 0));
 
   let isMobile = $state(false);
   let drawerOpen = $state(false);
@@ -171,17 +171,21 @@
         {/if}
 
         <nav aria-label="Side menu" class="menu-nav">
-          <ul class="menu-root">
-            {#each tree as node}
-              <ResponsiveMenuItem
-                {node}
-                {isMobile}
-                {expandedIds}
-                onToggle={toggleSubmenu}
-                onNavigate={closeDrawer}
-              />
-            {/each}
-          </ul>
+          {#if tree.length > 0}
+            <ul class="menu-root">
+              {#each tree as node}
+                <ResponsiveMenuItem
+                  {node}
+                  {isMobile}
+                  {expandedIds}
+                  onToggle={toggleSubmenu}
+                  onNavigate={closeDrawer}
+                />
+              {/each}
+            </ul>
+          {:else if activeMenu === "books"}
+            <p class="menu-empty">기록 없음</p>
+          {/if}
         </nav>
       </aside>
     {/if}

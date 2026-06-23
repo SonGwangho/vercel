@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { HTMLInputAttributes } from "svelte/elements";
+
 	let {
 		label,
 		name,
@@ -8,8 +10,8 @@
 	}: {
 		label: string;
 		name: string;
-		type?: string;
-		autocomplete?: string;
+		type?: HTMLInputAttributes["type"];
+		autocomplete?: HTMLInputAttributes["autocomplete"];
 		required?: boolean;
 	} = $props();
 </script>
