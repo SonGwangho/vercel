@@ -1,4 +1,4 @@
-import type { BookListResponse, TreeMenu } from "$lib";
+import type { TreeMenu } from "$lib";
 import topMenuSource from "$lib/assets/data/menu.json";
 
 type MenuTab = {
@@ -144,59 +144,7 @@ function buildAdminMenus(url: URL): TreeMenu[] {
   ];
 }
 
-function bookMenuPath(bookId: number, quoteId: number | null, sort: string): string {
-  const params = new URLSearchParams({
-    book: String(bookId),
-    sort,
-  });
-
-  if (quoteId !== null) {
-    params.set("quote", String(quoteId));
-  }
-
-  return `/books?${params.toString()}`;
-}
-
-async function buildBookMenus(url: URL, fetcher: typeof globalThis.fetch): Promise<TreeMenu[]> {
-  const sort = url.searchParams.get("sort") || "recent";
-  const params = new URLSearchParams({ sort });
-
-  try {
-    const response = await fetcher(`/api/books?${params.toString()}`);
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const data = (await response.json()) as BookListResponse;
-
-    const selectedBookId = Number(url.searchParams.get("book")) || data.books[0]?.id || null;
-
-    return data.books.flatMap((book, bookIndex) => {
-      const bookOrder = (bookIndex + 1) * 100;
-      const bookMenu: TreeMenu = {
-        id: `book-${book.id}`,
-        name: book.title,
-        path: bookMenuPath(book.id, null, data.sort),
-        defaultOpen: book.id === selectedBookId,
-        order: bookOrder,
-      };
-      const quoteMenus: TreeMenu[] = book.quotes.map((quote, quoteIndex) => ({
-        id: `book-${book.id}-quote-${quote.id}`,
-        name: `${quote.page ? `${quote.page} ` : ""}${quote.quote.slice(0, 28)}${quote.quote.length > 28 ? "..." : ""}`,
-        path: bookMenuPath(book.id, quote.id, data.sort),
-        parent: bookMenu.id,
-        order: bookOrder + quoteIndex + 1,
-      }));
-
-      return [bookMenu, ...quoteMenus];
-    });
-  } catch {
-    return [];
-  }
-}
-
-export const load = async ({ url, fetch }: RootLoadEvent) => {
+export const load = async ({ url }: RootLoadEvent) => {
   const chromeHiddenPaths = new Set(["/info/fitness"]);
   const hideChrome = chromeHiddenPaths.has(url.pathname);
   const menuMap = buildMenuMap();
@@ -209,8 +157,6 @@ export const load = async ({ url, fetch }: RootLoadEvent) => {
   const menus =
     activeMenu === "admin"
       ? buildAdminMenus(url)
-      : activeMenu === "books"
-        ? await buildBookMenus(url, fetch)
       : activeMenu
         ? (menuMap.get(activeMenu) ?? [])
         : [];
