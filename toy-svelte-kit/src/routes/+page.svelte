@@ -91,34 +91,20 @@
 </script>
 
 <div class="home-dashboard">
-<header class="home-header">
-  <div>
-    <p class="home-eyebrow">Daily overview</p>
-    <h1>오늘의 한눈</h1>
-    <p class="home-intro">현재 날씨와 게임 랭킹을 한곳에서 확인하세요.</p>
-  </div>
-  <div class="home-header-actions">
-    <div class="live-badge"><span aria-hidden="true"></span>최신 정보</div>
+<section class="home-section home-weather-card" aria-labelledby="weather-heading">
+  <header class="section-heading">
+    <h2 id="weather-heading">현재 날씨</h2>
     <button
       type="button"
       class="refresh-button"
       onclick={() => void refreshDashboard()}
       disabled={isRefreshing}
-      aria-label="홈 정보 새로고침"
+      aria-label={isRefreshing ? "홈 정보 불러오는 중" : "홈 정보 새로고침"}
+      aria-busy={isRefreshing}
       title="홈 정보 새로고침"
     >
       <span aria-hidden="true">↻</span>
-      {isRefreshing ? "불러오는 중" : "새로고침"}
     </button>
-  </div>
-</header>
-
-<section class="home-section home-weather-card" aria-labelledby="weather-heading">
-  <header class="section-heading">
-    <div>
-      <p>Weather</p>
-      <h2 id="weather-heading">현재 날씨</h2>
-    </div>
   </header>
 
   {#if weatherLoading}
@@ -223,10 +209,7 @@
 
 <section class="home-section" aria-labelledby="ranking-heading">
   <header class="section-heading">
-    <div>
-      <p>Leaderboard</p>
-      <h2 id="ranking-heading">게임 랭킹</h2>
-    </div>
+    <h2 id="ranking-heading">게임 랭킹</h2>
   </header>
 
   <div class="home-ranking">
@@ -286,69 +269,8 @@
 <style>
   .home-dashboard {
     display: grid;
-    gap: 26px;
+    gap: 22px;
     max-width: 1120px;
-  }
-
-  .home-header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 8px 2px 2px;
-  }
-
-  .home-eyebrow,
-  .section-heading p {
-    margin: 0 0 6px;
-    color: var(--accent-warm);
-    font-family: var(--font-numeric);
-    font-size: 0.75rem;
-    font-weight: 800;
-    letter-spacing: 0;
-    text-transform: uppercase;
-  }
-
-  .home-header h1 {
-    margin: 0;
-    color: var(--text-strong);
-    font-size: 2.5rem;
-    line-height: 1.12;
-    letter-spacing: 0;
-  }
-
-  .home-intro {
-    margin: 10px 0 0;
-    color: var(--muted);
-  }
-
-  .home-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .live-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 34px;
-    padding: 0 11px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 0.78rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-
-  .live-badge span {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 0 3px var(--success-soft);
   }
 
   .refresh-button,
@@ -363,8 +285,15 @@
     border-radius: var(--control-radius);
     background: var(--surface);
     color: var(--brand-strong);
-    font-size: 0.8rem;
     font-weight: 800;
+  }
+
+  .refresh-button {
+    width: 36px;
+    flex: 0 0 36px;
+    padding: 0;
+    font-size: 1.08rem;
+    line-height: 1;
   }
 
   .refresh-button:disabled {
@@ -374,7 +303,9 @@
 
   .inline-action {
     margin-top: 12px;
+    padding: 0 12px;
     background: var(--surface-strong);
+    font-size: 0.8rem;
   }
 
   .home-section {
@@ -388,7 +319,7 @@
 
   .section-heading {
     display: flex;
-    align-items: end;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding-inline: 2px;
@@ -771,29 +702,14 @@
 
   @media (max-width: 720px) {
     .home-dashboard {
-      gap: 22px;
-    }
-
-    .home-header {
-      align-items: flex-start;
-      padding-top: 2px;
-    }
-
-    .home-header h1 {
-      font-size: 2rem;
-    }
-
-    .live-badge {
-      display: none;
+      gap: 20px;
     }
 
     .refresh-button {
       width: 40px;
+      min-height: 40px;
+      flex-basis: 40px;
       padding: 0;
-      font-size: 0;
-    }
-
-    .refresh-button span {
       font-size: 1.15rem;
     }
 

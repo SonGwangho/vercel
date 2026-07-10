@@ -419,21 +419,31 @@
   }
 
   .photo-wrap {
+    position: relative;
     display: grid;
+    place-items: center;
     margin-top: 10px;
+    width: 100%;
     height: 176px;
     border: 1px solid var(--line);
     border-radius: var(--panel-radius-sm);
     background: var(--surface-muted);
-    place-items: center;
     overflow: hidden;
+    isolation: isolate;
   }
 
-  img {
+  .photo-wrap > img {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: block;
     width: 100%;
     height: 100%;
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
-    padding: 8px;
+    object-position: center;
+    padding: 10px;
   }
 
   .row {

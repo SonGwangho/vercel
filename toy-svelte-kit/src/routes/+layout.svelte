@@ -108,11 +108,6 @@
 {:else}
   <header class="topbar">
     <div class="topbar-left">
-      <a class="brand" href="/" aria-label="TOY 홈">
-        <span class="brand-mark" aria-hidden="true">T</span>
-        <span class="brand-name">TOY</span>
-      </a>
-
       <nav aria-label="주요 메뉴" class="top-menu">
         {#each menuTabs as menu}
           <a

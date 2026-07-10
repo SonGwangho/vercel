@@ -152,37 +152,8 @@ select {
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 18px;
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--text-strong);
-  font-size: 14px;
-  font-weight: 900;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  background: var(--brand);
-  color: var(--on-brand);
-  font-family: var(--font-numeric);
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.brand-name {
-  letter-spacing: 0;
 }
 
 .top-menu {
@@ -679,14 +650,6 @@ html[data-theme="dark"] .drawer-backdrop {
   .topbar {
     gap: 10px;
     padding: 0 12px;
-  }
-
-  .topbar-left {
-    gap: 8px;
-  }
-
-  .brand-name {
-    display: none;
   }
 
   .top-menu-link {
