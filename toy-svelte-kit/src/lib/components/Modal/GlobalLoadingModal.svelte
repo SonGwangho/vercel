@@ -30,8 +30,8 @@
     align-items: center;
     gap: 12px;
     padding: 16px 18px;
-    border-radius: 20px;
-    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    border-radius: var(--panel-radius);
+    background: var(--surface-raised);
     color: var(--text-strong);
     box-shadow:
       inset 0 0 0 1px var(--line),

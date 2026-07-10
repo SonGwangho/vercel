@@ -35,8 +35,14 @@
 		height: 48px;
 		padding: 0 16px;
 		border: 1px solid var(--line);
-		border-radius: 14px;
+		border-radius: var(--control-radius);
 		background: var(--surface);
 		color: var(--ink);
+	}
+
+	.ui-field input:focus {
+		border-color: var(--brand);
+		outline: 3px solid var(--focus-ring);
+		outline-offset: 1px;
 	}
 </style>

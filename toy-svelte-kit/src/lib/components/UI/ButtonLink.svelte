@@ -24,21 +24,30 @@
 		min-height: 42px;
 		padding: 0 16px;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--control-radius);
 		font-size: 13px;
 		font-weight: 800;
 		text-decoration: none;
 		white-space: nowrap;
+		transition:
+			background-color 0.16s ease,
+			border-color 0.16s ease,
+			color 0.16s ease,
+			transform 0.16s ease;
+	}
+
+	.ui-button-link:hover {
+		transform: translateY(-1px);
 	}
 
 	.ui-button-link.primary {
 		border-color: color-mix(in srgb, var(--brand) 80%, transparent);
 		background: var(--brand);
-		color: #fff;
+		color: var(--on-brand);
 	}
 
 	.ui-button-link.secondary {
-		background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+		background: var(--surface-strong);
 		color: var(--brand-strong);
 	}
 

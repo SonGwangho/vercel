@@ -32,6 +32,7 @@
     isMobile = window.innerWidth < 1024;
 
     if (!isMobile) {
+      drawerOpen = false;
       expandedIds = new Set();
     }
   }
@@ -68,7 +69,6 @@
     applyTheme(next);
 
     try {
-      await Storage.remove(THEME_STORAGE_KEY);
       await Storage.set(THEME_STORAGE_KEY, next);
     } catch (error) {
       console.error(error);
@@ -108,11 +108,17 @@
 {:else}
   <header class="topbar">
     <div class="topbar-left">
-      <nav aria-label="Top menus" class="top-menu">
+      <a class="brand" href="/" aria-label="TOY 홈">
+        <span class="brand-mark" aria-hidden="true">T</span>
+        <span class="brand-name">TOY</span>
+      </a>
+
+      <nav aria-label="주요 메뉴" class="top-menu">
         {#each menuTabs as menu}
           <a
             href={menu.path}
             class={`top-menu-link ${activeMenu === menu.key ? "active" : ""}`}
+            aria-current={activeMenu === menu.key ? "page" : undefined}
             onclick={closeDrawer}
           >
             {menu.label}
@@ -121,27 +127,31 @@
       </nav>
     </div>
 
-    {#if showSidebar}
-    <button
-      type="button"
-      class="hamburger"
-      aria-label="Open menu"
-      aria-expanded={drawerOpen}
-      onclick={toggleDrawer}
-    >
-      &#9776;
-    </button>
-    {/if}
+    <div class="topbar-actions">
+      {#if showSidebar}
+        <button
+          type="button"
+          class="hamburger"
+          aria-label="메뉴 열기"
+          title="메뉴 열기"
+          aria-expanded={drawerOpen}
+          onclick={toggleDrawer}
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+      {/if}
 
-    <button
-      type="button"
-      class="theme-toggle"
-      aria-label="Toggle dark mode"
-      aria-pressed={isDarkMode}
-      onclick={toggleTheme}
-    >
-      {isDarkMode ? "☀️" : "🌙"}
-    </button>
+      <button
+        type="button"
+        class="theme-toggle"
+        aria-label={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
+        title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
+        aria-pressed={isDarkMode}
+        onclick={toggleTheme}
+      >
+        <span aria-hidden="true">{isDarkMode ? "☼" : "☾"}</span>
+      </button>
+    </div>
   </header>
 
   <div
@@ -151,7 +161,7 @@
       <button
         type="button"
         class="drawer-backdrop"
-        aria-label="Close menu"
+        aria-label="메뉴 닫기"
         onclick={closeDrawer}
       ></button>
     {/if}
@@ -162,7 +172,8 @@
           <button
             type="button"
             class="sidebar-toggle-desktop"
-            aria-label={desktopSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={desktopSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+            title={desktopSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
             aria-expanded={!desktopSidebarCollapsed}
             onclick={toggleDrawer}
           >
@@ -170,7 +181,7 @@
           </button>
         {/if}
 
-        <nav aria-label="Side menu" class="menu-nav">
+        <nav aria-label="세부 메뉴" class="menu-nav">
           {#if tree.length > 0}
             <ul class="menu-root">
               {#each tree as node}

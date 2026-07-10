@@ -125,8 +125,8 @@
 		try {
 			const data = await loadRankingList(GAME_CODE, RANKING_LIMIT);
 			rankings = data.rankings;
-		} catch (error) {
-			rankingError = error instanceof Error ? error.message : "랭킹을 불러오지 못했습니다.";
+		} catch {
+			rankingError = "랭킹을 불러오지 못했습니다.";
 		} finally {
 			rankingLoading = false;
 		}
@@ -149,8 +149,8 @@
 			});
 			recordSubmitted = true;
 			await loadRankings();
-		} catch (error) {
-			rankingError = error instanceof Error ? error.message : "기록 등록에 실패했습니다.";
+		} catch {
+			rankingError = "기록 등록에 실패했습니다.";
 		} finally {
 			submittingRecord = false;
 		}
@@ -713,6 +713,12 @@
 										bind:value={userName}
 										placeholder="이름 입력"
 										disabled={recordSubmitted || submittingRecord}
+										onkeydown={(event) => {
+											if (event.key === "Enter") {
+												event.preventDefault();
+												void submitClearRecord();
+											}
+										}}
 									/>
 									<button
 										type="button"
@@ -755,6 +761,12 @@
 
 			{#if rankingModalOpen}
 				<div class="modal-backdrop">
+					<button
+						type="button"
+						class="modal-dismiss"
+						onclick={() => (rankingModalOpen = false)}
+						aria-label="랭킹 닫기"
+					></button>
 					<div class="ranking-modal" role="dialog" aria-modal="true" aria-label="별난바야 랭킹" tabindex="-1">
 						<header>
 							<h2>랭킹</h2>
@@ -764,7 +776,10 @@
 						{#if rankingLoading}
 							<p class="ranking-message">불러오는 중</p>
 						{:else if rankingError}
-							<p class="ranking-message error">{rankingError}</p>
+							<div class="ranking-error" role="alert">
+								<p class="ranking-message error">{rankingError}</p>
+								<button type="button" onclick={() => void loadRankings()}>다시 시도</button>
+							</div>
 						{:else if rankings.length === 0}
 							<p class="ranking-message">아직 기록이 없습니다.</p>
 						{:else}
@@ -791,16 +806,17 @@
 		margin-inline: auto;
 		display: grid;
 		justify-items: center;
-		color: #182033;
+		color: var(--text);
 	}
 
 	.phone-frame {
 		width: min(100%, 480px);
 		height: min(820px, calc(100dvh - 96px));
 		min-height: 640px;
-		border-radius: 22px;
+		border: 1px solid var(--line);
+		border-radius: var(--panel-radius);
 		padding: 10px;
-		background: color-mix(in srgb, var(--surface) 96%, transparent);
+		background: var(--surface);
 		box-shadow: var(--shadow-card);
 	}
 
@@ -1185,7 +1201,16 @@
 		backdrop-filter: blur(5px);
 	}
 
+	.modal-dismiss {
+		position: absolute;
+		inset: 0;
+		border: 0;
+		background: transparent;
+	}
+
 	.ranking-modal {
+		position: relative;
+		z-index: 1;
 		width: min(360px, 100%);
 		max-height: min(520px, calc(100% - 28px));
 		display: grid;
@@ -1232,6 +1257,27 @@
 
 	.ranking-message.error {
 		color: #be123c;
+	}
+
+	.ranking-error {
+		display: grid;
+		justify-items: center;
+		gap: 10px;
+	}
+
+	.ranking-error .ranking-message {
+		padding-bottom: 0;
+	}
+
+	.ranking-error button {
+		min-height: 36px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--control-radius);
+		background: var(--surface-muted);
+		color: var(--brand-strong);
+		font-size: 0.78rem;
+		font-weight: 800;
 	}
 
 	.ranking-list {
@@ -1460,6 +1506,7 @@
 	}
 
 	:global(html[data-theme="dark"]) .phone-frame {
-		background: rgba(23, 27, 34, 0.94);
+		background: var(--surface);
+		border-color: var(--line);
 	}
 </style>

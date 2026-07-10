@@ -526,7 +526,10 @@
           {#if isRankingLoading}
             <p class="ranking-empty">불러오는 중...</p>
           {:else if rankingError}
-            <p class="ranking-empty">{rankingError}</p>
+            <div class="ranking-error" role="alert">
+              <p class="ranking-empty">{rankingError}</p>
+              <button type="button" onclick={() => void fetchRanking()}>다시 시도</button>
+            </div>
           {:else if !rankings.length}
             <p class="ranking-empty">아직 기록이 없습니다.</p>
           {:else}
@@ -591,7 +594,17 @@
                 {#if gameStatus === "over"}
                   <label class="name-field">
                     <span>이름</span>
-                    <input bind:value={userName} maxlength="20" placeholder="?? ??" />
+                    <input
+                      bind:value={userName}
+                      maxlength="20"
+                      placeholder="이름 입력"
+                      onkeydown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void submitScore();
+                        }
+                      }}
+                    />
                   </label>
                   <button
                     type="button"
@@ -650,8 +663,8 @@
 
   h1 {
     margin: 0;
-    font-size: clamp(30px, 3vw, 36px);
-    letter-spacing: -0.03em;
+    font-size: 2.25rem;
+    letter-spacing: 0;
   }
 
   .stage-shell {
@@ -714,7 +727,7 @@
 
   .bubble-label {
     margin: 0;
-    font-size: clamp(30px, 3vw, 36px);
+    font-size: 2.25rem;
     font-weight: 900;
     color: #fff8e9;
     text-shadow: 0 2px 0 rgba(104, 64, 23, 0.28);
@@ -811,6 +824,23 @@
     margin: 0;
     color: #8b673f;
     font-size: 14px;
+  }
+
+  .ranking-error {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+  }
+
+  .ranking-error button {
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid rgba(139, 103, 63, 0.28);
+    border-radius: var(--control-radius);
+    background: rgba(255, 255, 255, 0.56);
+    color: #7b552b;
+    font-size: 0.75rem;
+    font-weight: 800;
   }
 
   .board-frame {
@@ -1096,5 +1126,11 @@
   :global(html[data-theme="dark"]) .suika-page .evolution-title,
   :global(html[data-theme="dark"]) .suika-page .evolution-foot {
     color: #cbd5e1;
+  }
+
+  :global(html[data-theme="dark"]) .suika-page .ranking-error button {
+    border-color: var(--line);
+    background: var(--surface-muted);
+    color: var(--brand-strong);
   }
 </style>

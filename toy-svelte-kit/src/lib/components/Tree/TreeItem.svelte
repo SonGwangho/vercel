@@ -68,19 +68,15 @@
 
     font-size: 13px;
     font-weight: 500;
-    color: #333;
+    color: var(--text);
   }
 
   .menu-button:hover {
-    background-color: rgba(0, 0, 0, 0.06);
+    background-color: var(--surface-strong);
   }
 
   .submenu {
     padding: 0 8px;
-  }
-
-  .submenu li {
-    padding: 4px;
   }
 
   a {
@@ -89,6 +85,6 @@
   }
 
   a:hover {
-    background-color: rgba(0, 0, 0, 0.06);
+    background-color: var(--surface-strong);
   }
 </style>

@@ -400,8 +400,8 @@
 		try {
 			const data = await loadRankingList(GAME_CODE, RANKING_LIMIT);
 			rankings = data.rankings as AppleRankingItem[];
-		} catch (error) {
-			rankingError = error instanceof Error ? error.message : '랭킹을 불러오지 못했습니다.';
+		} catch {
+			rankingError = '랭킹을 불러오지 못했습니다.';
 		} finally {
 			rankingLoading = false;
 		}
@@ -426,8 +426,8 @@
 			await createRanking(payload);
 			scoreSubmitted = true;
 			await loadRankings();
-		} catch (error) {
-			rankingError = error instanceof Error ? error.message : '점수 등록에 실패했습니다.';
+		} catch {
+			rankingError = '점수 등록에 실패했습니다.';
 		} finally {
 			submittingScore = false;
 		}
@@ -546,6 +546,12 @@
 										bind:value={userName}
 										placeholder="이름 입력"
 										disabled={scoreSubmitted || submittingScore}
+										on:keydown={(event) => {
+											if (event.key === 'Enter') {
+												event.preventDefault();
+												void submitScore();
+											}
+										}}
 									/>
 									<button
 										type="button"
@@ -571,7 +577,12 @@
 			{#if rankingLoading}
 				<p class="ranking-message">불러오는 중...</p>
 			{:else if rankingError}
-				<p class="ranking-message error">{rankingError}</p>
+				<div class="ranking-error" role="alert">
+					<p class="ranking-message error">{rankingError}</p>
+					<button type="button" class="ranking-retry" on:click={() => void loadRankings()}>
+						다시 시도
+					</button>
+				</div>
 			{:else if rankings.length === 0}
 				<p class="ranking-message">등록된 점수가 없습니다.</p>
 			{:else}
@@ -601,7 +612,7 @@
 		width: min(100%, 520px);
 		margin: 0 auto;
 		padding: 14px 10px 32px;
-		color: var(--text, #1f2937);
+		color: var(--text);
 	}
 
 	.page-header {
@@ -612,7 +623,7 @@
 
 	.page-header h1 {
 		margin: 0;
-		font-size: clamp(1.15rem, 5vw, 1.55rem);
+		font-size: 1.5rem;
 		font-weight: 800;
 	}
 
@@ -626,10 +637,10 @@
 
 	.arena-card,
 	.ranking-card {
-		background: var(--surface, #ffffff);
-		border: 1px solid color-mix(in srgb, var(--text, #1f2937) 10%, transparent);
-		border-radius: 22px;
-		box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--panel-radius);
+		box-shadow: var(--shadow-card);
 	}
 
 	.start-card {
@@ -691,19 +702,19 @@
 		flex-direction: column;
 		gap: 4px;
 		padding: 10px 12px;
-		border-radius: 16px;
-		background: #f8fafc;
-		border: 1px solid rgba(15, 23, 42, 0.08);
+		border-radius: var(--panel-radius-sm);
+		background: var(--surface-muted);
+		border: 1px solid var(--line);
 	}
 
 	.status-card .label {
 		font-size: 0.72rem;
-		color: #64748b;
+		color: var(--muted);
 	}
 
 	.status-card strong {
 		font-size: 1.08rem;
-		color: #0f172a;
+		color: var(--text-strong);
 	}
 
 	.board {
@@ -748,7 +759,7 @@
 	}
 
 	.apple-face span {
-		font-size: clamp(0.62rem, 2.4vw, 0.95rem);
+		font-size: 0.8rem;
 		font-weight: 900;
 		color: #ffffff;
 		text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
@@ -864,6 +875,23 @@
 		color: #dc2626;
 	}
 
+	.ranking-error {
+		display: grid;
+		justify-items: start;
+		gap: 10px;
+	}
+
+	.ranking-retry {
+		min-height: 36px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--control-radius);
+		background: var(--surface-muted);
+		color: var(--brand-strong);
+		font-size: 0.78rem;
+		font-weight: 800;
+	}
+
 	.ranking-list {
 		margin: 0;
 		padding: 0;
@@ -919,27 +947,27 @@
 	}
 
 	:global(html[data-theme='dark']) .apple-page {
-		color: #eef2ff;
+		color: var(--text);
 	}
 
 	:global(html[data-theme='dark']) .arena-card,
 	:global(html[data-theme='dark']) .ranking-card {
-		background: rgba(15, 23, 42, 0.88);
-		border-color: rgba(255, 255, 255, 0.08);
-		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+		background: var(--surface);
+		border-color: var(--line);
+		box-shadow: var(--shadow-card);
 	}
 
 	:global(html[data-theme='dark']) .status-card {
-		background: rgba(30, 41, 59, 0.92);
-		border-color: rgba(255, 255, 255, 0.1);
+		background: var(--surface-muted);
+		border-color: var(--line);
 	}
 
 	:global(html[data-theme='dark']) .status-card .label {
-		color: #cbd5e1;
+		color: var(--muted);
 	}
 
 	:global(html[data-theme='dark']) .status-card strong {
-		color: #f8fafc;
+		color: var(--text-strong);
 	}
 
 	:global(html[data-theme='dark']) .board {

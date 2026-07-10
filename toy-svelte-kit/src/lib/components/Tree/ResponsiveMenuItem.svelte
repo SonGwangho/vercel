@@ -41,14 +41,15 @@
       <button
         type="button"
         class="submenu-toggle"
-        aria-label={isExpanded ? "Close submenu" : "Open submenu"}
+        aria-label={isExpanded ? `${node.name} 하위 메뉴 닫기` : `${node.name} 하위 메뉴 열기`}
+        title={isExpanded ? "하위 메뉴 닫기" : "하위 메뉴 열기"}
         aria-expanded={isExpanded}
         onclick={() => {
           isExpanded = !isExpanded;
           onToggle?.(node.id);
         }}
       >
-        {isExpanded ? "-" : "+"}
+        <span aria-hidden="true">{isExpanded ? "−" : "+"}</span>
       </button>
     {:else}
       <a href={node.path} class="menu-link" onclick={() => isMobile && onNavigate?.()}>

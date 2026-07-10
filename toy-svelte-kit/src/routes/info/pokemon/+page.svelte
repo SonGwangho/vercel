@@ -32,6 +32,7 @@
 
   const visibleItems = $derived(filteredItems.slice(0, visibleCount));
   const hasMore = $derived(visibleCount < filteredItems.length);
+  const hasActiveSearch = $derived(Boolean(searchName.trim() || normalizedDexQuery));
 
   $effect(() => {
     searchName;
@@ -56,6 +57,31 @@
 
   function applyNameFilter(name: string) {
     searchName = name;
+    searchDexNo = "";
+  }
+
+  function artworkUrl(dexNo: number) {
+    return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${dexNo}.png`;
+  }
+
+  function fallbackSpriteUrl(dexNo: number) {
+    return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dexNo}.png`;
+  }
+
+  function handleImageError(event: Event, dexNo: number) {
+    const image = event.currentTarget as HTMLImageElement;
+
+    if (image.dataset.fallbackApplied === "true") {
+      image.hidden = true;
+      return;
+    }
+
+    image.dataset.fallbackApplied = "true";
+    image.src = fallbackSpriteUrl(dexNo);
+  }
+
+  function clearSearch() {
+    searchName = "";
     searchDexNo = "";
   }
 
@@ -91,7 +117,7 @@
     return {
       id: item.dexNo,
       name: item.name,
-      imageUrl: item.imageUrl,
+      imageUrl: artworkUrl(item.dexNo),
       types: item.types,
       baseStats: item.baseStats,
       evolution,
@@ -155,12 +181,15 @@
   {#if loading}
     <p class="status">데이터 준비 중...</p>
   {:else if errorMessage}
-    <p class="status error">{errorMessage}</p>
+    <div class="status-panel" role="alert">
+      <p class="status error">{errorMessage}</p>
+      <button type="button" class="retry-button" onclick={loadPokemon}>다시 시도</button>
+    </div>
   {:else}
     <div class="search">
       <label>
         이름
-        <input type="text" bind:value={searchName} placeholder="예: 피카츄" />
+        <input type="search" bind:value={searchName} placeholder="예: 피카츄" />
       </label>
       <label>
         도감번호
@@ -169,11 +198,17 @@
           inputmode="numeric"
           bind:value={searchDexNo}
           placeholder="예: 25"
+          oninput={() => (searchDexNo = searchDexNo.replace(/\D/g, ""))}
         />
       </label>
     </div>
 
-    <p class="result">조회 결과 {filteredItems.length}마리</p>
+    <div class="result">
+      <p>조회 결과 {filteredItems.length}마리</p>
+      {#if hasActiveSearch}
+        <button type="button" onclick={clearSearch}>검색 초기화</button>
+      {/if}
+    </div>
 
     <ul class="list">
       {#each visibleItems as item}
@@ -184,7 +219,16 @@
           </header>
 
           <div class="photo-wrap">
-            <img src={item.imageUrl ?? ""} alt={`${item.name} 이미지`} loading="lazy" />
+            {#if item.imageUrl}
+              <img
+                src={item.imageUrl}
+                alt={`${item.name} 이미지`}
+                loading="lazy"
+                onerror={(event) => handleImageError(event, item.id)}
+              />
+            {:else}
+              <span class="image-empty">이미지 없음</span>
+            {/if}
           </div>
 
           <div class="row">
@@ -252,15 +296,12 @@
 
 <style>
   .pokemon-page {
-    --ink: #0f172a;
-    --muted: #475569;
-    --surface: #ffffff;
-    --line: rgba(148, 163, 184, 0.26);
-    --teal: #0f766e;
-    --rose: #be123c;
+    --teal: var(--success);
+    --rose: var(--danger);
     max-width: 1180px;
     margin: 0 auto;
-    padding: 24px 0 36px;
+    padding: 8px 0 36px;
+    color: var(--text);
   }
   .search {
     display: grid;
@@ -274,30 +315,60 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 700;
-    color: #334155;
+    color: var(--muted);
   }
 
   .search input {
     height: 44px;
-    border: 1px solid #cbd5e1;
-    border-radius: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
     padding: 0 13px;
     font-size: 14px;
-    color: #0f172a;
-    background: #fff;
+    color: var(--ink);
+    background: var(--surface);
   }
 
   .search input:focus {
     outline: none;
-    border-color: #0ea5e9;
-    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     margin: 0 0 14px;
-    color: #334155;
+    color: var(--muted);
     font-size: 14px;
     font-weight: 700;
+  }
+
+  .result p {
+    margin: 0;
+  }
+
+  .result button,
+  .retry-button {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface-strong);
+    color: var(--brand-strong);
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+
+  .status-panel {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 36px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
   }
 
   .list {
@@ -311,14 +382,9 @@
 
   .card {
     border: 1px solid var(--line);
-    border-radius: 18px;
-    background: radial-gradient(
-        circle at 100% 0%,
-        rgba(186, 230, 253, 0.25),
-        transparent 44%
-      ),
-      var(--surface);
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.09);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
     padding: 14px;
     transition:
       transform 0.18s ease,
@@ -327,7 +393,7 @@
 
   .card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+    box-shadow: var(--shadow-card);
   }
 
   .card-head {
@@ -353,21 +419,12 @@
   }
 
   .photo-wrap {
+    display: grid;
     margin-top: 10px;
     height: 176px;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    background: radial-gradient(
-        circle at 20% 20%,
-        rgba(14, 165, 233, 0.16),
-        transparent 36%
-      ),
-      radial-gradient(
-        circle at 80% 80%,
-        rgba(16, 185, 129, 0.13),
-        transparent 36%
-      ),
-      #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius-sm);
+    background: var(--surface-muted);
     place-items: center;
     overflow: hidden;
   }
@@ -389,7 +446,7 @@
   }
 
   .row strong {
-    color: #334155;
+    color: var(--muted);
     min-width: 72px;
   }
 
@@ -407,9 +464,9 @@
   }
 
   .stat {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius-sm);
+    background: var(--surface-muted);
     padding: 7px 6px;
     text-align: center;
   }
@@ -417,7 +474,7 @@
   .stat span {
     display: block;
     font-size: 12px;
-    color: #64748b;
+    color: var(--muted);
     font-weight: 700;
   }
 
@@ -503,18 +560,21 @@
 
   }
 
+  .image-empty {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
   :global(html[data-theme="dark"]) .pokemon-page {
-    --ink: #e5eefc;
-    --muted: #a8b6cc;
-    --surface: #111827;
-    --line: rgba(148, 163, 184, 0.22);
+    color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page h2,
   :global(html[data-theme="dark"]) .pokemon-page .row span,
   :global(html[data-theme="dark"]) .pokemon-page .stat b,
   :global(html[data-theme="dark"]) .pokemon-page .search input {
-    color: #f8fbff;
+    color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .result,
@@ -523,38 +583,33 @@
   :global(html[data-theme="dark"]) .pokemon-page .stat span,
   :global(html[data-theme="dark"]) .pokemon-page .status,
   :global(html[data-theme="dark"]) .pokemon-page .dex {
-    color: #a8b6cc;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .card {
-    background:
-      radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.14), transparent 44%),
-      linear-gradient(180deg, #111827 0%, #0f172a 100%);
-    border-color: rgba(148, 163, 184, 0.22);
-    box-shadow: 0 14px 30px rgba(2, 6, 23, 0.34);
+    background: var(--surface);
+    border-color: var(--line);
+    box-shadow: var(--shadow-card);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .photo-wrap {
-    background:
-      radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.14), transparent 36%),
-      radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.1), transparent 36%),
-      #0b1220;
-    border-color: rgba(148, 163, 184, 0.18);
+    background: var(--surface-muted);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .search input,
   :global(html[data-theme="dark"]) .pokemon-page .stat {
-    background: #0f172a;
-    border-color: rgba(148, 163, 184, 0.22);
+    background: var(--surface-muted);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .search input::placeholder {
-    color: #64748b;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .search input:focus {
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .evolve {
@@ -570,9 +625,9 @@
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .evo-btn:disabled {
-    background: #0f172a;
-    border-color: rgba(148, 163, 184, 0.18);
-    color: #64748b;
+    background: var(--surface-muted);
+    border-color: var(--line);
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .pokemon-page .status.error {

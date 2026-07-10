@@ -13,6 +13,7 @@ export interface StoredItem {
 
 class StorageDB {
     private db: IDBDatabase | null = null
+    private opening: Promise<IDBDatabase> | null = null
 
     private async index(mode: IDBTransactionMode) {
         const store = await this.store(mode)
@@ -57,8 +58,9 @@ class StorageDB {
         }
 
         if (this.db) return this.db
+        if (this.opening) return this.opening
 
-        return new Promise((resolve, reject) => {
+        this.opening = new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION)
 
             request.onupgradeneeded = () => {
@@ -76,13 +78,26 @@ class StorageDB {
 
             request.onsuccess = () => {
                 this.db = request.result
+                this.opening = null
+                this.db.onversionchange = () => {
+                    this.db?.close()
+                    this.db = null
+                }
                 resolve(this.db)
             }
 
             request.onerror = () => {
+                this.opening = null
                 reject(request.error)
             }
+
+            request.onblocked = () => {
+                this.opening = null
+                reject(new Error('IndexedDB upgrade is blocked by another tab'))
+            }
         })
+
+        return this.opening
     }
 
     private async store(mode: IDBTransactionMode) {
@@ -129,7 +144,13 @@ class StorageDB {
 
     async clear() {
         const store = await this.store('readwrite')
-        store.clear()
+
+        return new Promise<void>((resolve, reject) => {
+            const request = store.clear()
+
+            request.onsuccess = () => resolve()
+            request.onerror = () => reject(request.error)
+        })
     }
 }
 

@@ -16,17 +16,16 @@
 
 <style>
 	.ui-page-card {
-		padding: 30px 28px;
+		padding: 28px;
 		border: 1px solid var(--line);
 		border-radius: var(--panel-radius);
-		background: color-mix(in srgb, var(--surface) 96%, transparent);
+		background: var(--surface);
 		box-shadow: var(--shadow-card);
 	}
 
 	@media (max-width: 720px) {
 		.ui-page-card {
 			padding: 22px 18px;
-			border-radius: 20px;
 		}
 	}
 </style>

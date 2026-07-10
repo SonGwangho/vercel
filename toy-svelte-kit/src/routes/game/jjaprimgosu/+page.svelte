@@ -66,6 +66,7 @@
 
   function startGame() {
     stopLoop();
+    pressedKeys.clear();
     gameStatus = "running";
     elapsedMs = 0;
     finalScore = 0;
@@ -83,6 +84,7 @@
 
   function resetToIdle() {
     stopLoop();
+    pressedKeys.clear();
     gameStatus = "idle";
     elapsedMs = 0;
     finalScore = 0;
@@ -221,6 +223,7 @@
 
   function killPlayer(now: number) {
     stopLoop();
+    pressedKeys.clear();
     gameStatus = "dead";
     finalScore = now;
     elapsedMs = finalScore;
@@ -330,6 +333,17 @@
     }
 
     pressedKeys.delete(event.key.toLowerCase());
+  }
+
+  function setTouchControl(event: PointerEvent, key: string, isPressed: boolean) {
+    event.preventDefault();
+
+    if (isPressed && gameStatus === "running") {
+      pressedKeys.add(key);
+      return;
+    }
+
+    pressedKeys.delete(key);
   }
 
   async function fetchRanking() {
@@ -444,7 +458,17 @@
               {#if gameStatus === "dead"}
                 <label class="name-field">
                   <span>이름</span>
-                  <input bind:value={userName} maxlength="20" placeholder="?? ??" />
+                  <input
+                    bind:value={userName}
+                    maxlength="20"
+                    placeholder="이름 입력"
+                    onkeydown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void submitScore();
+                      }
+                    }}
+                  />
                 </label>
                 <button
                   type="button"
@@ -458,6 +482,10 @@
                   <p class="submit-message">{submitMessage}</p>
                 {/if}
               {/if}
+
+              <button type="button" class="submit-btn start-btn" onclick={startGame}>
+                {gameStatus === "dead" ? "다시 도전" : "게임 시작"}
+              </button>
             </div>
           </div>
         {/if}
@@ -474,10 +502,50 @@
         <h2>랭킹</h2>
       </div>
 
+      <div class="touch-controls" aria-label="화면 이동 버튼">
+        <span></span>
+        <button
+          type="button"
+          aria-label="위로 이동"
+          onpointerdown={(event) => setTouchControl(event, "arrowup", true)}
+          onpointerup={(event) => setTouchControl(event, "arrowup", false)}
+          onpointercancel={(event) => setTouchControl(event, "arrowup", false)}
+          onpointerleave={(event) => setTouchControl(event, "arrowup", false)}
+        >↑</button>
+        <span></span>
+        <button
+          type="button"
+          aria-label="왼쪽으로 이동"
+          onpointerdown={(event) => setTouchControl(event, "arrowleft", true)}
+          onpointerup={(event) => setTouchControl(event, "arrowleft", false)}
+          onpointercancel={(event) => setTouchControl(event, "arrowleft", false)}
+          onpointerleave={(event) => setTouchControl(event, "arrowleft", false)}
+        >←</button>
+        <button
+          type="button"
+          aria-label="아래로 이동"
+          onpointerdown={(event) => setTouchControl(event, "arrowdown", true)}
+          onpointerup={(event) => setTouchControl(event, "arrowdown", false)}
+          onpointercancel={(event) => setTouchControl(event, "arrowdown", false)}
+          onpointerleave={(event) => setTouchControl(event, "arrowdown", false)}
+        >↓</button>
+        <button
+          type="button"
+          aria-label="오른쪽으로 이동"
+          onpointerdown={(event) => setTouchControl(event, "arrowright", true)}
+          onpointerup={(event) => setTouchControl(event, "arrowright", false)}
+          onpointercancel={(event) => setTouchControl(event, "arrowright", false)}
+          onpointerleave={(event) => setTouchControl(event, "arrowright", false)}
+        >→</button>
+      </div>
+
       {#if isRankingLoading}
         <p class="ranking-empty">랭킹 불러오는 중...</p>
       {:else if rankingError}
-        <p class="ranking-empty">{rankingError}</p>
+        <div class="ranking-error" role="alert">
+          <p class="ranking-empty">{rankingError}</p>
+          <button type="button" onclick={() => void fetchRanking()}>다시 시도</button>
+        </div>
       {:else if !rankings.length}
         <p class="ranking-empty">등록된 기록이 없습니다.</p>
       {:else}
@@ -501,26 +569,26 @@
   .jjaprim-page {
     display: grid;
     gap: 16px;
-    color: #10261f;
+    color: var(--text);
   }
 
   .hero {
     padding: 12px 4px 4px;
     background:
       none;
-    color: #10261f;
+    color: var(--text-strong);
     box-shadow: none;
   }
 
   .hero h1 {
     margin: 0;
-    font-size: clamp(28px, 3.2vw, 36px);
-    line-height: 0.98;
-    letter-spacing: -0.03em;
+    font-size: 2.25rem;
+    line-height: 1.05;
+    letter-spacing: 0;
   }
   .submit-btn {
     border: none;
-    border-radius: 999px;
+    border-radius: var(--control-radius);
     cursor: pointer;
     font-weight: 700;
   }
@@ -534,11 +602,11 @@
 
   .arena-card,
   .ranking-card {
-    background: linear-gradient(180deg, #fdfcf6 0%, #f4f8f2 100%);
-    border: 1px solid #d8e5d6;
-    border-radius: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
     padding: 16px;
-    box-shadow: 0 16px 30px rgba(16, 38, 31, 0.08);
+    box-shadow: var(--shadow-card);
   }
 
   .arena-card {
@@ -734,6 +802,11 @@
     cursor: not-allowed;
   }
 
+  .start-btn {
+    width: 100%;
+    margin-top: 10px;
+  }
+
   .submit-message {
     font-size: 15px;
     color: #14532d;
@@ -748,6 +821,33 @@
     font-size: 15px;
   }
 
+  .touch-controls {
+    display: none;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 8px;
+    justify-content: center;
+    margin-top: 14px;
+    touch-action: none;
+  }
+
+  .touch-controls button {
+    width: 52px;
+    height: 52px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface-muted);
+    color: var(--text-strong);
+    font-size: 1.35rem;
+    font-weight: 900;
+    user-select: none;
+  }
+
+  .touch-controls button:active {
+    background: var(--brand-soft);
+    color: var(--brand-strong);
+  }
+
   .ranking-head {
     display: flex;
         gap: 12px;
@@ -759,6 +859,23 @@
     margin: 14px 0 0;
     color: #4b6358;
     font-size: 15px;
+  }
+
+  .ranking-error {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+  }
+
+  .ranking-error button {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface-muted);
+    color: var(--brand-strong);
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 
   .ranking-list {
@@ -809,6 +926,10 @@
     .game-layout {
       grid-template-columns: 1fr;
     }
+
+    .touch-controls {
+      display: grid;
+    }
   }
 
   @media (max-width: 640px) {
@@ -816,7 +937,7 @@
     .arena-card,
     .ranking-card {
       padding: 16px;
-      border-radius: 16px;
+      border-radius: var(--panel-radius);
     }
 
     .arena-card {
@@ -825,7 +946,7 @@
   }
 
   :global(html[data-theme="dark"]) .jjaprim-page {
-    color: #e5eefc;
+    color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .jjaprim-page .arena-card,
@@ -833,15 +954,15 @@
   :global(html[data-theme="dark"]) .jjaprim-page .ranking-list li,
   :global(html[data-theme="dark"]) .jjaprim-page .overlay-panel,
   :global(html[data-theme="dark"]) .jjaprim-page .name-field input {
-    background: #111827;
-    color: #e5eefc;
-    border-color: #243041;
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .jjaprim-page .ranking-empty,
   :global(html[data-theme="dark"]) .jjaprim-page .rank-body span,
   :global(html[data-theme="dark"]) .jjaprim-page .guide,
   :global(html[data-theme="dark"]) .jjaprim-page .submit-message {
-    color: #94a3b8;
+    color: var(--muted);
   }
 </style>

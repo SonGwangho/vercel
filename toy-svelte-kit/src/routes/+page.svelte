@@ -17,6 +17,9 @@
 
   let rankingBoards = $state<HomeRankingBoardState[]>([]);
   let rankingsLoading = $state(true);
+  let rankingsError = $state(false);
+
+  const isRefreshing = $derived(weatherLoading || rankingsLoading);
 
   function formatScore(score: number): string {
     return Number(score).toLocaleString();
@@ -57,6 +60,7 @@
 
   async function loadRankings() {
     rankingsLoading = true;
+    rankingsError = false;
 
     try {
       const data = await loadRankingBoards(HOME_RANKING_LIMIT);
@@ -68,13 +72,17 @@
       rankingsLoading = false;
     } catch {
       rankingBoards = [];
+      rankingsError = true;
       rankingsLoading = false;
     }
   }
 
+  async function refreshDashboard() {
+    await Promise.all([loadWeather(), loadRankings()]);
+  }
+
   onMount(() => {
-    loadWeather();
-    loadRankings();
+    void refreshDashboard();
   });
 
   const rankingSkeletons = $derived(
@@ -82,7 +90,37 @@
   );
 </script>
 
-<section class="home-weather-card">
+<div class="home-dashboard">
+<header class="home-header">
+  <div>
+    <p class="home-eyebrow">Daily overview</p>
+    <h1>오늘의 한눈</h1>
+    <p class="home-intro">현재 날씨와 게임 랭킹을 한곳에서 확인하세요.</p>
+  </div>
+  <div class="home-header-actions">
+    <div class="live-badge"><span aria-hidden="true"></span>최신 정보</div>
+    <button
+      type="button"
+      class="refresh-button"
+      onclick={() => void refreshDashboard()}
+      disabled={isRefreshing}
+      aria-label="홈 정보 새로고침"
+      title="홈 정보 새로고침"
+    >
+      <span aria-hidden="true">↻</span>
+      {isRefreshing ? "불러오는 중" : "새로고침"}
+    </button>
+  </div>
+</header>
+
+<section class="home-section home-weather-card" aria-labelledby="weather-heading">
+  <header class="section-heading">
+    <div>
+      <p>Weather</p>
+      <h2 id="weather-heading">현재 날씨</h2>
+    </div>
+  </header>
+
   {#if weatherLoading}
     <div class="weather-panel weather-panel--loading">
       <div class="weather-main">
@@ -176,66 +214,199 @@
   {:else if weatherError}
     <div class="weather-panel weather-panel--empty">
       <p class="empty-state">날씨 정보를 불러오지 못했습니다.</p>
+      <button type="button" class="inline-action" onclick={() => void loadWeather()}>
+        다시 시도
+      </button>
     </div>
   {/if}
 </section>
 
-<section class="home-ranking">
-  {#if rankingsLoading && rankingBoards.length === 0}
-    {#each rankingSkeletons as item}
-      <article class="ranking-block ranking-block--loading">
-        <div class="skeleton skeleton-title"></div>
-        <div class="ranking-list ranking-list--loading">
-          <div class="skeleton skeleton-row"></div>
-          <div class="skeleton skeleton-row"></div>
-          <div class="skeleton skeleton-row"></div>
-        </div>
-      </article>
-    {/each}
-  {:else if rankingBoards.length > 0}
-    {#each rankingBoards as board}
-      <article class="ranking-block">
-        <h2>{board.game.name}</h2>
+<section class="home-section" aria-labelledby="ranking-heading">
+  <header class="section-heading">
+    <div>
+      <p>Leaderboard</p>
+      <h2 id="ranking-heading">게임 랭킹</h2>
+    </div>
+  </header>
 
-        {#if board.loading}
+  <div class="home-ranking">
+    {#if rankingsLoading && rankingBoards.length === 0}
+      {#each rankingSkeletons as item}
+        <article class="ranking-block ranking-block--loading">
+          <div class="skeleton skeleton-title"></div>
           <div class="ranking-list ranking-list--loading">
             <div class="skeleton skeleton-row"></div>
             <div class="skeleton skeleton-row"></div>
             <div class="skeleton skeleton-row"></div>
           </div>
-        {:else if board.rankings.length > 0}
-          <ol class="ranking-list">
-            {#each board.rankings as ranking}
-              <li>
-                <span>{ranking.rank}</span>
-                <strong>{ranking.userName}</strong>
-                <b>{formatScore(ranking.score)}</b>
-              </li>
-            {/each}
-          </ol>
-        {:else if board.error}
-          <p class="empty-state">랭킹 정보를 불러오지 못했습니다.</p>
-        {:else}
-          <p class="empty-state">랭킹 정보가 없습니다.</p>
-        {/if}
-      </article>
-    {/each}
-  {:else}
-    <p class="empty-state empty-full">표시할 랭킹이 없습니다.</p>
-  {/if}
+        </article>
+      {/each}
+    {:else if rankingsError}
+      <div class="ranking-block ranking-block--empty" role="alert">
+        <p class="empty-state">랭킹 정보를 불러오지 못했습니다.</p>
+        <button type="button" class="inline-action" onclick={() => void loadRankings()}>
+          다시 시도
+        </button>
+      </div>
+    {:else if rankingBoards.length > 0}
+      {#each rankingBoards as board}
+        <article class="ranking-block">
+          <h3>{board.game.name}</h3>
+
+          {#if board.loading}
+            <div class="ranking-list ranking-list--loading">
+              <div class="skeleton skeleton-row"></div>
+              <div class="skeleton skeleton-row"></div>
+              <div class="skeleton skeleton-row"></div>
+            </div>
+          {:else if board.rankings.length > 0}
+            <ol class="ranking-list">
+              {#each board.rankings as ranking}
+                <li>
+                  <span>{ranking.rank}</span>
+                  <strong>{ranking.userName}</strong>
+                  <b>{formatScore(ranking.score)}</b>
+                </li>
+              {/each}
+            </ol>
+          {:else if board.error}
+            <p class="empty-state">랭킹 정보를 불러오지 못했습니다.</p>
+          {:else}
+            <p class="empty-state">랭킹 정보가 없습니다.</p>
+          {/if}
+        </article>
+      {/each}
+    {:else}
+      <p class="empty-state empty-full">표시할 랭킹이 없습니다.</p>
+    {/if}
+  </div>
 </section>
+</div>
 
 <style>
+  .home-dashboard {
+    display: grid;
+    gap: 26px;
+    max-width: 1120px;
+  }
+
+  .home-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 8px 2px 2px;
+  }
+
+  .home-eyebrow,
+  .section-heading p {
+    margin: 0 0 6px;
+    color: var(--accent-warm);
+    font-family: var(--font-numeric);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .home-header h1 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 2.5rem;
+    line-height: 1.12;
+    letter-spacing: 0;
+  }
+
+  .home-intro {
+    margin: 10px 0 0;
+    color: var(--muted);
+  }
+
+  .home-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .live-badge span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-soft);
+  }
+
+  .refresh-button,
+  .inline-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--brand-strong);
+    font-size: 0.8rem;
+    font-weight: 800;
+  }
+
+  .refresh-button:disabled {
+    cursor: wait;
+    opacity: 0.62;
+  }
+
+  .inline-action {
+    margin-top: 12px;
+    background: var(--surface-strong);
+  }
+
+  .home-section {
+    display: grid;
+    gap: 12px;
+  }
+
   .home-weather-card {
-    margin-bottom: 18px;
+    margin-bottom: 0;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-inline: 2px;
+  }
+
+  .section-heading h2 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 1.25rem;
+    line-height: 1.3;
   }
 
   .weather-panel {
     padding: 28px 26px 24px;
-    border: 1px solid rgba(104, 128, 168, 0.16);
-    border-radius: 22px;
-    background: color-mix(in srgb, var(--surface) 96%, transparent);
-    box-shadow: 0 16px 34px rgba(24, 39, 75, 0.06);
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
   }
 
   .weather-panel--loading,
@@ -246,6 +417,7 @@
   .weather-panel--empty {
     display: grid;
     place-items: center;
+    align-content: center;
     min-height: 180px;
   }
 
@@ -267,14 +439,15 @@
   }
 
   .weather-temp {
-    font-size: clamp(2.8rem, 5vw, 4rem);
+    font-family: var(--font-numeric);
+    font-size: 4rem;
     line-height: 1;
     font-weight: 800;
     color: var(--text);
   }
 
   .weather-feels {
-    font-size: clamp(1.3rem, 2vw, 1.8rem);
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--text);
   }
@@ -352,13 +525,13 @@
     height: 96px;
     margin: 0 auto 14px;
     border-radius: 50%;
-    background: conic-gradient(var(--tone) 0 var(--progress), color-mix(in srgb, var(--surface-strong) 85%, white) var(--progress) 100%);
+    background: conic-gradient(var(--tone) 0 var(--progress), var(--surface-strong) var(--progress) 100%);
     display: grid;
     place-items: center;
   }
 
   .air-ring--skeleton {
-    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background: linear-gradient(90deg, var(--surface-strong), var(--surface-muted), var(--surface-strong));
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -367,7 +540,7 @@
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: color-mix(in srgb, var(--surface) 98%, transparent);
+    background: var(--surface);
     display: grid;
     place-items: center;
     align-content: center;
@@ -414,15 +587,22 @@
 
   .ranking-block {
     padding: 20px 20px 18px;
-    border: 1px solid rgba(104, 128, 168, 0.16);
-    border-radius: 20px;
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
-    box-shadow: 0 16px 34px rgba(24, 39, 75, 0.06);
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
     min-width: 0;
     height: 100%;
   }
 
-  .ranking-block h2 {
+  .ranking-block--empty {
+    min-height: 140px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+  }
+
+  .ranking-block h3 {
     margin: 0 0 14px;
     font-size: 1.05rem;
     line-height: 1.3;
@@ -447,8 +627,8 @@
     gap: 12px;
     align-items: center;
     padding: 10px 12px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+    border-radius: var(--panel-radius-sm);
+    background: var(--surface-muted);
   }
 
   .ranking-list span {
@@ -480,7 +660,7 @@
 
   .skeleton {
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(226, 232, 240, 0.8), rgba(241, 245, 249, 1), rgba(226, 232, 240, 0.8));
+    background: linear-gradient(90deg, var(--surface-strong), var(--surface-muted), var(--surface-strong));
     background-size: 200% 100%;
     animation: shimmer 1.2s infinite linear;
   }
@@ -533,7 +713,7 @@
 
   .skeleton-row {
     height: 46px;
-    border-radius: 14px;
+    border-radius: var(--panel-radius-sm);
   }
 
   @keyframes shimmer {
@@ -548,8 +728,8 @@
 
   :global(html[data-theme="dark"]) .weather-panel,
   :global(html[data-theme="dark"]) .ranking-block {
-    border-color: rgba(177, 197, 255, 0.14);
-    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border-color: var(--line);
+    background: var(--surface);
   }
 
   :global(html[data-theme="dark"]) .weather-temp,
@@ -560,13 +740,13 @@
   :global(html[data-theme="dark"]) .air-ring__inner strong,
   :global(html[data-theme="dark"]) .air-ring__inner span,
   :global(html[data-theme="dark"]) .air-card h3,
-  :global(html[data-theme="dark"]) .ranking-block h2,
+  :global(html[data-theme="dark"]) .ranking-block h3,
   :global(html[data-theme="dark"]) .ranking-list strong {
     color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .air-ring__inner {
-    background: color-mix(in srgb, var(--surface) 98%, transparent);
+    background: var(--surface);
   }
 
   :global(html[data-theme="dark"]) .air-source,
@@ -576,7 +756,7 @@
   }
 
   :global(html[data-theme="dark"]) .ranking-list li {
-    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+    background: var(--surface-muted);
   }
 
   :global(html[data-theme="dark"]) .ranking-list span {
@@ -585,11 +765,38 @@
 
   :global(html[data-theme="dark"]) .skeleton,
   :global(html[data-theme="dark"]) .air-ring--skeleton {
-    background: linear-gradient(90deg, rgba(51, 65, 85, 0.88), rgba(71, 85, 105, 1), rgba(51, 65, 85, 0.88));
+    background: linear-gradient(90deg, var(--surface-strong), var(--surface-muted), var(--surface-strong));
     background-size: 200% 100%;
   }
 
   @media (max-width: 720px) {
+    .home-dashboard {
+      gap: 22px;
+    }
+
+    .home-header {
+      align-items: flex-start;
+      padding-top: 2px;
+    }
+
+    .home-header h1 {
+      font-size: 2rem;
+    }
+
+    .live-badge {
+      display: none;
+    }
+
+    .refresh-button {
+      width: 40px;
+      padding: 0;
+      font-size: 0;
+    }
+
+    .refresh-button span {
+      font-size: 1.15rem;
+    }
+
     .weather-panel {
       padding: 20px 16px 18px;
     }
@@ -622,10 +829,9 @@
 
     .ranking-block {
       padding: 16px;
-      border-radius: 16px;
     }
 
-    .ranking-block h2 {
+    .ranking-block h3 {
       margin-bottom: 12px;
       font-size: 1rem;
     }
@@ -638,7 +844,7 @@
       grid-template-columns: 28px minmax(0, 1fr) auto;
       gap: 10px;
       padding: 9px 10px;
-      border-radius: 12px;
+      border-radius: var(--panel-radius-sm);
     }
 
     .ranking-list span,

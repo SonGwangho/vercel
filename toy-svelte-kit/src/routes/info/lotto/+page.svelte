@@ -10,6 +10,7 @@
 	const LABEL_PICKER_TITLE = "\uB85C\uB610 \uBC88\uD638 \uC120\uD0DD\uAE30";
 	const LABEL_CURRENT_LINE = "\uD604\uC7AC \uC120\uD0DD \uC911";
 	const LABEL_COMPLETE = "\uC120\uD0DD\uC644\uB8CC";
+	const LABEL_AUTO_FILL = "\uC790\uB3D9 5\uC904";
 	const LABEL_SAVE = "\uC800\uC7A5";
 	const LABEL_RESET = "\uCD08\uAE30\uD654";
 	const LABEL_SAVED_SHEETS = "\uC800\uC7A5\uB41C \uB85C\uB610 \uD55C \uC7A5";
@@ -21,6 +22,7 @@
 	const LABEL_MAX_LINES = "\uD55C \uC7A5\uC740 \uCD5C\uB300 5\uC904\uAE4C\uC9C0\uB9CC \uC120\uD0DD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
 	const LABEL_NOTHING_TO_SAVE = "\uC800\uC7A5\uD560 \uC120\uD0DD\uC644\uB8CC \uBC88\uD638\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
 	const LABEL_DRAFT_EMPTY = "\uC120\uD0DD\uC644\uB8CC\uD55C \uC904\uC774 \uC5EC\uAE30\uC5D0 \uC313\uC785\uB2C8\uB2E4.";
+	const LABEL_DUPLICATE_LINE = "\uC774\uBBF8 \uAC19\uC740 \uBC88\uD638 \uC904\uC774 \uC788\uC2B5\uB2C8\uB2E4.";
 	const STORAGE_KEY = "lotto-sheets";
 	const MAX_LINES_PER_SHEET = 5;
 	const LOTTO_NUMBERS = Array.from({ length: 45 }, (_, index) => index + 1);
@@ -80,6 +82,22 @@
 		return picked;
 	}
 
+	function lineKey(numbers: number[]) {
+		return sortNumbers(numbers).join("-");
+	}
+
+	function createUniqueLine(seed: number[], existingKeys: Set<string>) {
+		for (let attempt = 0; attempt < 100; attempt += 1) {
+			const autoPicked = pickRandomNumbers(6 - seed.length, seed);
+			const numbers = sortNumbers([...seed, ...autoPicked]);
+			if (numbers.length === 6 && !existingKeys.has(lineKey(numbers))) {
+				return numbers;
+			}
+		}
+
+		return null;
+	}
+
 	function toggleNumber(number: number) {
 		pickerMessage = "";
 
@@ -103,10 +121,37 @@
 			return;
 		}
 
-		const autoPicked = pickRandomNumbers(6 - currentSelection.length, currentSelection);
-		const numbers = sortNumbers([...currentSelection, ...autoPicked]);
+		const existingKeys = new Set(draftLines.map((line) => lineKey(line.numbers)));
+		const numbers = createUniqueLine(currentSelection, existingKeys);
+
+		if (!numbers) {
+			pickerMessage = LABEL_DUPLICATE_LINE;
+			return;
+		}
 
 		draftLines = [...draftLines, { id: createId(), numbers }];
+		currentSelection = [];
+	}
+
+	function fillRemainingLines() {
+		pickerMessage = "";
+		const nextLines = [...draftLines];
+		const existingKeys = new Set(nextLines.map((line) => lineKey(line.numbers)));
+		let seed = [...currentSelection];
+
+		while (nextLines.length < MAX_LINES_PER_SHEET) {
+			const numbers = createUniqueLine(seed, existingKeys);
+			if (!numbers) {
+				pickerMessage = LABEL_DUPLICATE_LINE;
+				break;
+			}
+
+			existingKeys.add(lineKey(numbers));
+			nextLines.push({ id: createId(), numbers });
+			seed = [];
+		}
+
+		draftLines = nextLines;
 		currentSelection = [];
 	}
 
@@ -211,7 +256,14 @@
 			}
 
 			latest = data.latest;
-			await syncSavedSheets(data.latest.round + 1);
+
+			try {
+				await syncSavedSheets(data.latest.round + 1);
+			} catch {
+				savedSheets = [];
+				selectedSheetId = null;
+				pickerMessage = "저장한 번호를 불러오지 못했습니다.";
+			}
 		} catch (error) {
 			latest = null;
 			errorMessage =
@@ -234,6 +286,9 @@
 	{:else if errorMessage}
 		<div class="panel status-panel error">
 			<p>{errorMessage}</p>
+			<button type="button" class="retry-button" onclick={() => void loadLottoResult()}>
+				다시 시도
+			</button>
 		</div>
 	{:else if latest}
 		<div class="panel result-panel">
@@ -329,6 +384,14 @@
 							</button>
 							<button
 								type="button"
+								class="action-btn secondary"
+								onclick={fillRemainingLines}
+								disabled={draftLines.length >= MAX_LINES_PER_SHEET}
+							>
+								{LABEL_AUTO_FILL}
+							</button>
+							<button
+								type="button"
 								class="action-btn save"
 								onclick={() => void saveSheet()}
 								disabled={draftLines.length === 0}
@@ -353,7 +416,7 @@
 												type="button"
 												class="remove-btn"
 												onclick={() => removeDraftLine(line.id)}
-												aria-label="? ??"
+										aria-label={`${index + 1}번째 번호 줄 삭제`}
 											>
 												<span>X</span>
 											</button>
@@ -427,32 +490,46 @@
 
 <style>
 	.lotto-page {
-		--lotto-ink: #171717;
+		--lotto-ink: var(--text);
 		max-width: 1080px;
 		margin: 0 auto;
-		padding: 12px 0 40px;
+		padding: 8px 0 40px;
 		color: var(--lotto-ink);
 	}
 
 	.panel {
 		margin-top: 12px;
-		border-radius: 26px;
-		border: 1px solid rgba(226, 232, 240, 0.9);
-		background: #fff;
-		box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
+		border-radius: var(--panel-radius);
+		border: 1px solid var(--line);
+		background: var(--surface);
+		box-shadow: var(--shadow-card);
 	}
 
 	.status-panel {
+		display: grid;
+		justify-items: start;
+		gap: 12px;
 		padding: 26px 22px;
 		font-size: 16px;
 		font-weight: 700;
-		color: #3f3f46;
+		color: var(--muted);
+	}
+
+	.retry-button {
+		min-height: 38px;
+		padding: 0 14px;
+		border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+		border-radius: var(--control-radius);
+		background: var(--surface);
+		color: var(--danger);
+		font-size: 0.82rem;
+		font-weight: 800;
 	}
 
 	.status-panel.error {
-		color: #b91c1c;
-		border-color: rgba(248, 113, 113, 0.35);
-		background: rgba(254, 242, 242, 0.96);
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+		background: var(--danger-soft);
 	}
 
 	.result-panel,
@@ -465,8 +542,8 @@
 	.picker-card,
 	.saved-card {
 		padding: 24px;
-		border-radius: 22px;
-		background: #fff;
+		border-radius: var(--panel-radius);
+		background: var(--surface);
 	}
 
 	.result-card {
@@ -477,7 +554,7 @@
 		margin: 0;
 		font-size: 16px;
 		font-weight: 700;
-		color: #64748b;
+		color: var(--muted);
 	}
 
 	.round-row {
@@ -489,17 +566,18 @@
 	}
 
 	.round-row strong {
-		font-size: clamp(34px, 6vw, 48px);
+		font-family: var(--font-numeric);
+		font-size: 3rem;
 		line-height: 1.05;
-		letter-spacing: -0.04em;
-		color: #020617;
+		letter-spacing: 0;
+		color: var(--text-strong);
 		font-weight: 900;
 	}
 
 	.round-row span {
 		font-size: 16px;
 		font-weight: 500;
-		color: #475569;
+		color: var(--muted);
 	}
 
 	.numbers-block {
@@ -567,31 +645,32 @@
 	.prize-label {
 		font-size: 18px;
 		font-weight: 700;
-		color: #475569;
+		color: var(--muted);
 	}
 
 	.prize-total {
 		margin-top: 10px;
-		font-size: clamp(40px, 7vw, 58px);
+		font-family: var(--font-numeric);
+		font-size: 3.625rem;
 		line-height: 1;
 		font-weight: 900;
-		letter-spacing: -0.04em;
-		color: #020617;
+		letter-spacing: 0;
+		color: var(--text-strong);
 	}
 
 	.prize-detail {
 		margin-top: 14px;
 		font-size: 18px;
 		font-weight: 700;
-		color: #020617;
+		color: var(--text-strong);
 	}
 
 	h2 {
 		margin: 0;
 		font-size: 30px;
 		line-height: 1.05;
-		letter-spacing: -0.03em;
-		color: #020617;
+		letter-spacing: 0;
+		color: var(--text-strong);
 	}
 
 	.picker-workspace {
@@ -924,8 +1003,8 @@
 	:global(html[data-theme="dark"]) .lotto-page .result-card,
 	:global(html[data-theme="dark"]) .lotto-page .picker-card,
 	:global(html[data-theme="dark"]) .lotto-page .saved-card {
-		background: #1c1917;
-		border-color: rgba(255, 255, 255, 0.08);
+		background: var(--surface);
+		border-color: var(--line);
 	}
 
 	:global(html[data-theme="dark"]) .lotto-page .section-label,
@@ -936,7 +1015,7 @@
 	:global(html[data-theme="dark"]) .lotto-page .saved-empty,
 	:global(html[data-theme="dark"]) .lotto-page .sheet-tab small,
 	:global(html[data-theme="dark"]) .lotto-page .sheet-detail-head span {
-		color: #d6d3d1;
+		color: var(--muted);
 	}
 
 	:global(html[data-theme="dark"]) .lotto-page .round-row strong,
@@ -945,7 +1024,7 @@
 	:global(html[data-theme="dark"]) .lotto-page h2,
 	:global(html[data-theme="dark"]) .lotto-page .sheet-tab span,
 	:global(html[data-theme="dark"]) .lotto-page .sheet-detail-head strong {
-		color: #fafaf9;
+		color: var(--text-strong);
 	}
 
 	:global(html[data-theme="dark"]) .lotto-page .selection-preview,
@@ -954,18 +1033,18 @@
 	:global(html[data-theme="dark"]) .lotto-page .sheet-detail,
 	:global(html[data-theme="dark"]) .lotto-page .sheet-tab,
 	:global(html[data-theme="dark"]) .lotto-page .draft-empty {
-		background: #292524;
-		border-color: rgba(255, 255, 255, 0.08);
+		background: var(--surface-muted);
+		border-color: var(--line);
 	}
 
 	:global(html[data-theme="dark"]) .lotto-page .draft-empty {
-		color: #d6d3d1;
+		color: var(--muted);
 	}
 
 	:global(html[data-theme="dark"]) .lotto-page .empty-ball,
 	:global(html[data-theme="dark"]) .lotto-page .action-btn.secondary {
-		background: #44403c;
-		color: #d6d3d1;
+		background: var(--surface-strong);
+		color: var(--text);
 	}
 </style>
 

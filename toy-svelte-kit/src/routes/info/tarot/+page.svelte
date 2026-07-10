@@ -28,6 +28,9 @@
   const selectedDrawMode = $derived(
     selectedCardId ? (drawModeByCardId[selectedCardId] ?? "upright") : "upright",
   );
+  const remainingCards = $derived(
+    shuffledCards.filter((card) => !revealedIds.has(card.id)),
+  );
 
   const fortuneText = $derived(
     selectedCard
@@ -91,7 +94,11 @@
   }
 
   function pickRandom() {
-    const card = shuffledCards[Math.floor(Math.random() * shuffledCards.length)];
+    if (!remainingCards.length) {
+      return;
+    }
+
+    const card = remainingCards[Math.floor(Math.random() * remainingCards.length)];
     pickCard(card);
   }
 
@@ -117,7 +124,7 @@
       {:else}
         <h2>아직 카드를 뽑지 않았습니다</h2>
       {/if}
-      <p class="fortune">{fortuneText}</p>
+      <p class="fortune" aria-live="polite">{fortuneText}</p>
     </div>
 
     <div class="preview-wrap">
@@ -136,9 +143,16 @@
   <div class="toolbar">
     <div class="toolbar-actions">
       <button type="button" class="shuffle-btn" onclick={reshuffle}>다시 셔플</button>
-      <button type="button" class="random-btn" onclick={pickRandom}>랜덤 한 장 뽑기</button>
+      <button
+        type="button"
+        class="random-btn"
+        onclick={pickRandom}
+        disabled={remainingCards.length === 0}
+      >
+        {remainingCards.length === 0 ? "모든 카드 확인 완료" : "랜덤 한 장 뽑기"}
+      </button>
     </div>
-    <p class="count">총 {cards.length}장</p>
+    <p class="count">남은 카드 {remainingCards.length} / {cards.length}</p>
   </div>
 
   <ul class="card-grid">
@@ -151,6 +165,7 @@
           class={`deck-card ${selectedCardId === card.id ? "active" : ""}`}
           onclick={() => pickCard(card)}
           aria-pressed={selectedCardId === card.id}
+          aria-label={revealed ? `${card.koreanName} 카드 다시 보기` : "타로 카드 공개"}
         >
           <span class="card-no">#{card.majorNo}</span>
           <span class={`flip-inner ${revealed ? "revealed" : ""}`}>
@@ -176,16 +191,16 @@
   .tarot-page {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 18px 0 36px;
-    color: #0f172a;
+    padding: 8px 0 36px;
+    color: var(--text);
   }
 
   .live-result {
     margin-top: 14px;
-    border: 1px solid #bfdbfe;
-    border-radius: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
     padding: 14px;
-    background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
+    background: var(--surface);
     display: grid;
     grid-template-columns: 1.5fr minmax(0, 164px);
     gap: 14px;
@@ -196,8 +211,8 @@
     margin: 0;
     font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.08em;
-    color: #0369a1;
+    letter-spacing: 0;
+    color: var(--brand-strong);
     text-transform: uppercase;
   }
 
@@ -231,7 +246,7 @@
   .fortune {
     margin: 8px 0 0;
     font-size: 14px;
-    color: #334155;
+    color: var(--muted);
     line-height: 1.45;
   }
 
@@ -268,12 +283,12 @@
   }
 
   .shuffle-btn {
-    border: 1px solid #94a3b8;
+    border: 1px solid var(--line);
     height: 42px;
     padding: 0 16px;
-    border-radius: 999px;
-    background: #fff;
-    color: #1e293b;
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--text);
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
@@ -283,18 +298,23 @@
     border: none;
     height: 42px;
     padding: 0 16px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, #f59e0b 0%, #0ea5e9 100%);
-    color: #fff;
+    border-radius: var(--control-radius);
+    background: var(--brand);
+    color: var(--on-brand);
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
   }
 
+  .random-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
   .count {
     margin: 0;
     font-size: 14px;
-    color: #475569;
+    color: var(--muted);
     font-weight: 700;
   }
 
@@ -315,8 +335,8 @@
   .deck-card {
     position: relative;
     width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
     background: transparent;
     padding: 0;
     cursor: pointer;
@@ -330,12 +350,12 @@
 
   .deck-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+    box-shadow: var(--shadow-card);
   }
 
   .deck-card.active {
-    border-color: #0ea5e9;
-    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .card-no {
@@ -460,19 +480,19 @@
   }
 
   :global(html[data-theme="dark"]) .tarot-page {
-    color: #e5eefc;
+    color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .tarot-page .live-result,
   :global(html[data-theme="dark"]) .tarot-page .shuffle-btn,
   :global(html[data-theme="dark"]) .tarot-page .deck-card {
-    background: #111827;
-    color: #e5eefc;
-    border-color: #243041;
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .tarot-page .fortune,
   :global(html[data-theme="dark"]) .tarot-page .count {
-    color: #94a3b8;
+    color: var(--muted);
   }
 </style>

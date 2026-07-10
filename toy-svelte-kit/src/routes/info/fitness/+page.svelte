@@ -136,10 +136,6 @@
     selectedDateKey = toDateKey(nextMonth);
   }
 
-  function selectDate(cell: CalendarCell) {
-    selectedDateKey = cell.key;
-  }
-
   async function loadFitnessRecords() {
     recordsLoading = true;
     recordsError = "";
@@ -197,6 +193,11 @@
 
   async function confirmSaveEditor() {
     if (!editorDateKey || editorSaving) {
+      return;
+    }
+
+    if (!editorPassword.trim()) {
+      editorError = "비밀번호를 입력해 주세요.";
       return;
     }
 
@@ -291,9 +292,9 @@
         <button
           type="button"
           class={`calendar-cell ${cell.inCurrentMonth ? "" : "is-muted"} ${cell.isToday ? "is-today" : ""} ${cell.isSunday ? "is-red" : ""} ${cell.isSaturday ? "is-blue" : ""} ${cell.isSelected ? "is-selected" : ""}`}
-          onclick={() => selectDate(cell)}
-          ondblclick={() => void openEditor(cell)}
+          onclick={() => void openEditor(cell)}
           aria-pressed={cell.isSelected}
+          aria-label={`${cell.key}${cell.record?.hasPt ? ", PT" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
           >
             <span class="date-line">
               <span class="day-number">{cell.day}</span>
@@ -382,7 +383,7 @@
         <button
           type="button"
           class="action-button primary"
-          disabled={editorSaving}
+          disabled={editorSaving || !editorPassword.trim()}
           onclick={() => void confirmSaveEditor()}
         >
           {editorSaving ? "저장 중" : "확인"}
@@ -403,7 +404,7 @@
     max-width: 520px;
     margin: 0 auto;
     padding: 10px 8px 14px;
-    color: #0f172a;
+    color: var(--text);
   }
 
   .calendar-toolbar {
@@ -417,10 +418,10 @@
   .calendar-toolbar h1 {
     margin: 0;
     overflow: hidden;
-    color: #0f172a;
-    font-size: clamp(22px, 7vw, 30px);
+    color: var(--text-strong);
+    font-size: 1.875rem;
     font-weight: 900;
-    letter-spacing: -0.05em;
+    letter-spacing: 0;
     line-height: 1;
     text-align: center;
     text-overflow: ellipsis;
@@ -430,23 +431,23 @@
   .month-button {
     width: 42px;
     height: 42px;
-    border: 1px solid #dbe4ef;
-    border-radius: 14px;
-    background: #fff;
-    color: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--text-strong);
     font-size: 28px;
     font-weight: 800;
     line-height: 1;
     cursor: pointer;
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+    box-shadow: var(--shadow-soft);
   }
 
   .calendar-panel {
     overflow: hidden;
-    border: 1px solid #e5e7eb;
-    border-radius: 22px;
-    background: #fff;
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
   }
 
   .records-status {
@@ -504,10 +505,10 @@
 
   .weekdays div {
     padding: 9px 2px;
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f8fafc;
-    color: #64748b;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-muted);
+    color: var(--muted);
     font-size: 12px;
     font-weight: 900;
     text-align: center;
@@ -523,9 +524,9 @@
     min-height: clamp(74px, 14svh, 108px);
     padding: 7px 5px;
     border: 0;
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
-    background: #fff;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -539,12 +540,12 @@
   }
 
   .calendar-cell.is-selected {
-    background: #eef6ff;
-    box-shadow: inset 0 0 0 2px #93c5fd;
+    background: var(--brand-soft);
+    box-shadow: inset 0 0 0 2px var(--brand);
   }
 
   .calendar-cell.is-muted {
-    background: #fcfcfd;
+    background: var(--surface-muted);
   }
 
   .calendar-cell.is-muted .date-line,
@@ -560,7 +561,7 @@
   }
 
   .day-number {
-    color: #111827;
+    color: var(--text-strong);
     font-size: 14px;
     font-weight: 900;
     line-height: 1.2;
@@ -594,7 +595,7 @@
     max-width: 100%;
     overflow: hidden;
     color: #475569;
-    font-size: clamp(9px, 2.4vw, 11px);
+    font-size: 0.68rem;
     font-weight: 700;
     line-height: 1.35;
     white-space: pre-line;
@@ -647,11 +648,11 @@
     max-height: calc(100svh - 28px);
     gap: 14px;
     overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 24px;
-    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
     padding: 18px;
-    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.26);
+    box-shadow: var(--shadow-float);
     pointer-events: auto;
   }
 
@@ -659,29 +660,29 @@
     display: grid;
     width: min(100%, 340px);
     gap: 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 22px;
-    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
     padding: 18px;
-    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    box-shadow: var(--shadow-float);
     pointer-events: auto;
   }
 
   .password-panel h2 {
     margin: 0;
-    color: #0f172a;
+    color: var(--text-strong);
     font-size: 20px;
     font-weight: 900;
-    letter-spacing: -0.04em;
+    letter-spacing: 0;
   }
 
   .password-panel input {
     width: 100%;
     height: 48px;
-    border: 1px solid #dbe4ef;
-    border-radius: 16px;
-    background: #fff;
-    color: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--text-strong);
     font: inherit;
     font-size: 18px;
     outline: none;
@@ -689,8 +690,8 @@
   }
 
   .password-panel input:focus {
-    border-color: #93c5fd;
-    box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.28);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .editor-head {
@@ -702,19 +703,19 @@
 
   .editor-head h2 {
     margin: 0;
-    color: #0f172a;
+    color: var(--text-strong);
     font-size: 22px;
     font-weight: 900;
-    letter-spacing: -0.04em;
+    letter-spacing: 0;
   }
 
   .editor-close {
     width: 38px;
     height: 38px;
-    border: 1px solid #dbe4ef;
-    border-radius: 14px;
-    background: #f8fafc;
-    color: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface-muted);
+    color: var(--text-strong);
     font-size: 24px;
     font-weight: 800;
     line-height: 1;
@@ -746,17 +747,17 @@
   }
 
   .editor-field span {
-    color: #475569;
+    color: var(--muted);
     font-size: 13px;
     font-weight: 900;
   }
 
   .editor-field textarea {
     width: 100%;
-    border: 1px solid #dbe4ef;
-    border-radius: 16px;
-    background: #fff;
-    color: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--text-strong);
     font: inherit;
     font-size: 16px;
     outline: none;
@@ -770,8 +771,8 @@
   }
 
   .editor-field textarea:focus {
-    border-color: #93c5fd;
-    box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.28);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .editor-error {
@@ -859,36 +860,36 @@
   }
 
   :global(html[data-theme="dark"]) .fitness-page {
-    color: #fafaf9;
+    color: var(--text);
   }
 
   :global(html[data-theme="dark"]) .calendar-toolbar h1,
   :global(html[data-theme="dark"]) .month-button,
   :global(html[data-theme="dark"]) .day-number {
-    color: #fafaf9;
+    color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .month-button,
   :global(html[data-theme="dark"]) .calendar-panel,
   :global(html[data-theme="dark"]) .calendar-cell,
   :global(html[data-theme="dark"]) .calendar-cell.is-muted {
-    background: #1c1917;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .weekdays div {
-    background: #292524;
-    border-color: rgba(255, 255, 255, 0.08);
-    color: #d6d3d1;
+    background: var(--surface-muted);
+    border-color: var(--line);
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .calendar-cell small {
-    color: #d6d3d1;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .calendar-cell.is-selected {
-    background: #1d3246;
-    box-shadow: inset 0 0 0 2px rgba(125, 179, 255, 0.6);
+    background: var(--brand-soft);
+    box-shadow: inset 0 0 0 2px var(--brand);
   }
 
   :global(html[data-theme="dark"]) .records-status {
@@ -926,26 +927,26 @@
   :global(html[data-theme="dark"]) .password-panel,
   :global(html[data-theme="dark"]) .editor-field textarea,
   :global(html[data-theme="dark"]) .password-panel input {
-    background: #1c1917;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #fafaf9;
+    background: var(--surface);
+    border-color: var(--line);
+    color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .editor-head h2,
   :global(html[data-theme="dark"]) .password-panel h2,
   :global(html[data-theme="dark"]) .editor-close {
-    color: #fafaf9;
+    color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .editor-close,
   :global(html[data-theme="dark"]) .action-button.ghost {
-    background: #292524;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #d6d3d1;
+    background: var(--surface-muted);
+    border-color: var(--line);
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .editor-field span {
-    color: #d6d3d1;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .pt-toggle {
@@ -954,8 +955,8 @@
   }
 
   :global(html[data-theme="dark"]) .action-button.primary {
-    border-color: #fafaf9;
-    background: #fafaf9;
-    color: #1c1917;
+    border-color: var(--brand);
+    background: var(--brand);
+    color: var(--on-brand);
   }
 </style>

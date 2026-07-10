@@ -46,6 +46,8 @@
   let editorColor = $state<CalendarMarkColor>("default");
   let editorNameError = $state(false);
   let editorNameInput = $state<HTMLInputElement | null>(null);
+  let storageMessage = $state("");
+  let storageSaving = $state(false);
   const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
 
   const dayOffItems = $derived(readDayOffItems(dayOffSource, visibleYearKey));
@@ -209,7 +211,7 @@
     const firstGridDate = new Date(firstDay);
     firstGridDate.setDate(firstDay.getDate() - firstDay.getDay());
 
-    return Array.from({ length: 35 }, (_, index) => {
+    return Array.from({ length: 42 }, (_, index) => {
       const date = new Date(firstGridDate);
       date.setDate(firstGridDate.getDate() + index);
 
@@ -270,17 +272,34 @@
   }
 
   async function loadPersonalDayOffs() {
-    const stored =
-      (await Storage.get<PersonalDayOffItem[]>(PERSONAL_DAY_OFFS_KEY)) ?? [];
-    personalDayOffs = toPlainPersonalDayOffItems(
-      stored.filter(isPersonalDayOffItem),
-    );
+    storageMessage = "";
+
+    try {
+      const stored =
+        (await Storage.get<PersonalDayOffItem[]>(PERSONAL_DAY_OFFS_KEY)) ?? [];
+      personalDayOffs = toPlainPersonalDayOffItems(
+        stored.filter(isPersonalDayOffItem),
+      );
+    } catch {
+      storageMessage = "저장된 일정을 불러오지 못했습니다.";
+    }
   }
 
   async function persistPersonalDayOffs(nextItems: PersonalDayOffItem[]) {
     const plainItems = toPlainPersonalDayOffItems(nextItems);
-    personalDayOffs = plainItems;
-    await Storage.set(PERSONAL_DAY_OFFS_KEY, plainItems);
+    storageSaving = true;
+    storageMessage = "";
+
+    try {
+      await Storage.set(PERSONAL_DAY_OFFS_KEY, plainItems);
+      personalDayOffs = plainItems;
+      return true;
+    } catch {
+      storageMessage = "일정을 저장하지 못했습니다.";
+      return false;
+    } finally {
+      storageSaving = false;
+    }
   }
 
   async function openEditor(cell: CalendarCell) {
@@ -324,8 +343,9 @@
       nextItem,
     ].sort((left, right) => left.date.localeCompare(right.date));
 
-    await persistPersonalDayOffs(nextItems);
-    closeEditor();
+    if (await persistPersonalDayOffs(nextItems)) {
+      closeEditor();
+    }
   }
 
   async function deleteEditor() {
@@ -336,8 +356,9 @@
     const nextItems = personalDayOffs.filter(
       (item) => item.date !== editorDateKey,
     );
-    await persistPersonalDayOffs(nextItems);
-    closeEditor();
+    if (await persistPersonalDayOffs(nextItems)) {
+      closeEditor();
+    }
   }
 </script>
 
@@ -383,6 +404,7 @@
             onclick={() => selectDate(cell)}
             ondblclick={() => openEditor(cell)}
             aria-pressed={cell.key === selectedDateKey}
+            aria-label={`${cell.key}${cell.displayName ? `, ${cell.displayName}` : ""}`}
           >
             <span class="day-number">{cell.day}</span>
             {#if cell.displayName}
@@ -391,6 +413,22 @@
           </button>
         {/each}
       </div>
+
+      {#if selectedCell}
+        <div class="selection-action">
+          <div>
+            <strong>{selectedCell.key}</strong>
+            <span>{selectedCell.displayName || "등록된 일정 없음"}</span>
+          </div>
+          <button type="button" onclick={() => void openEditor(selectedCell)}>
+            일정 편집
+          </button>
+        </div>
+      {/if}
+
+      {#if storageMessage}
+        <p class="storage-message" role="alert">{storageMessage}</p>
+      {/if}
     </div>
   </div>
 </section>
@@ -475,6 +513,7 @@
           type="button"
           class="action-button ghost"
           onclick={() => void deleteEditor()}
+          disabled={storageSaving}
         >
           삭제
         </button>
@@ -482,10 +521,14 @@
           type="button"
           class="action-button primary"
           onclick={() => void saveEditor()}
+          disabled={storageSaving}
         >
-          저장
+          {storageSaving ? "저장 중" : "저장"}
         </button>
       </div>
+      {#if storageMessage}
+        <p class="storage-message" role="alert">{storageMessage}</p>
+      {/if}
     </div>
   </div>
 {/if}
@@ -494,7 +537,8 @@
   .calendar-page {
     max-width: 1080px;
     margin: 0 auto;
-    padding: 12px 0 40px;
+    padding: 8px 0 40px;
+    color: var(--text);
   }
 
   .calendar-shell {
@@ -505,10 +549,10 @@
   .calendar-summary,
   .calendar-panel,
   .editor-panel {
-    border-radius: 26px;
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    background: #fff;
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
+    border-radius: var(--panel-radius);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
   }
 
   .calendar-summary {
@@ -522,14 +566,15 @@
     margin: 0;
     font-size: 14px;
     font-weight: 800;
-    color: #64748b;
+    color: var(--muted);
   }
 
   .calendar-summary strong {
-    font-size: clamp(34px, 6vw, 54px);
+    font-family: var(--font-numeric);
+    font-size: 3.375rem;
     line-height: 1;
-    letter-spacing: -0.05em;
-    color: #0f172a;
+    letter-spacing: 0;
+    color: var(--text-strong);
   }
 
   .calendar-panel,
@@ -553,10 +598,10 @@
   .calendar-toolbar h1,
   .editor-head strong {
     margin: 0;
-    font-size: clamp(28px, 4vw, 36px);
+    font-size: 2.25rem;
     line-height: 1.05;
-    letter-spacing: -0.04em;
-    color: #0f172a;
+    letter-spacing: 0;
+    color: var(--text-strong);
   }
 
   .editor-head strong {
@@ -567,10 +612,10 @@
   .editor-close {
     width: 44px;
     height: 44px;
-    border: 1px solid #dbe4ef;
-    border-radius: 14px;
-    background: #f8fafc;
-    color: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: var(--surface-muted);
+    color: var(--text-strong);
     font-size: 28px;
     line-height: 1;
     cursor: pointer;
@@ -587,35 +632,35 @@
   }
 
   .weekdays {
-    border-top: 1px solid #e5e7eb;
-    border-left: 1px solid #e5e7eb;
-    border-right: 1px solid #e5e7eb;
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
   }
 
   .weekdays div {
     padding: 12px 8px;
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
     text-align: left;
     font-size: 13px;
     font-weight: 800;
-    color: #64748b;
-    background: #f8fafc;
+    color: var(--muted);
+    background: var(--surface-muted);
   }
 
   .calendar-grid {
-    border-left: 1px solid #e5e7eb;
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
   }
 
   .calendar-cell {
     min-height: 104px;
     padding: 12px 10px;
     border: 0;
-    border-right: 1px solid #e5e7eb;
-    border-top: 1px solid #e5e7eb;
-    background: #fff;
+    border-right: 1px solid var(--line);
+    border-top: 1px solid var(--line);
+    background: var(--surface);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -629,12 +674,12 @@
   }
 
   .calendar-cell:hover {
-    background: #f8fafc;
+    background: var(--surface-muted);
   }
 
   .calendar-cell.is-selected {
-    background: #eef6ff;
-    box-shadow: inset 0 0 0 2px #bfdcff;
+    background: var(--brand-soft);
+    box-shadow: inset 0 0 0 2px var(--brand);
   }
 
   .calendar-cell.is-today .day-number {
@@ -644,13 +689,13 @@
     min-width: 30px;
     height: 30px;
     border-radius: 999px;
-    background: #0f172a;
-    color: #fff;
+    background: var(--brand);
+    color: var(--on-brand);
     padding: 0 10px;
   }
 
   .calendar-cell.is-muted {
-    background: #fcfcfd;
+    background: var(--surface-muted);
   }
 
   .calendar-cell.is-muted .day-number,
@@ -661,7 +706,7 @@
   .day-number {
     font-size: 18px;
     font-weight: 800;
-    color: #111827;
+    color: var(--text-strong);
   }
 
   .calendar-cell small {
@@ -672,6 +717,57 @@
     white-space: normal;
     word-break: break-word;
     overflow-wrap: anywhere;
+  }
+
+  .selection-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius-sm);
+    background: var(--surface-muted);
+  }
+
+  .selection-action div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .selection-action strong {
+    color: var(--text-strong);
+    font-family: var(--font-numeric);
+    font-size: 0.9rem;
+  }
+
+  .selection-action span {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selection-action button {
+    min-height: 38px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: var(--control-radius);
+    background: var(--brand);
+    color: var(--on-brand);
+    font-size: 0.82rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .storage-message {
+    margin: 10px 0 0;
+    color: var(--danger);
+    font-size: 0.82rem;
+    font-weight: 700;
   }
 
   .weekdays div:first-child,
@@ -818,6 +914,15 @@
   }
 
   @media (max-width: 720px) {
+    .selection-action {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .selection-action button {
+      width: 100%;
+    }
+
     .calendar-summary {
       padding: 22px 18px;
     }
@@ -882,8 +987,8 @@
   :global(html[data-theme="dark"]) .calendar-summary,
   :global(html[data-theme="dark"]) .calendar-panel,
   :global(html[data-theme="dark"]) .editor-panel {
-    background: #1c1917;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .summary-kicker,
@@ -891,7 +996,7 @@
   :global(html[data-theme="dark"]) .weekdays div,
   :global(html[data-theme="dark"]) .calendar-cell small,
   :global(html[data-theme="dark"]) .editor-field span {
-    color: #d6d3d1;
+    color: var(--muted);
   }
 
   :global(html[data-theme="dark"]) .calendar-summary strong,
@@ -901,7 +1006,7 @@
   :global(html[data-theme="dark"]) .editor-close,
   :global(html[data-theme="dark"]) .day-number,
   :global(html[data-theme="dark"]) .editor-field input {
-    color: #fafaf9;
+    color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .month-button,
@@ -912,8 +1017,8 @@
   :global(html[data-theme="dark"]) .editor-field input,
   :global(html[data-theme="dark"]) .color-option,
   :global(html[data-theme="dark"]) .action-button.ghost {
-    background: #292524;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--surface-muted);
+    border-color: var(--line);
   }
 
   :global(html[data-theme="dark"]) .editor-field input.error,
@@ -923,17 +1028,17 @@
   }
 
   :global(html[data-theme="dark"]) .calendar-cell:hover {
-    background: #312c2a;
+    background: var(--surface-strong);
   }
 
   :global(html[data-theme="dark"]) .calendar-cell.is-selected {
-    background: #1d3246;
-    box-shadow: inset 0 0 0 2px rgba(125, 179, 255, 0.55);
+    background: var(--brand-soft);
+    box-shadow: inset 0 0 0 2px var(--brand);
   }
 
   :global(html[data-theme="dark"]) .calendar-cell.is-today .day-number {
-    background: #fafaf9;
-    color: #1c1917;
+    background: var(--brand);
+    color: var(--on-brand);
   }
 
   :global(html[data-theme="dark"]) .weekdays div:first-child,

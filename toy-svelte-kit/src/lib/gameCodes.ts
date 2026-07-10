@@ -1,5 +1,5 @@
 import gameCodesJson from "$lib/assets/data/game/codes.json";
-import type { GameCodeEntry } from "$lib";
+import type { GameCodeEntry } from "./types/Game";
 
 const gameCodes = (gameCodesJson as GameCodeEntry[]).slice().sort((a, b) => a.order - b.order);
 
