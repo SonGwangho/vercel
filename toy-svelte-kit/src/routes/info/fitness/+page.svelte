@@ -272,7 +272,7 @@
 </script>
 
 <svelte:head>
-  <title>운동 캘린더</title>
+  <title>약속 캘린더</title>
 </svelte:head>
 
 <section class="fitness-page" aria-label="약속 캘린더">
@@ -393,7 +393,7 @@
       </div>
 
       <label class="editor-field">
-        <span>운동 메모</span>
+        <span>메모</span>
         <textarea
           bind:this={memoTextarea}
           bind:value={editorMemo}
