@@ -275,7 +275,7 @@
   <title>운동 캘린더</title>
 </svelte:head>
 
-<section class="fitness-page" aria-label="운동 캘린더">
+<section class="fitness-page" aria-label="약속 캘린더">
   <div class="calendar-toolbar">
     <button
       type="button"
