@@ -5,8 +5,6 @@ import { listFitnessRecords, upsertFitnessRecord } from "$lib/server/fitness";
 import { withApiHook } from "$lib/server/hooks/api";
 import type { FitnessRecord, FitnessRecordSaveRequest } from "$lib";
 
-const FITNESS_PASSWORD = "4321";
-
 function isFitnessRecord(value: unknown): value is FitnessRecord {
 	return Boolean(
 		value &&
@@ -24,9 +22,7 @@ function isSaveRequest(value: unknown): value is FitnessRecordSaveRequest {
 	return Boolean(
 		value &&
 			typeof value === "object" &&
-			"password" in value &&
 			"record" in value &&
-			typeof value.password === "string" &&
 			isFitnessRecord(value.record)
 	);
 }
@@ -46,10 +42,6 @@ const saveFitnessRecord: RequestHandler = async ({ request }) => {
 
 	if (!isSaveRequest(payload)) {
 		return json({ message: "Invalid fitness record." }, { status: 400 });
-	}
-
-	if (payload.password !== FITNESS_PASSWORD) {
-		return json({ message: "Password is incorrect." }, { status: 401 });
 	}
 
 	return json({ records: await upsertFitnessRecord(payload.record) });

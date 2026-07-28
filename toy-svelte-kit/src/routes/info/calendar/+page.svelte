@@ -5,9 +5,9 @@
     CalendarMarkColor,
     DayOffItem,
     DayOffYearGroup,
+    PersonalDayOffData,
     PersonalDayOffItem,
   } from "$lib";
-  import { Storage } from "$lib";
   import dayOffSource from "$lib/assets/data/calendar/dayOff.json";
 
   type CalendarCell = {
@@ -28,13 +28,15 @@
 
   const WEEK_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const PERSONAL_DAY_OFFS_KEY = "calendar-personal-day-offs";
   const COLOR_OPTIONS: { value: CalendarMarkColor; label: string }[] = [
     { value: "default", label: "기본색" },
     { value: "red", label: "빨간색" },
     { value: "orange", label: "주황" },
     { value: "yellow", label: "노랑" },
     { value: "green", label: "초록" },
+    { value: "blue", label: "파랑" },
+    { value: "indigo", label: "남색" },
+    { value: "purple", label: "보라" },
   ];
 
   const today = startOfDay(new Date());
@@ -46,8 +48,8 @@
   let editorColor = $state<CalendarMarkColor>("default");
   let editorNameError = $state(false);
   let editorNameInput = $state<HTMLInputElement | null>(null);
-  let storageMessage = $state("");
-  let storageSaving = $state(false);
+  let dataMessage = $state("");
+  let dataSaving = $state(false);
   const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
 
   const dayOffItems = $derived(readDayOffItems(dayOffSource, visibleYearKey));
@@ -272,33 +274,75 @@
   }
 
   async function loadPersonalDayOffs() {
-    storageMessage = "";
+    dataMessage = "";
 
     try {
-      const stored =
-        (await Storage.get<PersonalDayOffItem[]>(PERSONAL_DAY_OFFS_KEY)) ?? [];
+      const response = await fetch("/api/calendar");
+      if (!response.ok) {
+        throw new Error("Calendar request failed.");
+      }
+
+      const data = (await response.json()) as PersonalDayOffData;
       personalDayOffs = toPlainPersonalDayOffItems(
-        stored.filter(isPersonalDayOffItem),
+        Array.isArray(data.items) ? data.items.filter(isPersonalDayOffItem) : [],
       );
     } catch {
-      storageMessage = "저장된 일정을 불러오지 못했습니다.";
+      dataMessage = "일정을 불러오지 못했습니다.";
     }
   }
 
-  async function persistPersonalDayOffs(nextItems: PersonalDayOffItem[]) {
-    const plainItems = toPlainPersonalDayOffItems(nextItems);
-    storageSaving = true;
-    storageMessage = "";
+  async function persistPersonalDayOff(item: PersonalDayOffItem) {
+    dataSaving = true;
+    dataMessage = "";
 
     try {
-      await Storage.set(PERSONAL_DAY_OFFS_KEY, plainItems);
-      personalDayOffs = plainItems;
+      const response = await fetch("/api/calendar", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(item),
+      });
+      if (!response.ok) {
+        throw new Error("Calendar save failed.");
+      }
+
+      const data = (await response.json()) as PersonalDayOffData;
+      personalDayOffs = toPlainPersonalDayOffItems(
+        Array.isArray(data.items) ? data.items.filter(isPersonalDayOffItem) : [],
+      );
       return true;
     } catch {
-      storageMessage = "일정을 저장하지 못했습니다.";
+      dataMessage = "일정을 저장하지 못했습니다.";
       return false;
     } finally {
-      storageSaving = false;
+      dataSaving = false;
+    }
+  }
+
+  async function removePersonalDayOff(date: string) {
+    dataSaving = true;
+    dataMessage = "";
+
+    try {
+      const response = await fetch(
+        `/api/calendar?date=${encodeURIComponent(date)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        throw new Error("Calendar delete failed.");
+      }
+
+      const data = (await response.json()) as PersonalDayOffData;
+      personalDayOffs = toPlainPersonalDayOffItems(
+        Array.isArray(data.items) ? data.items.filter(isPersonalDayOffItem) : [],
+      );
+      return true;
+    } catch {
+      dataMessage = "일정을 삭제하지 못했습니다.";
+      return false;
+    } finally {
+      dataSaving = false;
     }
   }
 
@@ -338,12 +382,7 @@
       color: editorColor,
     };
 
-    const nextItems = [
-      ...personalDayOffs.filter((item) => item.date !== editorDateKey),
-      nextItem,
-    ].sort((left, right) => left.date.localeCompare(right.date));
-
-    if (await persistPersonalDayOffs(nextItems)) {
+    if (await persistPersonalDayOff(nextItem)) {
       closeEditor();
     }
   }
@@ -353,10 +392,7 @@
       return;
     }
 
-    const nextItems = personalDayOffs.filter(
-      (item) => item.date !== editorDateKey,
-    );
-    if (await persistPersonalDayOffs(nextItems)) {
+    if (await removePersonalDayOff(editorDateKey)) {
       closeEditor();
     }
   }
@@ -426,8 +462,8 @@
         </div>
       {/if}
 
-      {#if storageMessage}
-        <p class="storage-message" role="alert">{storageMessage}</p>
+      {#if dataMessage}
+        <p class="storage-message" role="alert">{dataMessage}</p>
       {/if}
     </div>
   </div>
@@ -513,7 +549,7 @@
           type="button"
           class="action-button ghost"
           onclick={() => void deleteEditor()}
-          disabled={storageSaving}
+          disabled={dataSaving}
         >
           삭제
         </button>
@@ -521,13 +557,13 @@
           type="button"
           class="action-button primary"
           onclick={() => void saveEditor()}
-          disabled={storageSaving}
+          disabled={dataSaving}
         >
-          {storageSaving ? "저장 중" : "저장"}
+          {dataSaving ? "저장 중" : "저장"}
         </button>
       </div>
-      {#if storageMessage}
-        <p class="storage-message" role="alert">{storageMessage}</p>
+      {#if dataMessage}
+        <p class="storage-message" role="alert">{dataMessage}</p>
       {/if}
     </div>
   </div>
@@ -793,6 +829,21 @@
     color: #16a34a;
   }
 
+  .calendar-cell.tone-blue .day-number,
+  .calendar-cell.tone-blue small {
+    color: #2563eb;
+  }
+
+  .calendar-cell.tone-indigo .day-number,
+  .calendar-cell.tone-indigo small {
+    color: #4338ca;
+  }
+
+  .calendar-cell.tone-purple .day-number,
+  .calendar-cell.tone-purple small {
+    color: #9333ea;
+  }
+
   .weekdays div:last-child,
   .calendar-cell.is-blue .day-number,
   .calendar-cell.is-blue small {
@@ -900,6 +951,18 @@
 
   .color-option.tone-green {
     color: #16a34a;
+  }
+
+  .color-option.tone-blue {
+    color: #2563eb;
+  }
+
+  .color-option.tone-indigo {
+    color: #4338ca;
+  }
+
+  .color-option.tone-purple {
+    color: #9333ea;
   }
 
   .action-button.ghost {
@@ -1066,6 +1129,24 @@
   :global(html[data-theme="dark"]) .calendar-cell.tone-green small,
   :global(html[data-theme="dark"]) .color-option.tone-green {
     color: #4ade80;
+  }
+
+  :global(html[data-theme="dark"]) .calendar-cell.tone-blue .day-number,
+  :global(html[data-theme="dark"]) .calendar-cell.tone-blue small,
+  :global(html[data-theme="dark"]) .color-option.tone-blue {
+    color: #60a5fa;
+  }
+
+  :global(html[data-theme="dark"]) .calendar-cell.tone-indigo .day-number,
+  :global(html[data-theme="dark"]) .calendar-cell.tone-indigo small,
+  :global(html[data-theme="dark"]) .color-option.tone-indigo {
+    color: #818cf8;
+  }
+
+  :global(html[data-theme="dark"]) .calendar-cell.tone-purple .day-number,
+  :global(html[data-theme="dark"]) .calendar-cell.tone-purple small,
+  :global(html[data-theme="dark"]) .color-option.tone-purple {
+    color: #c084fc;
   }
 
   :global(html[data-theme="dark"]) .weekdays div:last-child,

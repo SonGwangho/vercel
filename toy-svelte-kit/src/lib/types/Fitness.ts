@@ -9,7 +9,6 @@ export type FitnessCalendarData = {
 };
 
 export type FitnessRecordSaveRequest = {
-  password: string;
   record: FitnessRecord;
 };
 

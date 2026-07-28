@@ -27,11 +27,8 @@
   let editorDateKey = $state<string | null>(null);
   let editorHasPt = $state(false);
   let editorMemo = $state("");
-  let editorPassword = $state("");
   let editorError = $state("");
   let editorSaving = $state(false);
-  let passwordPopupOpen = $state(false);
-  let passwordInput = $state<HTMLInputElement | null>(null);
   let memoTextarea = $state<HTMLTextAreaElement | null>(null);
 
   const records = $derived(editableRecords);
@@ -162,7 +159,6 @@
     editorDateKey = cell.key;
     editorHasPt = cell.record?.hasPt ?? false;
     editorMemo = cell.record?.memo ?? "";
-    editorPassword = "";
     editorError = "";
 
     await tick();
@@ -173,31 +169,12 @@
     editorDateKey = null;
     editorHasPt = false;
     editorMemo = "";
-    editorPassword = "";
     editorError = "";
     editorSaving = false;
-    passwordPopupOpen = false;
   }
 
-  async function requestSaveEditor() {
-    if (!editorDateKey) {
-      return;
-    }
-
-    editorPassword = "";
-    editorError = "";
-    passwordPopupOpen = true;
-    await tick();
-    passwordInput?.focus();
-  }
-
-  async function confirmSaveEditor() {
+  async function saveEditor() {
     if (!editorDateKey || editorSaving) {
-      return;
-    }
-
-    if (!editorPassword.trim()) {
-      editorError = "비밀번호를 입력해 주세요.";
       return;
     }
 
@@ -217,13 +194,12 @@
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          password: editorPassword,
           record: nextRecord,
         }),
       });
 
       if (!response.ok) {
-        editorError = response.status === 401 ? "비밀번호가 맞지 않습니다." : "저장하지 못했습니다.";
+        editorError = "저장하지 못했습니다.";
         return;
       }
 
@@ -235,11 +211,6 @@
     } finally {
       editorSaving = false;
     }
-  }
-  function closePasswordPopup() {
-    passwordPopupOpen = false;
-    editorPassword = "";
-    editorError = "";
   }
 </script>
 
@@ -342,51 +313,19 @@
         ></textarea>
       </label>
 
+      {#if editorError}
+        <p class="editor-error" role="alert">{editorError}</p>
+      {/if}
+
       <div class="editor-actions">
         <button type="button" class="action-button ghost" onclick={closeEditor}>취소</button>
-        <button type="button" class="action-button primary" onclick={() => void requestSaveEditor()}>저장</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-{#if passwordPopupOpen}
-  <button
-    type="button"
-    class="password-backdrop"
-    aria-label="비밀번호 입력 닫기"
-    onclick={closePasswordPopup}
-  ></button>
-  <div class="password-wrap">
-    <div class="password-panel" role="dialog" aria-modal="true" aria-labelledby="password-title">
-      <h2 id="password-title">비밀번호 확인</h2>
-      <input
-        bind:this={passwordInput}
-        type="password"
-        inputmode="numeric"
-        autocomplete="off"
-        bind:value={editorPassword}
-        oninput={() => (editorError = "")}
-        onkeydown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void confirmSaveEditor();
-          }
-        }}
-        aria-label="저장 비밀번호"
-      />
-      {#if editorError}
-        <p class="editor-error">{editorError}</p>
-      {/if}
-      <div class="password-actions">
-        <button type="button" class="action-button ghost" onclick={closePasswordPopup}>취소</button>
         <button
           type="button"
           class="action-button primary"
-          disabled={editorSaving || !editorPassword.trim()}
-          onclick={() => void confirmSaveEditor()}
+          disabled={editorSaving}
+          onclick={() => void saveEditor()}
         >
-          {editorSaving ? "저장 중" : "확인"}
+          {editorSaving ? "저장 중" : "저장"}
         </button>
       </div>
     </div>
@@ -614,14 +553,6 @@
     backdrop-filter: blur(4px);
   }
 
-  .password-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    border: 0;
-    background: rgba(15, 23, 42, 0.38);
-  }
-
   .editor-wrap {
     position: fixed;
     inset: 0;
@@ -629,16 +560,6 @@
     display: grid;
     place-items: end center;
     padding: 14px;
-    pointer-events: none;
-  }
-
-  .password-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 51;
-    display: grid;
-    place-items: center;
-    padding: 18px;
     pointer-events: none;
   }
 
@@ -654,44 +575,6 @@
     padding: 18px;
     box-shadow: var(--shadow-float);
     pointer-events: auto;
-  }
-
-  .password-panel {
-    display: grid;
-    width: min(100%, 340px);
-    gap: 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--panel-radius);
-    background: var(--surface);
-    padding: 18px;
-    box-shadow: var(--shadow-float);
-    pointer-events: auto;
-  }
-
-  .password-panel h2 {
-    margin: 0;
-    color: var(--text-strong);
-    font-size: 20px;
-    font-weight: 900;
-    letter-spacing: 0;
-  }
-
-  .password-panel input {
-    width: 100%;
-    height: 48px;
-    border: 1px solid var(--line);
-    border-radius: var(--control-radius);
-    background: var(--surface);
-    color: var(--text-strong);
-    font: inherit;
-    font-size: 18px;
-    outline: none;
-    padding: 0 14px;
-  }
-
-  .password-panel input:focus {
-    border-color: var(--brand);
-    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .editor-head {
@@ -783,12 +666,6 @@
   }
 
   .editor-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  .password-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -924,16 +801,13 @@
   }
 
   :global(html[data-theme="dark"]) .editor-panel,
-  :global(html[data-theme="dark"]) .password-panel,
-  :global(html[data-theme="dark"]) .editor-field textarea,
-  :global(html[data-theme="dark"]) .password-panel input {
+  :global(html[data-theme="dark"]) .editor-field textarea {
     background: var(--surface);
     border-color: var(--line);
     color: var(--text-strong);
   }
 
   :global(html[data-theme="dark"]) .editor-head h2,
-  :global(html[data-theme="dark"]) .password-panel h2,
   :global(html[data-theme="dark"]) .editor-close {
     color: var(--text-strong);
   }
