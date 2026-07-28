@@ -34,7 +34,8 @@
   let recordsLoading = $state(true);
   let recordsError = $state("");
   let editorDateKey = $state<string | null>(null);
-  let editorHasPt = $state(false);
+  let editorIsUnavailable = $state(false);
+  let editorIsAvailable = $state(false);
   let editorMemo = $state("");
   let editorError = $state("");
   let editorSaving = $state(false);
@@ -72,11 +73,14 @@
       value &&
         typeof value === "object" &&
         "date" in value &&
-        "hasPt" in value &&
+        "isUnavailable" in value &&
+        "isAvailable" in value &&
         "memo" in value &&
         typeof value.date === "string" &&
-        typeof value.hasPt === "boolean" &&
-        typeof value.memo === "string",
+        typeof value.isUnavailable === "boolean" &&
+        typeof value.isAvailable === "boolean" &&
+        typeof value.memo === "string" &&
+        !(value.isUnavailable && value.isAvailable),
     );
   }
 
@@ -128,7 +132,8 @@
       .filter(isFitnessRecord)
       .map((record) => ({
         date: record.date,
-        hasPt: record.hasPt,
+        isUnavailable: record.isUnavailable,
+        isAvailable: record.isAvailable,
         memo: record.memo,
       }))
       .sort((left, right) => left.date.localeCompare(right.date));
@@ -206,7 +211,8 @@
   async function openEditor(cell: CalendarCell) {
     selectedDateKey = cell.key;
     editorDateKey = cell.key;
-    editorHasPt = cell.record?.hasPt ?? false;
+    editorIsUnavailable = cell.record?.isUnavailable ?? false;
+    editorIsAvailable = cell.record?.isAvailable ?? false;
     editorMemo = cell.record?.memo ?? "";
     editorError = "";
 
@@ -216,7 +222,8 @@
 
   function closeEditor() {
     editorDateKey = null;
-    editorHasPt = false;
+    editorIsUnavailable = false;
+    editorIsAvailable = false;
     editorMemo = "";
     editorError = "";
     editorSaving = false;
@@ -229,7 +236,8 @@
 
     const nextRecord: FitnessRecord = {
       date: editorDateKey,
-      hasPt: editorHasPt,
+      isUnavailable: editorIsUnavailable,
+      isAvailable: editorIsAvailable,
       memo: editorMemo.trim(),
     };
 
@@ -314,7 +322,7 @@
           class={`calendar-cell ${cell.inCurrentMonth ? "" : "is-muted"} ${cell.isToday ? "is-today" : ""} ${cell.isHoliday || cell.isSunday ? "is-red" : ""} ${cell.isSaturday && !cell.isHoliday ? "is-blue" : ""} ${cell.isSelected ? "is-selected" : ""}`}
           onclick={() => void openEditor(cell)}
           aria-pressed={cell.isSelected}
-          aria-label={`${cell.key}${cell.holidayName ? `, ${cell.holidayName}` : ""}${cell.record?.hasPt ? ", PT" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
+          aria-label={`${cell.key}${cell.holidayName ? `, ${cell.holidayName}` : ""}${cell.record?.isUnavailable ? ", 안 되는 날 X" : ""}${cell.record?.isAvailable ? ", 되는 날 O" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
           >
             <span class="date-line">
               <span class="day-number">{cell.day}</span>
@@ -322,10 +330,15 @@
             {#if cell.holidayName}
               <small class="holiday-name">{cell.holidayName}</small>
             {/if}
-            {#if cell.record?.hasPt}
-              <span class="pt-label" aria-label="PT일">
-                <span class="pt-dot"></span>
-                PT
+            {#if cell.record?.isUnavailable}
+              <span class="status-label is-unavailable" aria-label="안 되는 날">
+                <span class="status-dot"></span>
+                X
+              </span>
+            {:else if cell.record?.isAvailable}
+              <span class="status-label is-available" aria-label="되는 날">
+                <span class="status-dot"></span>
+                O
               </span>
             {/if}
             {#if cell.hasMemo}
@@ -351,10 +364,34 @@
         <button type="button" class="editor-close" aria-label="편집 닫기" onclick={closeEditor}>×</button>
       </div>
 
-      <label class="pt-toggle">
-        <input type="checkbox" bind:checked={editorHasPt} />
-        <span>PT한 날</span>
-      </label>
+      <div class="availability-options" aria-label="일정 가능 여부">
+        <label class="availability-toggle is-unavailable">
+          <input
+            type="checkbox"
+            checked={editorIsUnavailable}
+            onchange={(event) => {
+              editorIsUnavailable = event.currentTarget.checked;
+              if (editorIsUnavailable) {
+                editorIsAvailable = false;
+              }
+            }}
+          />
+          <span>안 되는 날</span>
+        </label>
+        <label class="availability-toggle is-available">
+          <input
+            type="checkbox"
+            checked={editorIsAvailable}
+            onchange={(event) => {
+              editorIsAvailable = event.currentTarget.checked;
+              if (editorIsAvailable) {
+                editorIsUnavailable = false;
+              }
+            }}
+          />
+          <span>되는 날</span>
+        </label>
+      </div>
 
       <label class="editor-field">
         <span>운동 메모</span>
@@ -540,7 +577,8 @@
   }
 
   .calendar-cell.is-muted .date-line,
-  .calendar-cell.is-muted small {
+  .calendar-cell.is-muted small,
+  .calendar-cell.is-muted .status-label {
     opacity: 0.34;
   }
 
@@ -562,23 +600,38 @@
     color: #16a34a;
   }
 
-  .pt-dot {
+  .status-dot {
     flex: 0 0 auto;
     width: 7px;
     height: 7px;
     border-radius: 999px;
+  }
+
+  .status-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.15;
+  }
+
+  .status-label.is-unavailable {
+    color: #dc2626;
+  }
+
+  .status-label.is-unavailable .status-dot {
     background: #ef4444;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
   }
 
-  .pt-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: #dc2626;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1.15;
+  .status-label.is-available {
+    color: #15803d;
+  }
+
+  .status-label.is-available .status-dot {
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
   }
 
   .calendar-cell small {
@@ -663,23 +716,44 @@
     cursor: pointer;
   }
 
-  .pt-toggle {
+  .availability-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .availability-toggle {
     display: flex;
     align-items: center;
     gap: 10px;
     width: fit-content;
     border-radius: 999px;
-    background: #fef2f2;
     padding: 10px 14px;
-    color: #dc2626;
     font-size: 14px;
     font-weight: 900;
   }
 
-  .pt-toggle input {
+  .availability-toggle.is-unavailable {
+    background: #fef2f2;
+    color: #dc2626;
+  }
+
+  .availability-toggle.is-available {
+    background: #f0fdf4;
+    color: #15803d;
+  }
+
+  .availability-toggle input {
     width: 18px;
     height: 18px;
+  }
+
+  .availability-toggle.is-unavailable input {
     accent-color: #ef4444;
+  }
+
+  .availability-toggle.is-available input {
+    accent-color: #22c55e;
   }
 
   .editor-field {
@@ -885,9 +959,22 @@
     color: var(--muted);
   }
 
-  :global(html[data-theme="dark"]) .pt-toggle {
+  :global(html[data-theme="dark"]) .availability-toggle.is-unavailable {
     background: rgba(127, 29, 29, 0.35);
     color: #fca5a5;
+  }
+
+  :global(html[data-theme="dark"]) .availability-toggle.is-available {
+    background: rgba(20, 83, 45, 0.35);
+    color: #86efac;
+  }
+
+  :global(html[data-theme="dark"]) .status-label.is-unavailable {
+    color: #f87171;
+  }
+
+  :global(html[data-theme="dark"]) .status-label.is-available {
+    color: #4ade80;
   }
 
   :global(html[data-theme="dark"]) .action-button.primary {

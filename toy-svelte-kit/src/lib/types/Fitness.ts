@@ -1,6 +1,7 @@
 export type FitnessRecord = {
   date: string;
-  hasPt: boolean;
+  isUnavailable: boolean;
+  isAvailable: boolean;
   memo: string;
 };
 

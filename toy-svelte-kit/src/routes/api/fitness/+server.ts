@@ -10,11 +10,14 @@ function isFitnessRecord(value: unknown): value is FitnessRecord {
 		value &&
 			typeof value === "object" &&
 			"date" in value &&
-			"hasPt" in value &&
+			"isUnavailable" in value &&
+			"isAvailable" in value &&
 			"memo" in value &&
 			typeof value.date === "string" &&
-			typeof value.hasPt === "boolean" &&
-			typeof value.memo === "string"
+			typeof value.isUnavailable === "boolean" &&
+			typeof value.isAvailable === "boolean" &&
+			typeof value.memo === "string" &&
+			!(value.isUnavailable && value.isAvailable)
 	);
 }
 

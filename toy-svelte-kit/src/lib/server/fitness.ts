@@ -3,7 +3,8 @@ import type { FitnessRecord } from "$lib";
 
 type FitnessRecordRow = {
 	date: string;
-	has_pt: boolean;
+	is_unavailable: boolean;
+	is_available: boolean;
 	memo: string;
 };
 
@@ -12,17 +13,25 @@ let fitnessTableReady: Promise<void> | null = null;
 function mapFitnessRecordRow(row: FitnessRecordRow): FitnessRecord {
 	return {
 		date: row.date,
-		hasPt: row.has_pt,
+		isUnavailable: row.is_unavailable,
+		isAvailable: row.is_available,
 		memo: row.memo
 	};
 }
 
 export function normalizeFitnessRecords(records: FitnessRecord[]) {
 	return records
-		.filter((record) => record.date && typeof record.hasPt === "boolean" && typeof record.memo === "string")
+		.filter(
+			(record) =>
+				record.date &&
+				typeof record.isUnavailable === "boolean" &&
+				typeof record.isAvailable === "boolean" &&
+				typeof record.memo === "string"
+		)
 		.map((record) => ({
 			date: record.date,
-			hasPt: record.hasPt,
+			isUnavailable: record.isUnavailable,
+			isAvailable: !record.isUnavailable && record.isAvailable,
 			memo: record.memo.trim()
 		}))
 		.sort((left, right) => left.date.localeCompare(right.date));
@@ -36,11 +45,20 @@ export async function ensureFitnessTable(): Promise<void> {
 			await sql`
 				CREATE TABLE IF NOT EXISTS fitness_records (
 					date DATE PRIMARY KEY,
-					has_pt BOOLEAN NOT NULL DEFAULT FALSE,
+					is_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+					is_available BOOLEAN NOT NULL DEFAULT FALSE,
 					memo TEXT NOT NULL DEFAULT '',
 					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 				)
+			`;
+			await sql`
+				ALTER TABLE fitness_records
+				ADD COLUMN IF NOT EXISTS is_unavailable BOOLEAN NOT NULL DEFAULT FALSE
+			`;
+			await sql`
+				ALTER TABLE fitness_records
+				ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT FALSE
 			`;
 		})().catch((error) => {
 			fitnessTableReady = null;
@@ -63,8 +81,8 @@ export async function seedFitnessRecords(records: FitnessRecord[]) {
 	const sql = getNeonSql();
 	for (const record of sourceRecords) {
 		await sql`
-			INSERT INTO fitness_records (date, has_pt, memo)
-			VALUES (${record.date}, ${record.hasPt}, ${record.memo})
+			INSERT INTO fitness_records (date, is_unavailable, is_available, memo)
+			VALUES (${record.date}, ${record.isUnavailable}, ${record.isAvailable}, ${record.memo})
 			ON CONFLICT (date) DO NOTHING
 		`;
 	}
@@ -75,7 +93,7 @@ export async function listFitnessRecords(): Promise<FitnessRecord[]> {
 
 	const sql = getNeonSql();
 	const rows = (await sql`
-		SELECT date::text, has_pt, memo
+		SELECT date::text, is_unavailable, is_available, memo
 		FROM fitness_records
 		ORDER BY date ASC
 	`) as FitnessRecordRow[];
@@ -93,11 +111,17 @@ export async function upsertFitnessRecord(record: FitnessRecord): Promise<Fitnes
 
 	const sql = getNeonSql();
 	await sql`
-		INSERT INTO fitness_records (date, has_pt, memo)
-		VALUES (${nextRecord.date}, ${nextRecord.hasPt}, ${nextRecord.memo})
+		INSERT INTO fitness_records (date, is_unavailable, is_available, memo)
+		VALUES (
+			${nextRecord.date},
+			${nextRecord.isUnavailable},
+			${nextRecord.isAvailable},
+			${nextRecord.memo}
+		)
 		ON CONFLICT (date) DO UPDATE
 		SET
-			has_pt = EXCLUDED.has_pt,
+			is_unavailable = EXCLUDED.is_unavailable,
+			is_available = EXCLUDED.is_available,
 			memo = EXCLUDED.memo,
 			updated_at = NOW()
 	`;
