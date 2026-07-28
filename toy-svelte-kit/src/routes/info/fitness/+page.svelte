@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
 
-  import type { FitnessCalendarData, FitnessRecord, FitnessRecordSaveResponse } from "$lib";
+  import type {
+    DayOffItem,
+    DayOffYearGroup,
+    FitnessCalendarData,
+    FitnessRecord,
+    FitnessRecordSaveResponse,
+  } from "$lib";
+  import dayOffSource from "$lib/assets/data/calendar/dayOff.json";
 
   type CalendarCell = {
     key: string;
@@ -11,6 +18,8 @@
     isToday: boolean;
     isSunday: boolean;
     isSaturday: boolean;
+    isHoliday: boolean;
+    holidayName: string;
     record: FitnessRecord | null;
     hasMemo: boolean;
     isSelected: boolean;
@@ -33,10 +42,15 @@
 
   const records = $derived(editableRecords);
   const recordMap = $derived(new Map(records.map((record) => [record.date, record])));
+  const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
+  const dayOffItems = $derived(readDayOffItems(dayOffSource, visibleYearKey));
+  const dayOffMap = $derived(new Map(dayOffItems.map((item) => [item.date, item.name])));
   const monthLabel = $derived(
     `${visibleMonth.getFullYear()}년 ${String(visibleMonth.getMonth() + 1).padStart(2, "0")}월`,
   );
-  const cells = $derived(buildCalendarCells(visibleMonth, selectedDateKey, today, recordMap));
+  const cells = $derived(
+    buildCalendarCells(visibleMonth, selectedDateKey, today, recordMap, dayOffMap),
+  );
 
   onMount(() => {
     void loadFitnessRecords();
@@ -64,6 +78,36 @@
         typeof value.hasPt === "boolean" &&
         typeof value.memo === "string",
     );
+  }
+
+  function isDayOffItem(value: unknown): value is DayOffItem {
+    return Boolean(
+      value &&
+        typeof value === "object" &&
+        "date" in value &&
+        "name" in value &&
+        typeof value.date === "string" &&
+        typeof value.name === "string",
+    );
+  }
+
+  function readDayOffItems(source: unknown, yearKey: string) {
+    if (Array.isArray(source)) {
+      return source.filter(isDayOffItem);
+    }
+
+    if (!source || typeof source !== "object") {
+      return [];
+    }
+
+    const yearGroup = (source as Record<string, DayOffYearGroup | undefined>)[
+      yearKey
+    ];
+    if (!yearGroup || !Array.isArray(yearGroup.dayOffs)) {
+      return [];
+    }
+
+    return yearGroup.dayOffs.filter(isDayOffItem);
   }
 
   function readFitnessRecords(source: unknown) {
@@ -95,6 +139,7 @@
     currentSelectedDateKey: string | null,
     baseDate: Date,
     recordsByDate: Map<string, FitnessRecord>,
+    holidaysByDate: Map<string, string>,
   ) {
     const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
     const firstGridDate = new Date(firstDay);
@@ -106,6 +151,7 @@
 
       const key = toDateKey(date);
       const record = recordsByDate.get(key) ?? null;
+      const holidayName = holidaysByDate.get(key) ?? "";
 
       return {
         key,
@@ -115,6 +161,8 @@
         isToday: key === toDateKey(baseDate),
         isSunday: date.getDay() === 0,
         isSaturday: date.getDay() === 6,
+        isHoliday: holidaysByDate.has(key),
+        holidayName,
         record,
         hasMemo: Boolean(record?.memo.trim()),
         isSelected: key === currentSelectedDateKey,
@@ -131,6 +179,7 @@
 
     visibleMonth = nextMonth;
     selectedDateKey = toDateKey(nextMonth);
+    void loadFitnessRecords();
   }
 
   async function loadFitnessRecords() {
@@ -262,14 +311,17 @@
       {#each cells as cell}
         <button
           type="button"
-          class={`calendar-cell ${cell.inCurrentMonth ? "" : "is-muted"} ${cell.isToday ? "is-today" : ""} ${cell.isSunday ? "is-red" : ""} ${cell.isSaturday ? "is-blue" : ""} ${cell.isSelected ? "is-selected" : ""}`}
+          class={`calendar-cell ${cell.inCurrentMonth ? "" : "is-muted"} ${cell.isToday ? "is-today" : ""} ${cell.isHoliday || cell.isSunday ? "is-red" : ""} ${cell.isSaturday && !cell.isHoliday ? "is-blue" : ""} ${cell.isSelected ? "is-selected" : ""}`}
           onclick={() => void openEditor(cell)}
           aria-pressed={cell.isSelected}
-          aria-label={`${cell.key}${cell.record?.hasPt ? ", PT" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
+          aria-label={`${cell.key}${cell.holidayName ? `, ${cell.holidayName}` : ""}${cell.record?.hasPt ? ", PT" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
           >
             <span class="date-line">
               <span class="day-number">{cell.day}</span>
             </span>
+            {#if cell.holidayName}
+              <small class="holiday-name">{cell.holidayName}</small>
+            {/if}
             {#if cell.record?.hasPt}
               <span class="pt-label" aria-label="PT일">
                 <span class="pt-dot"></span>
@@ -544,6 +596,12 @@
     line-clamp: 5;
   }
 
+  .calendar-cell .holiday-name {
+    color: #dc2626;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
   .editor-backdrop {
     position: fixed;
     inset: 0;
@@ -706,7 +764,7 @@
     color: #2563eb;
   }
 
-  .calendar-cell.is-today .day-number {
+  .calendar-cell.is-today:not(.is-red) .day-number {
     color: #16a34a;
   }
 
@@ -764,6 +822,10 @@
     color: var(--muted);
   }
 
+  :global(html[data-theme="dark"]) .calendar-cell .holiday-name {
+    color: #f87171;
+  }
+
   :global(html[data-theme="dark"]) .calendar-cell.is-selected {
     background: var(--brand-soft);
     box-shadow: inset 0 0 0 2px var(--brand);
@@ -796,7 +858,7 @@
     color: #60a5fa;
   }
 
-  :global(html[data-theme="dark"]) .calendar-cell.is-today .day-number {
+  :global(html[data-theme="dark"]) .calendar-cell.is-today:not(.is-red) .day-number {
     color: #4ade80;
   }
 
