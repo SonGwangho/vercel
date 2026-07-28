@@ -365,19 +365,6 @@
       </div>
 
       <div class="availability-options" aria-label="일정 가능 여부">
-        <label class="availability-toggle is-unavailable">
-          <input
-            type="checkbox"
-            checked={editorIsUnavailable}
-            onchange={(event) => {
-              editorIsUnavailable = event.currentTarget.checked;
-              if (editorIsUnavailable) {
-                editorIsAvailable = false;
-              }
-            }}
-          />
-          <span>안 되는 날</span>
-        </label>
         <label class="availability-toggle is-available">
           <input
             type="checkbox"
@@ -390,6 +377,19 @@
             }}
           />
           <span>되는 날</span>
+        </label>
+        <label class="availability-toggle is-unavailable">
+          <input
+            type="checkbox"
+            checked={editorIsUnavailable}
+            onchange={(event) => {
+              editorIsUnavailable = event.currentTarget.checked;
+              if (editorIsUnavailable) {
+                editorIsAvailable = false;
+              }
+            }}
+          />
+          <span>안 되는 날</span>
         </label>
       </div>
 
