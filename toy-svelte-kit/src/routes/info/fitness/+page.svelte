@@ -300,7 +300,6 @@
     {#if recordsLoading}
       <div class="records-status" role="status" aria-live="polite">
         <span class="loading-spinner"></span>
-        <span>운동 기록을 불러오는 중</span>
       </div>
     {:else if recordsError}
       <div class="records-status is-error" role="alert">
