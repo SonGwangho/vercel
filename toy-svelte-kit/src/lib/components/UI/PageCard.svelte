@@ -16,11 +16,9 @@
 
 <style>
 	.ui-page-card {
-		padding: 28px;
-		border: 1px solid var(--line);
+		padding: var(--panel-padding);
 		border-radius: var(--panel-radius);
 		background: var(--surface);
-		box-shadow: var(--shadow-card);
 	}
 
 	@media (max-width: 720px) {

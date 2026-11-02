@@ -12,6 +12,7 @@
   const tree = $derived(buildTree(data.menus ?? []));
   const menuTabs = $derived(data.menuTabs ?? []);
   const activeMenu = $derived(data.activeMenu ?? "");
+  const activeMenuLabel = $derived(menuTabs.find((menu) => menu.key === activeMenu)?.label ?? "메뉴");
   const hideChrome = $derived(data.hideChrome ?? false);
   const showSidebar = $derived(activeMenu !== "home" && tree.length > 0);
 
@@ -106,8 +107,19 @@
     {@render children()}
   </main>
 {:else}
+  <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
   <header class="topbar">
+    <div class="topbar-inner">
     <div class="topbar-left">
+      <a class="brand-link" href="/" aria-label="장난감 웹 홈" onclick={closeDrawer}>
+        <svg class="brand-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="9" height="9" rx="3" fill="currentColor" />
+          <circle cx="20.5" cy="7.5" r="4.5" fill="currentColor" />
+          <path d="M7.5 16 13 25H2l5.5-9Z" fill="currentColor" />
+          <rect x="16" y="16" width="9" height="9" rx="3" fill="currentColor" />
+        </svg>
+        <span>장난감 웹</span>
+      </a>
       <nav aria-label="주요 메뉴" class="top-menu">
         {#each menuTabs as menu}
           <a
@@ -127,12 +139,19 @@
         <button
           type="button"
           class="hamburger"
-          aria-label="메뉴 열기"
-          title="메뉴 열기"
+          aria-label={drawerOpen ? "메뉴 닫기" : "메뉴 열기"}
+          title={drawerOpen ? "메뉴 닫기" : "메뉴 열기"}
           aria-expanded={drawerOpen}
+          aria-controls="sidebar-menu"
           onclick={toggleDrawer}
         >
-          <span aria-hidden="true">☰</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            {#if drawerOpen}
+              <path d="m6 6 12 12M6 18 18 6" />
+            {:else}
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            {/if}
+          </svg>
         </button>
       {/if}
 
@@ -144,8 +163,16 @@
         aria-pressed={isDarkMode}
         onclick={toggleTheme}
       >
-        <span aria-hidden="true">{isDarkMode ? "☼" : "☾"}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          {#if isDarkMode}
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+          {:else}
+            <path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z" />
+          {/if}
+        </svg>
       </button>
+    </div>
     </div>
   </header>
 
@@ -162,7 +189,8 @@
     {/if}
 
     {#if showSidebar}
-      <aside class={`sidebar ${isMobile && drawerOpen ? "open" : ""} ${!isMobile && desktopSidebarCollapsed ? "desktop-collapsed" : ""}`}>
+      <aside id="sidebar-menu" aria-label={activeMenuLabel} class={`sidebar ${isMobile && drawerOpen ? "open" : ""} ${!isMobile && desktopSidebarCollapsed ? "desktop-collapsed" : ""}`}>
+        <div class="sidebar-heading">{activeMenuLabel}</div>
         {#if !isMobile}
           <button
             type="button"
@@ -172,7 +200,9 @@
             aria-expanded={!desktopSidebarCollapsed}
             onclick={toggleDrawer}
           >
-            {desktopSidebarCollapsed ? "›" : "‹"}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d={desktopSidebarCollapsed ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
+            </svg>
           </button>
         {/if}
 
@@ -194,7 +224,7 @@
       </aside>
     {/if}
 
-    <main class="content">
+    <main id="main-content" class="content" tabindex="-1">
       {@render children()}
     </main>
   </div>

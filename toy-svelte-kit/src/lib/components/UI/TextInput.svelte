@@ -27,17 +27,23 @@
 		margin-bottom: 8px;
 		color: var(--muted);
 		font-size: 13px;
-		font-weight: 800;
+		font-weight: 600;
 	}
 
 	.ui-field input {
 		width: 100%;
 		height: 48px;
 		padding: 0 16px;
-		border: 1px solid var(--line);
+		border: 1px solid var(--line-strong);
 		border-radius: var(--control-radius);
 		background: var(--surface);
 		color: var(--ink);
+		caret-color: var(--brand);
+		transition: border-color 0.18s ease, background-color 0.18s ease;
+	}
+
+	.ui-field input:hover {
+		border-color: var(--muted);
 	}
 
 	.ui-field input:focus {

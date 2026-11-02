@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import { page } from "$app/state";
   import type { TreeNode } from "$lib/types/TreeMenu";
   import ResponsiveMenuItem from "./ResponsiveMenuItem.svelte";
 
@@ -34,6 +35,8 @@
       <a
         href={node.path}
         class="menu-link menu-link-parent"
+        class:active={page.url.pathname === node.path}
+        aria-current={page.url.pathname === node.path ? "page" : undefined}
         onclick={() => isMobile && onNavigate?.()}
       >
         {node.name}
@@ -49,10 +52,12 @@
           onToggle?.(node.id);
         }}
       >
-        <span aria-hidden="true">{isExpanded ? "−" : "+"}</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+          <path d={isExpanded ? "m6 9 6 6 6-6" : "m9 6 6 6-6 6"} />
+        </svg>
       </button>
     {:else}
-      <a href={node.path} class="menu-link" onclick={() => isMobile && onNavigate?.()}>
+      <a href={node.path} class="menu-link" class:active={page.url.pathname === node.path} aria-current={page.url.pathname === node.path ? "page" : undefined} onclick={() => isMobile && onNavigate?.()}>
         {node.name}
       </a>
     {/if}
