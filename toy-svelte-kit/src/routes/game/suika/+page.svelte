@@ -7,19 +7,9 @@
     SuikaFruitDefinition,
     SuikaRankingItem,
     SuikaScoreRequest,
+    SuikaStatus as GameStatus,
+    SuikaFruitBody as FruitBody,
   } from "$lib";
-
-  type GameStatus = "idle" | "running" | "over";
-  type FruitBody = {
-    id: number;
-    level: number;
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    radius: number;
-    mergedAt: number;
-  };
 
   const gameMeta = requireGameCode("suika");
   const GAME_NAME = gameMeta.gameName;
@@ -42,7 +32,14 @@
   const fruitDefinitions = fruitDefs as SuikaFruitDefinition[];
 
   let gameStatus = $state<GameStatus>("idle");
-  let fruits = $state<FruitBody[]>([]);
+  let fruits = $state.raw<FruitBody[]>([]);
+  let physicsBodies: FruitBody[] = [];
+  let boardViewport = $state<HTMLDivElement | null>(null);
+  let boardScale = $state(1);
+  let boardRect: DOMRect | null = null;
+  let guideFrame: number | null = null;
+  let pointerClientX = 0;
+  const inverseMassByLevel = fruitDefinitions.map((fruit) => 1 / Math.max(fruit.radius / 18, 1) ** 2);
   let score = $state(0);
   let bestLevel = $state(0);
   let dropX = $state(BOARD_WIDTH / 2);
@@ -78,7 +75,10 @@
 
   function resetGame() {
     stopLoop();
+    if (guideFrame !== null) cancelAnimationFrame(guideFrame);
+    guideFrame = null;
     fruits = [];
+    physicsBodies = [];
     score = 0;
     bestLevel = 0;
     dropX = BOARD_WIDTH / 2;
@@ -101,6 +101,7 @@
   }
 
   function startGame() {
+    if (isSubmitting) return;
     resetGame();
     gameStatus = "running";
     lastTick = performance.now();
@@ -109,7 +110,7 @@
   }
 
   function setDropFromPointer(clientX: number, rect: DOMRect) {
-    const localX = clientX - rect.left;
+    const localX = (clientX - rect.left) * (BOARD_WIDTH / rect.width);
     const radius = fruitDefinitions[nextLevel].radius;
     dropX = clamp(localX, radius + WALL_PADDING, BOARD_WIDTH - radius - WALL_PADDING);
   }
@@ -144,9 +145,7 @@
 
     const definition = fruitDefinitions[nextLevel];
     const radius = definition.radius;
-    fruits = [
-      ...fruits,
-      {
+    physicsBodies.push({
         id: fruitId++,
         level: nextLevel,
         x: clamp(dropX, radius + WALL_PADDING, BOARD_WIDTH - radius - WALL_PADDING),
@@ -155,8 +154,7 @@
         vy: 0,
         radius,
         mergedAt: 0,
-      },
-    ];
+    });
     queueNextFruit();
     lockDropUntil = now + 220;
   }
@@ -179,23 +177,16 @@
     }
   }
 
-  function getFruitMass(body: FruitBody) {
-    const normalizedRadius = Math.max(body.radius / 18, 1);
-    return normalizedRadius * normalizedRadius;
-  }
-
   function simulateStep(deltaSeconds: number, now: number) {
-    const bodies = fruits.map((fruit) => {
-      const vy = fruit.vy + GRAVITY * deltaSeconds;
-      return {
-        ...fruit,
-        vx: fruit.vx,
-        vy,
-        x: fruit.x + fruit.vx * deltaSeconds,
-        y: fruit.y + vy * deltaSeconds,
-      };
-    });
-    const mergeCandidates = new Set<string>();
+    // The solver uses plain bodies; publish one immutable render snapshot per animation frame.
+    const bodies = physicsBodies;
+    const bodyCount = bodies.length;
+    for (const body of bodies) {
+      body.vy += GRAVITY * deltaSeconds;
+      body.x += body.vx * deltaSeconds;
+      body.y += body.vy * deltaSeconds;
+    }
+    const mergeCandidates = new Set<number>();
 
     for (let iteration = 0; iteration < 4; iteration += 1) {
       for (const body of bodies) {
@@ -208,12 +199,11 @@
           const b = bodies[j];
           const dx = b.x - a.x;
           const dy = b.y - a.y;
-          const distance = Math.hypot(dx, dy) || 0.0001;
           const minDistance = a.radius + b.radius;
-
-          if (distance >= minDistance) {
-            continue;
-          }
+          if (Math.abs(dx) >= minDistance || Math.abs(dy) >= minDistance) continue;
+          const distanceSquared = dx * dx + dy * dy;
+          if (distanceSquared >= minDistance * minDistance) continue;
+          const distance = Math.sqrt(distanceSquared) || 0.0001;
 
           if (
             a.level === b.level &&
@@ -221,8 +211,7 @@
             now - a.mergedAt > 120 &&
             now - b.mergedAt > 120
           ) {
-            const pairKey = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-            mergeCandidates.add(pairKey);
+            mergeCandidates.add(i * bodyCount + j);
           }
 
           const nx = dx / distance;
@@ -234,10 +223,8 @@
             continue;
           }
 
-          const massA = getFruitMass(a);
-          const massB = getFruitMass(b);
-          const inverseMassA = 1 / massA;
-          const inverseMassB = 1 / massB;
+          const inverseMassA = inverseMassByLevel[a.level];
+          const inverseMassB = inverseMassByLevel[b.level];
           const inverseMassSum = inverseMassA + inverseMassB;
           const mostlyVertical = Math.abs(ny) > 0.45;
           const aIsUpper = a.y < b.y;
@@ -295,53 +282,32 @@
 
     const mergedIds = new Set<number>();
     const additions: FruitBody[] = [];
-
-    for (let i = 0; i < bodies.length; i += 1) {
-      for (let j = i + 1; j < bodies.length; j += 1) {
-        const a = bodies[i];
-        const b = bodies[j];
-
-        if (
-          mergedIds.has(a.id) ||
-          mergedIds.has(b.id) ||
-          a.level !== b.level ||
-          a.level >= fruitDefinitions.length - 1 ||
-          now - a.mergedAt <= 120 ||
-          now - b.mergedAt <= 120
-        ) {
-          continue;
-        }
-
-        const pairKey = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-        if (!mergeCandidates.has(pairKey)) {
-          continue;
-        }
-
-        mergedIds.add(a.id);
-        mergedIds.add(b.id);
-
-        const next = fruitDefinitions[a.level + 1];
-        const anchor = a.y >= b.y ? a : b;
-        additions.push({
-          id: fruitId++,
-          level: next.level,
-          x: clamp(anchor.x, next.radius + WALL_PADDING, BOARD_WIDTH - next.radius - WALL_PADDING),
-          y: clamp(anchor.y, next.radius + WALL_PADDING, BOARD_HEIGHT - next.radius - WALL_PADDING),
-          vx: (anchor.vx + (anchor === a ? b.vx : a.vx) * 0.35) / 1.35,
-          vy: Math.min((a.vy + b.vy) / 2, -70),
-          radius: next.radius,
-          mergedAt: now,
-        });
-        score += next.score;
-        bestLevel = Math.max(bestLevel, next.level);
-      }
+    // Stable pair order preserves the existing merge priority, without a second all-pairs scan.
+    for (const pair of Array.from(mergeCandidates).sort((a, b) => a - b)) {
+      const a = bodies[Math.floor(pair / bodyCount)];
+      const b = bodies[pair % bodyCount];
+      if (mergedIds.has(a.id) || mergedIds.has(b.id) || a.level !== b.level ||
+          a.level >= fruitDefinitions.length - 1 || now - a.mergedAt <= 120 || now - b.mergedAt <= 120) continue;
+      mergedIds.add(a.id);
+      mergedIds.add(b.id);
+      const next = fruitDefinitions[a.level + 1];
+      const anchor = a.y >= b.y ? a : b;
+      additions.push({
+        id: fruitId++, level: next.level,
+        x: clamp(anchor.x, next.radius + WALL_PADDING, BOARD_WIDTH - next.radius - WALL_PADDING),
+        y: clamp(anchor.y, next.radius + WALL_PADDING, BOARD_HEIGHT - next.radius - WALL_PADDING),
+        vx: (anchor.vx + (anchor === a ? b.vx : a.vx) * 0.35) / 1.35,
+        vy: Math.min((a.vy + b.vy) / 2, -70), radius: next.radius, mergedAt: now
+      });
+      score += next.score;
+      bestLevel = Math.max(bestLevel, next.level);
     }
-
-    fruits = [...bodies.filter((fruit) => !mergedIds.has(fruit.id)), ...additions];
+    if (mergedIds.size > 0) physicsBodies = [...bodies.filter((fruit) => !mergedIds.has(fruit.id)), ...additions];
   }
 
   function loop(now: number) {
-    if (gameStatus !== "running") {
+    animationFrameId = null;
+    if (gameStatus !== "running" || document.hidden) {
       return;
     }
 
@@ -361,7 +327,9 @@
       physicsAccumulator = 0;
     }
 
-    if (fruits.some((fruit) => fruit.y - fruit.radius < DROP_LINE_Y - 12)) {
+    fruits = physicsBodies.map((fruit) => ({ ...fruit }));
+
+    if (physicsBodies.some((fruit) => fruit.y - fruit.radius < DROP_LINE_Y - 12)) {
       overflowMs += deltaSeconds * 1000;
     } else {
       overflowMs = Math.max(0, overflowMs - deltaSeconds * 2200);
@@ -425,7 +393,8 @@
       target instanceof HTMLElement &&
       (target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable)
+        target.isContentEditable ||
+        target.closest("button, a, select"))
     ) {
       return;
     }
@@ -465,672 +434,182 @@
     pressedKeys.delete(event.key.toLowerCase());
   }
 
+  function invalidateBoardRect() { boardRect = null; }
+  function releaseControls() { pressedKeys.clear(); }
+  function handleVisibility() {
+    releaseControls();
+    stopLoop();
+    if (guideFrame !== null) cancelAnimationFrame(guideFrame);
+    guideFrame = null;
+    if (!document.hidden && gameStatus === "running") {
+      lastTick = performance.now();
+      physicsAccumulator = 0;
+      animationFrameId = requestAnimationFrame(loop);
+    }
+  }
   function onPointerMove(event: PointerEvent) {
-    if (gameStatus !== "running") {
-      return;
-    }
-
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setDropFromPointer(event.clientX, rect);
+    if (gameStatus !== "running") return;
+    pointerClientX = event.clientX;
+    const element = event.currentTarget as HTMLElement;
+    if (guideFrame !== null) return;
+    guideFrame = requestAnimationFrame(() => {
+      guideFrame = null;
+      if (gameStatus !== "running") return;
+      boardRect ??= element.getBoundingClientRect();
+      setDropFromPointer(pointerClientX, boardRect);
+    });
   }
-
   function onPointerDown(event: PointerEvent) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setDropFromPointer(event.clientX, rect);
-
-    if (gameStatus === "idle") {
-      startGame();
-      return;
-    }
-
-    if (gameStatus === "running") {
-      dropFruit();
-    }
+    if (event.button !== 0) return;
+    if (gameStatus === "idle") { startGame(); return; }
+    if (gameStatus !== "running") return;
+    boardRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setDropFromPointer(event.clientX, boardRect);
+    dropFruit();
   }
+  function onBoardKeyDown(event: KeyboardEvent) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (gameStatus === "idle") startGame();
+    else if (gameStatus === "running") dropFruit();
+  }
+  $effect(() => {
+    if (!boardViewport) return;
+    const observer = new ResizeObserver(([entry]) => {
+      boardScale = Math.min(1, entry.contentRect.width / BOARD_WIDTH);
+      invalidateBoardRect();
+    });
+    observer.observe(boardViewport);
+    return () => observer.disconnect();
+  });
 
   onMount(() => {
     fetchRanking();
     resetGame();
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseControls);
+    window.addEventListener("scroll", invalidateBoardRect, true);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       stopLoop();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseControls);
+      window.removeEventListener("scroll", invalidateBoardRect, true);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (guideFrame !== null) cancelAnimationFrame(guideFrame);
     };
   });
 </script>
 
-<svelte:head>
-  <title>수박게임</title>
-</svelte:head>
+<svelte:head><title>수박게임 · 장난감 웹</title></svelte:head>
 
 <section class="suika-page">
-  <h1>수박게임</h1>
-
-  <div class="stage-shell">
-    <div class="stage">
-      <aside class="side-panel left-panel">
-        <section class="bubble score-bubble">
-          <p class="bubble-label">득점</p>
-          <strong>{scoreLabel}</strong>
-          <p class="bubble-sub">BEST SCORE {bestRankingScore}</p>
-        </section>
-
-        <section class="ranking-board">
-          <div class="ranking-board-head">
-            <p>랭킹</p>
+  <header class="game-heading">
+    <div><h1>수박게임</h1><p>같은 숫자를 합쳐 더 큰 숫자를 만드세요.</p></div>
+    <span class="game-status">{gameStatus === "running" ? "플레이 중" : gameStatus === "over" ? "게임 종료" : "시작 대기"}</span>
+  </header>
+  <div class="game-layout">
+    <article class="board-card">
+      <div class="board-toolbar">
+        <div class="score"><span>현재 점수</span><strong>{Number(scoreLabel).toLocaleString("ko-KR")}</strong></div>
+        <div class="next-preview"><span>다음 숫자</span><div class="next-ball" style={`background:${previewFruit.color};`}>{previewFruit.name}</div></div>
+      </div>
+      <div class="board-viewport" bind:this={boardViewport}>
+        <div class="board" style={`transform:scale(${boardScale});`} onpointermove={onPointerMove} onpointerdown={onPointerDown} onkeydown={onBoardKeyDown} role="button" tabindex="0" aria-label="수박게임 보드. 좌우 방향키로 이동하고 스페이스 또는 Enter로 떨어뜨리기">
+          <div class="danger-line" aria-hidden="true"></div>
+          <div class="drop-guide" style={`transform:translateX(${dropX}px);`}>
+            <div class="preview-ball" style={`width:${nextFruit.radius * 2}px;height:${nextFruit.radius * 2}px;background:${nextFruit.color};`}><span>{nextFruit.name}</span></div>
           </div>
-
-          {#if isRankingLoading}
-            <p class="ranking-empty">불러오는 중...</p>
-          {:else if rankingError}
-            <div class="ranking-error" role="alert">
-              <p class="ranking-empty">{rankingError}</p>
-              <button type="button" onclick={() => void fetchRanking()}>다시 시도</button>
-            </div>
-          {:else if !rankings.length}
-            <p class="ranking-empty">아직 기록이 없습니다.</p>
-          {:else}
-            <ol class="ranking-strip">
-              {#each rankings as ranking, index}
-                <li class:index-top={index < 3}>
-                  <span class="medal">#{ranking.rank}</span>
-                  <strong>{ranking.userName}</strong>
-                  <span>{ranking.score}</span>
-                </li>
-              {/each}
-            </ol>
-          {/if}
-        </section>
-      </aside>
-
-      <article class="board-frame">
-        <div
-          class="board"
-          onpointermove={onPointerMove}
-          onpointerdown={onPointerDown}
-          role="button"
-          tabindex="0"
-          aria-label="수박게임 보드"
-        >
-          <div class="board-sky"></div>
-          <div class="danger-line"></div>
-          <div class="glass-edge glass-top"></div>
-          <div class="glass-edge glass-left"></div>
-          <div class="glass-edge glass-right"></div>
-          <div class="glass-edge glass-bottom"></div>
-
-          <div class="drop-guide" style={`left:${dropX}px;`}>
-            <div
-              class="preview-ball"
-              style={`width:${nextFruit.radius * 2}px;height:${nextFruit.radius * 2}px;background:${nextFruit.color};`}
-            >
-              <span>{nextFruit.name}</span>
-            </div>
-          </div>
-
           {#each fruits as fruit (fruit.id)}
             {@const definition = fruitDefinitions[fruit.level]}
-            <div
-              class="fruit"
-              style={`width:${fruit.radius * 2}px;height:${fruit.radius * 2}px;transform: translate(${fruit.x - fruit.radius}px, ${fruit.y - fruit.radius}px);background:${definition.color};`}
-            >
-              <span>{definition.name}</span>
-            </div>
+            <div class="fruit" style={`width:${fruit.radius * 2}px;height:${fruit.radius * 2}px;transform:translate(${fruit.x - fruit.radius}px,${fruit.y - fruit.radius}px);background:${definition.color};`}><span>{definition.name}</span></div>
           {/each}
-
-          {#if gameStatus !== "running"}
-            <div class="overlay">
-              <div class="overlay-panel">
-                <h2>{gameStatus === "over" ? "게임 오버" : "클릭 또는 스페이스로 시작"}</h2>
-                <p>
-                  {gameStatus === "over"
-                    ? `점수 ${score}점. 이름을 입력하면 랭킹에 저장됩니다.`
-                    : "같은 숫자를 붙여 더 큰 숫자로 만드세요."}
-                </p>
-
-                {#if gameStatus === "over"}
-                  <label class="name-field">
-                    <span>이름</span>
-                    <input
-                      bind:value={userName}
-                      maxlength="20"
-                      placeholder="이름 입력"
-                      onkeydown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void submitScore();
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    class="submit-btn"
-                    onclick={submitScore}
-                    disabled={!userName.trim() || isSubmitting}
-                  >
-                    {isSubmitting ? "저장 중..." : "기록 저장"}
-                  </button>
-                  {#if submitMessage}
-                    <p class="submit-message">{submitMessage}</p>
-                  {/if}
-                {/if}
-              </div>
-            </div>
-          {/if}
         </div>
-      </article>
-
-      <aside class="side-panel right-panel">
-        <section class="bubble next-bubble">
-          <p class="bubble-label">다음</p>
-          <div
-            class="next-ball"
-            style={`width:${previewFruit.radius * 1.55}px;height:${previewFruit.radius * 1.55}px;background:${previewFruit.color};`}
-          >
-            <span>{previewFruit.name}</span>
+        {#if gameStatus !== "running"}
+          <div class="overlay">
+            <div class="overlay-panel">
+              <h2>{gameStatus === "over" ? "게임 종료" : "어디까지 합칠 수 있을까요?"}</h2>
+              <p>{gameStatus === "over" ? `최종 점수 ${score.toLocaleString("ko-KR")}점. 기록을 남겨 보세요.` : "숫자를 떨어뜨려 같은 숫자끼리 만나게 해 보세요."}</p>
+              {#if gameStatus === "over"}
+                <form onsubmit={(event) => { event.preventDefault(); void submitScore(); }}>
+                  <label class="name-field"><span>기록에 남길 이름</span><input bind:value={userName} maxlength="20" placeholder="이름 입력" disabled={isSubmitting} /></label>
+                  <button type="submit" class="game-action" disabled={!userName.trim() || isSubmitting}>{isSubmitting ? "저장 중" : "기록 저장"}</button>
+                </form>
+                {#if submitMessage}<p class="submit-message" role="alert">{submitMessage}</p>{/if}
+              {/if}
+              <button type="button" class="game-action" class:secondary={gameStatus === "over"} onclick={startGame} disabled={isSubmitting}>{gameStatus === "over" ? "다시 시작" : "게임 시작"}</button>
+            </div>
           </div>
-        </section>
-
-        <section class="evolution-card">
-          <p class="evolution-title">진화의 고리</p>
-          <div class="evolution-ring">
-            {#each fruitDefinitions as definition, index}
-              <div
-                class={`ring-fruit ${bestLevel >= definition.level ? "active" : ""}`}
-                style={`--angle:${index * (360 / fruitDefinitions.length)}deg;--fruit-color:${definition.color};--ring-size:${Math.max(24, Math.round(definition.radius * 0.38))}px;`}
-              >
-                <span>{definition.name}</span>
-              </div>
-            {/each}
-          </div>
-          <p class="evolution-foot">최고 단계 {fruitDefinitions[bestLevel].name}</p>
-        </section>
-      </aside>
-    </div>
+        {/if}
+      </div>
+      <div class="game-rules"><p><strong>이동</strong> 마우스 또는 좌우 방향키</p><p><strong>떨어뜨리기</strong> 터치 · 클릭 · <kbd>Space</kbd></p></div>
+    </article>
+    <aside class="side-panel">
+      <section class="ranking-card">
+        <header><h2>게임 랭킹</h2><span>상위 5명</span></header>
+        <p class="best-score">최고 기록 <strong>{bestRankingScore.toLocaleString("ko-KR")}점</strong></p>
+        {#if isRankingLoading}<p class="ranking-empty" role="status">기록을 불러오는 중입니다.</p>
+        {:else if rankingError}<div class="ranking-error" role="alert"><p>{rankingError}</p><button type="button" class="game-action secondary" onclick={() => void fetchRanking()}>다시 시도</button></div>
+        {:else if !rankings.length}<p class="ranking-empty">아직 등록된 기록이 없어요.<br />첫 기록에 도전해 보세요.</p>
+        {:else}<ol class="ranking-list">{#each rankings as ranking}<li><span>{ranking.rank}</span><strong title={ranking.userName}>{ranking.userName}</strong><span>{ranking.score.toLocaleString("ko-KR")}</span></li>{/each}</ol>{/if}
+      </section>
+      <section class="evolution-card">
+        <h2>숫자의 성장</h2><p>도달한 최고 단계 <strong>{fruitDefinitions[bestLevel].name}</strong></p>
+        <ol class="evolution-list">{#each fruitDefinitions as definition}<li class:reached={bestLevel >= definition.level} style={`--fruit-color:${definition.color};`} aria-label={`${definition.name}단계${bestLevel >= definition.level ? ", 도달" : ""}`}>{definition.name}</li>{/each}</ol>
+      </section>
+    </aside>
   </div>
 </section>
 
 <style>
-  .suika-page {
-    display: grid;
-    gap: 10px;
-    color: #4a321d;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 2.25rem;
-    letter-spacing: 0;
-  }
-
-  .stage-shell {
-    width: 100%;
-    overflow-x: auto;
-    padding-bottom: 8px;
-  }
-
-  .stage {
-    position: relative;
-    width: 100%;
-    min-width: 1080px;
-    max-width: 1120px;
-    margin: 0 auto;
-    height: 792px;
-    display: grid;
-    grid-template-columns: minmax(220px, 1fr) 430px minmax(220px, 1fr);
-    gap: 24px;
-    padding: 28px 24px 22px;
-    box-sizing: border-box;
-    border-radius: 28px;
-    background:
-      radial-gradient(circle at 50% -10%, rgba(255, 242, 191, 0.38), transparent 28%),
-      linear-gradient(180deg, #c7955d 0%, #b07a47 55%, #d6bb87 55%, #e9d7ae 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 22px 44px rgba(86, 52, 22, 0.16);
-  }
-
-  .side-panel {
-    min-width: 0;
-    display: grid;
-    align-content: start;
-    gap: 18px;
-    padding-top: 10px;
-  }
-
-  .bubble,
-  .ranking-board,
-  .evolution-card {
-    position: relative;
-    border-radius: 999px;
-    background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.42), rgba(255, 245, 230, 0.18) 42%, rgba(255, 228, 194, 0.12) 100%);
-    border: 2px solid rgba(255, 241, 219, 0.46);
-    box-shadow:
-      inset 0 10px 24px rgba(255, 255, 255, 0.18),
-      inset 0 -12px 24px rgba(161, 104, 52, 0.1),
-      0 18px 26px rgba(113, 71, 34, 0.1);
-  }
-
-  .score-bubble,
-  .next-bubble {
-    width: 184px;
-    height: 184px;
-    justify-self: center;
-    display: grid;
-    place-items: center;
-    text-align: center;
-    padding: 14px;
-    box-sizing: border-box;
-  }
-
-  .bubble-label {
-    margin: 0;
-    font-size: 2.25rem;
-    font-weight: 900;
-    color: #fff8e9;
-    text-shadow: 0 2px 0 rgba(104, 64, 23, 0.28);
-  }
-
-  .score-bubble strong {
-    display: block;
-    margin-top: -8px;
-    font-size: 56px;
-    line-height: 1;
-    color: #fff9ef;
-    text-shadow: 0 4px 0 rgba(103, 57, 16, 0.22);
-  }
-
-  .bubble-sub {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 800;
-    color: rgba(255, 249, 237, 0.92);
-  }
-
-  .ranking-board {
-    width: min(100%, 300px);
-    max-width: 100%;
-    min-height: 304px;
-    justify-self: stretch;
-    border-radius: 26px;
-    padding: 16px 14px 18px;
-    box-sizing: border-box;
-    background: linear-gradient(180deg, rgba(255, 253, 244, 0.88) 0%, rgba(246, 230, 196, 0.76) 100%);
-  }
-
-  .ranking-board-head {
-    display: flex;
-    align-items: center;
-        gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .ranking-board-head p {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 900;
-    color: #9d6c34;
-  }
-
-  .ranking-strip {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 8px;
-  }
-
-  .ranking-strip li {
-    display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    min-height: 48px;
-    border-radius: 12px;
-    padding: 0 10px;
-    background: rgba(255, 255, 255, 0.56);
-    color: #7b552b;
-    font-weight: 800;
-  }
-
-  .ranking-strip strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ranking-strip span:last-child {
-    justify-self: end;
-    white-space: nowrap;
-  }
-
-  .ranking-strip li.index-top {
-    background: linear-gradient(90deg, rgba(255, 228, 151, 0.74), rgba(193, 227, 255, 0.62));
-  }
-
-  .medal {
-    display: inline-grid;
-    place-items: center;
-    height: 26px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.74);
-    font-size: 12px;
-  }
-
-  .ranking-empty {
-    margin: 0;
-    color: #8b673f;
-    font-size: 14px;
-  }
-
-  .ranking-error {
-    display: grid;
-    justify-items: start;
-    gap: 10px;
-  }
-
-  .ranking-error button {
-    min-height: 34px;
-    padding: 0 11px;
-    border: 1px solid rgba(139, 103, 63, 0.28);
-    border-radius: var(--control-radius);
-    background: rgba(255, 255, 255, 0.56);
-    color: #7b552b;
-    font-size: 0.75rem;
-    font-weight: 800;
-  }
-
-  .board-frame {
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    padding-top: 28px;
-  }
-
-  .board {
-    position: relative;
-    width: 430px;
-    height: 560px;
-    overflow: hidden;
-    border-radius: 8px 8px 18px 18px;
-    background:
-      linear-gradient(180deg, rgba(255, 250, 220, 0.28) 0%, rgba(255, 249, 229, 0.18) 100%),
-      linear-gradient(180deg, rgba(255, 246, 208, 0.14) 0%, rgba(255, 233, 188, 0.18) 100%);
-    box-shadow:
-      inset 0 0 0 3px rgba(255, 231, 162, 0.5),
-      inset 0 0 0 8px rgba(255, 245, 222, 0.16),
-      0 16px 30px rgba(111, 71, 31, 0.14);
-    cursor: crosshair;
-    user-select: none;
-  }
-
-  .board-sky {
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 243, 214, 0.04) 100%),
-      linear-gradient(90deg, transparent 49.5%, rgba(255, 255, 255, 0.22) 50%, transparent 50.5%);
-  }
-
-  .glass-edge {
-    position: absolute;
-    background: linear-gradient(180deg, rgba(255, 233, 167, 0.9), rgba(244, 202, 104, 0.8));
-    box-shadow: 0 0 0 1px rgba(255, 252, 238, 0.24);
-  }
-
-  .glass-top {
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 12px;
-  }
-
-  .glass-left,
-  .glass-right {
-    top: 0;
-    width: 12px;
-    height: 100%;
-  }
-
-  .glass-left {
-    left: 0;
-  }
-
-  .glass-right {
-    right: 0;
-  }
-
-  .glass-bottom {
-    left: 0;
-    bottom: 0;
-    width: 100%;
-    height: 14px;
-  }
-
-  .danger-line {
-    position: absolute;
-    left: 18px;
-    right: 18px;
-    top: 74px;
-    border-top: 2px solid rgba(255, 255, 255, 0.42);
-  }
-
-  .drop-guide {
-    position: absolute;
-    top: 18px;
-    transform: translateX(-50%);
-    pointer-events: none;
-    transition: left 0.06s linear;
-  }
-
-  .preview-ball,
-  .fruit,
-  .next-ball {
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    color: rgba(54, 32, 13, 0.84);
-    font-size: 12px;
-    font-weight: 900;
-    box-shadow:
-      inset -8px -12px 18px rgba(0, 0, 0, 0.08),
-      inset 10px 12px 20px rgba(255, 255, 255, 0.26),
-      0 10px 16px rgba(101, 55, 14, 0.12);
-    border: 2px solid rgba(255, 255, 255, 0.48);
-  }
-
-  .preview-ball,
-  .next-ball {
-    position: relative;
-  }
-
-  .preview-ball span,
-  .fruit span,
-  .next-ball span {
-    text-align: center;
-    padding: 0 6px;
-    line-height: 1.1;
-  }
-
-  .fruit {
-    position: absolute;
-    will-change: transform;
-  }
-
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgba(96, 61, 28, 0.18);
-    backdrop-filter: blur(3px);
-  }
-
-  .overlay-panel {
-    width: min(340px, calc(100% - 28px));
-    display: grid;
-    gap: 10px;
-    padding: 20px;
-    border-radius: 20px;
-    background: rgba(255, 251, 245, 0.95);
-    color: #3a2615;
-    box-shadow: 0 20px 36px rgba(76, 40, 12, 0.14);
-  }
-
-  .overlay-panel h2,
-  .overlay-panel p {
-    margin: 0;
-  }
-
-  .name-field {
-    display: grid;
-    gap: 6px;
-    font-weight: 700;
-    font-size: 14px;
-  }
-
-  .name-field input {
-    height: 44px;
-    border-radius: 12px;
-    border: 1px solid #e7cfbc;
-    background: #fff;
-    padding: 0 12px;
-    font: inherit;
-  }
-
-  .submit-btn {
-    height: 44px;
-    border: none;
-    border-radius: 999px;
-    color: #fffaf0;
-    background: linear-gradient(135deg, #d97706 0%, #c2410c 100%);
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .submit-message {
-    color: #b91c1c;
-    font-size: 13px;
-  }
-
-  .right-panel {
-    display: grid;
-    justify-items: center;
-  }
-
-  .next-ball {
-    width: 70px;
-    height: 70px;
-  }
-
-  .evolution-card {
-    width: 210px;
-    height: 268px;
-    border-radius: 34px;
-    padding: 16px 12px;
-    box-sizing: border-box;
-    display: grid;
-    justify-items: center;
-    align-content: start;
-    background: linear-gradient(180deg, rgba(243, 255, 221, 0.88) 0%, rgba(216, 243, 181, 0.66) 100%);
-  }
-
-  .evolution-title,
-  .evolution-foot {
-    margin: 0;
-    color: #8d6d2b;
-    font-weight: 900;
-  }
-
-  .evolution-title {
-    font-size: 20px;
-  }
-
-  .evolution-foot {
-    margin-top: 10px;
-    font-size: 13px;
-  }
-
-  .evolution-ring {
-    position: relative;
-    width: 168px;
-    height: 168px;
-    margin-top: 8px;
-    border-radius: 999px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.52) 0 28%, rgba(215, 246, 171, 0.36) 29%, rgba(255, 255, 255, 0) 30%);
-  }
-
-  .ring-fruit {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: var(--ring-size);
-    height: var(--ring-size);
-    margin-left: calc(var(--ring-size) / -2);
-    margin-top: calc(var(--ring-size) / -2);
-    border-radius: 999px;
-    transform:
-      rotate(var(--angle))
-      translateY(-76px)
-      rotate(calc(var(--angle) * -1));
-    display: grid;
-    place-items: center;
-    background: var(--fruit-color);
-    border: 2px solid rgba(255, 255, 255, 0.68);
-    box-shadow: 0 8px 12px rgba(104, 94, 28, 0.12);
-    color: rgba(58, 39, 17, 0.84);
-    font-size: 8px;
-    font-weight: 900;
-    opacity: 0.72;
-  }
-
-  .ring-fruit.active {
-    opacity: 1;
-    transform:
-      rotate(var(--angle))
-      translateY(-76px)
-      rotate(calc(var(--angle) * -1))
-      scale(1.04);
-  }
-
-  @media (max-width: 860px) {
-    .stage-shell {
-      overflow-x: auto;
-    }
-  }
-
-  :global(html[data-theme="dark"]) .suika-page {
-    color: #f5eadb;
-  }
-
-  :global(html[data-theme="dark"]) .suika-page .ranking-board,
-  :global(html[data-theme="dark"]) .suika-page .evolution-card,
-  :global(html[data-theme="dark"]) .suika-page .overlay-panel,
-  :global(html[data-theme="dark"]) .suika-page .name-field input,
-  :global(html[data-theme="dark"]) .suika-page .ranking-strip li {
-    background: #111827;
-    color: #f5eadb;
-    border-color: #243041;
-  }
-
-  :global(html[data-theme="dark"]) .suika-page .ranking-empty,
-  :global(html[data-theme="dark"]) .suika-page .ranking-board-head p,
-  :global(html[data-theme="dark"]) .suika-page .evolution-title,
-  :global(html[data-theme="dark"]) .suika-page .evolution-foot {
-    color: #cbd5e1;
-  }
-
-  :global(html[data-theme="dark"]) .suika-page .ranking-error button {
-    border-color: var(--line);
-    background: var(--surface-muted);
-    color: var(--brand-strong);
-  }
+  .game-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
+  .board-card, .ranking-card, .evolution-card { min-width: 0; padding: 24px; border-radius: var(--panel-radius); background: var(--surface); }
+  .board-card { display: grid; gap: 20px; justify-items: center; }
+  .board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: min(100%, 430px); }
+  .score { display: grid; gap: 4px; }
+  .score > span, .next-preview > span { color: var(--muted); font-size: 12px; }
+  .score strong { color: var(--brand-strong); font-size: 32px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .next-preview { display: flex; align-items: center; gap: 10px; }
+  .next-ball { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: #242124; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .board-viewport { position: relative; width: min(100%, 430px); aspect-ratio: 43 / 56; overflow: hidden; border-radius: 12px; background: var(--surface-muted); }
+  .board { position: absolute; top: 0; left: 0; width: 430px; height: 560px; transform-origin: top left; contain: layout paint; cursor: crosshair; touch-action: none; user-select: none; border-radius: 0 0 12px 12px; }
+  .board::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--line-strong); border-top: 0; border-radius: inherit; pointer-events: none; }
+  .danger-line { position: absolute; top: 74px; left: 14px; right: 14px; border-top: 1px dashed var(--danger); opacity: 0.6; pointer-events: none; }
+  .drop-guide { position: absolute; top: 16px; left: 0; pointer-events: none; }
+  .preview-ball, .fruit { display: grid; place-items: center; border-radius: 50%; color: #242124; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; border: 1px solid rgba(0,0,0,0.12); }
+  .preview-ball { transform: translateX(-50%); }
+  .fruit { position: absolute; top: 0; left: 0; }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 86%, transparent); }
+  .overlay-panel { display: grid; gap: 14px; width: min(100%, 340px); max-height: 100%; overflow-y: auto; padding: 24px; border-radius: 12px; background: var(--surface); }
+  .overlay-panel h2, .overlay-panel p { margin: 0; }
+  .overlay-panel h2 { color: var(--text-strong); font-size: 20px; line-height: 1.4; }
+  .overlay-panel p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .overlay-panel form, .name-field { display: grid; gap: 8px; }
+  .name-field { font-size: 12px; color: var(--muted); }
+  .name-field input { width: 100%; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface-muted); color: var(--text); }
+  .overlay-panel .submit-message { color: var(--danger); }
+  .side-panel { display: grid; gap: 16px; min-width: 0; }
+  .ranking-card header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .ranking-card h2, .evolution-card h2 { margin: 0; color: var(--text-strong); font-size: 16px; font-weight: 650; }
+  .ranking-card header > span { color: var(--muted); font-size: 11px; }
+  .best-score { display: flex; justify-content: space-between; gap: 12px; margin: 16px 0; color: var(--muted); font-size: 12px; }
+  .best-score strong { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ranking-empty, .ranking-error { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+  .ranking-error p { margin: 0 0 12px; }
+  .ranking-list { list-style: none; margin: 0; padding: 0; }
+  .ranking-list li { display: grid; grid-template-columns: 24px minmax(0,1fr) auto; gap: 10px; align-items: center; min-height: 44px; font-size: 13px; }
+  .ranking-list strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .ranking-list span { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .ranking-list span:last-child { color: var(--text-strong); text-align: right; }
+  .ranking-list li:first-child span { color: var(--brand-strong); }
+  .evolution-card > p { margin: 12px 0 16px; color: var(--muted); font-size: 12px; }
+  .evolution-card > p strong { color: var(--text); margin-left: 4px; }
+  .evolution-list { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px 8px; margin: 0; padding: 0; }
+  .evolution-list li { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .evolution-list li.reached { background: var(--fruit-color); border-color: transparent; color: #242124; font-weight: 600; }
+  @media (max-width: 850px) { .game-layout { grid-template-columns: 1fr; } .side-panel { grid-template-columns: repeat(2, minmax(0,1fr)); align-items: start; } }
+  @media (max-width: 540px) { .board-card, .ranking-card, .evolution-card { padding: 16px; } .side-panel { grid-template-columns: 1fr; } .overlay-panel { padding: 20px; } .overlay-panel h2 { font-size: 18px; } }
 </style>

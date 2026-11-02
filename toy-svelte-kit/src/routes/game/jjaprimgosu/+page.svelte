@@ -5,19 +5,9 @@
   import type {
     JjaprimGosuRankingItem,
     JjaprimGosuScoreRequest,
+    JjaprimGosuStatus as GameStatus,
+    JjaprimGosuArrow as ArrowEntity,
   } from "$lib";
-
-  type GameStatus = "idle" | "running" | "dead";
-  type ArrowEntity = {
-    id: number;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    vx: number;
-    vy: number;
-    rotation: number;
-  };
 
   const gameMeta = requireGameCode("jjaprimgosu");
   const GAME_NAME = gameMeta.gameName;
@@ -29,11 +19,16 @@
   const MAX_SIMULATION_STEP_MS = 10;
 
   let gameStatus = $state<GameStatus>("idle");
-  let player = $state({
+  let player = $state.raw({
     x: 96,
     y: ARENA_HEIGHT / 2 - PLAYER_SIZE / 2,
   });
-  let arrows = $state<ArrowEntity[]>([]);
+  let arrows = $state.raw<ArrowEntity[]>([]);
+  let arrowBodies: ArrowEntity[] = [];
+  let playerPosition = { x: 96, y: ARENA_HEIGHT / 2 - PLAYER_SIZE / 2 };
+  let simulationMs = 0;
+  let arenaViewport = $state<HTMLDivElement | null>(null);
+  let arenaScale = $state(1);
   let elapsedMs = $state(0);
   let finalScore = $state(0);
   let userName = $state("");
@@ -54,10 +49,8 @@
   const finalSeconds = $derived((finalScore / 1000).toFixed(2));
 
   function resetPlayer() {
-    player = {
-      x: ARENA_WIDTH / 2 - PLAYER_SIZE / 2,
-      y: ARENA_HEIGHT / 2 - PLAYER_SIZE / 2,
-    };
+    playerPosition = { x: ARENA_WIDTH / 2 - PLAYER_SIZE / 2, y: ARENA_HEIGHT / 2 - PLAYER_SIZE / 2 };
+    player = { ...playerPosition };
   }
 
   function clamp(value: number, min: number, max: number) {
@@ -65,10 +58,12 @@
   }
 
   function startGame() {
+    if (isSubmitting) return;
     stopLoop();
     pressedKeys.clear();
     gameStatus = "running";
     elapsedMs = 0;
+    simulationMs = 0;
     finalScore = 0;
     submitMessage = "";
     userName = "";
@@ -76,6 +71,7 @@
     nextSpawnDelay = createSpawnDelay(0);
     arrowId = 1;
     arrows = [];
+    arrowBodies = [];
     resetPlayer();
 
     lastFrameAt = performance.now();
@@ -87,6 +83,7 @@
     pressedKeys.clear();
     gameStatus = "idle";
     elapsedMs = 0;
+    simulationMs = 0;
     finalScore = 0;
     submitMessage = "";
     userName = "";
@@ -94,6 +91,7 @@
     nextSpawnDelay = createSpawnDelay(0);
     arrowId = 1;
     arrows = [];
+    arrowBodies = [];
     resetPlayer();
   }
 
@@ -118,8 +116,8 @@
     const height = 6 + Math.random() * 4;
     const halfWidth = width / 2;
     const halfHeight = height / 2;
-    const playerCenterX = player.x + PLAYER_SIZE / 2;
-    const playerCenterY = player.y + PLAYER_SIZE / 2;
+    const playerCenterX = playerPosition.x + PLAYER_SIZE / 2;
+    const playerCenterY = playerPosition.y + PLAYER_SIZE / 2;
     const edge = Math.floor(Math.random() * 4);
     let startX = 0;
     let startY = 0;
@@ -141,13 +139,11 @@
     const dx = playerCenterX - startX;
     const dy = playerCenterY - startY;
     const distance = Math.hypot(dx, dy) || 1;
-    const speed = 220 + Math.random() * 140 + elapsedMs / 55;
+    const speed = 220 + Math.random() * 140 + simulationMs / 55;
     const vx = (dx / distance) * speed;
     const vy = (dy / distance) * speed;
 
-    arrows = [
-      ...arrows,
-      {
+    arrowBodies.push({
         id: arrowId++,
         x: clamp(startX - halfWidth, 0, ARENA_WIDTH - width),
         y: clamp(startY - halfHeight, 0, ARENA_HEIGHT - height),
@@ -156,8 +152,7 @@
         vx,
         vy,
         rotation: (Math.atan2(vy, vx) * 180) / Math.PI,
-      },
-    ];
+    });
   }
 
   function movePlayer(deltaSeconds: number) {
@@ -176,49 +171,23 @@
     const velocityX = (horizontal / magnitude) * PLAYER_SPEED * deltaSeconds;
     const velocityY = (vertical / magnitude) * PLAYER_SPEED * deltaSeconds;
 
-    player = {
-      x: clamp(player.x + velocityX, 0, ARENA_WIDTH - PLAYER_SIZE),
-      y: clamp(player.y + velocityY, 0, ARENA_HEIGHT - PLAYER_SIZE),
-    };
+    playerPosition.x = clamp(playerPosition.x + velocityX, 0, ARENA_WIDTH - PLAYER_SIZE);
+    playerPosition.y = clamp(playerPosition.y + velocityY, 0, ARENA_HEIGHT - PLAYER_SIZE);
   }
 
-  function hasCollision(arrow: ArrowEntity) {
-    const playerPadding = 7;
-    const arrowPaddingX = 6;
-    const arrowPaddingY = 2;
-    const playerLeft = player.x + playerPadding;
-    const playerTop = player.y + playerPadding;
-    const playerRight = player.x + PLAYER_SIZE - playerPadding;
-    const playerBottom = player.y + PLAYER_SIZE - playerPadding;
-    const arrowLeft = arrow.x + arrowPaddingX;
-    const arrowTop = arrow.y + arrowPaddingY;
-    const arrowRight = arrow.x + arrow.width - arrowPaddingX;
-    const arrowBottom = arrow.y + arrow.height - arrowPaddingY;
-
-    return !(
-      playerRight < arrowLeft ||
-      playerLeft > arrowRight ||
-      playerBottom < arrowTop ||
-      playerTop > arrowBottom
-    );
+  function hasSweptCollision(arrow: ArrowEntity, previousX: number, previousY: number) {
+    const left = Math.min(previousX, arrow.x) + 6;
+    const top = Math.min(previousY, arrow.y) + 2;
+    const right = Math.max(previousX, arrow.x) + arrow.width - 6;
+    const bottom = Math.max(previousY, arrow.y) + arrow.height - 2;
+    return !(playerPosition.x + PLAYER_SIZE - 7 < left || playerPosition.x + 7 > right ||
+      playerPosition.y + PLAYER_SIZE - 7 < top || playerPosition.y + 7 > bottom);
   }
 
-  function hasSweptCollision(previousArrow: ArrowEntity, nextArrow: ArrowEntity) {
-    if (hasCollision(previousArrow) || hasCollision(nextArrow)) {
-      return true;
-    }
-
-    const sweptArrow: ArrowEntity = {
-      ...nextArrow,
-      x: Math.min(previousArrow.x, nextArrow.x),
-      y: Math.min(previousArrow.y, nextArrow.y),
-      width: Math.max(previousArrow.x + previousArrow.width, nextArrow.x + nextArrow.width) -
-        Math.min(previousArrow.x, nextArrow.x),
-      height: Math.max(previousArrow.y + previousArrow.height, nextArrow.y + nextArrow.height) -
-        Math.min(previousArrow.y, nextArrow.y),
-    };
-
-    return hasCollision(sweptArrow);
+  function publishFrame() {
+    player = { ...playerPosition };
+    arrows = arrowBodies.map((arrow) => ({ ...arrow }));
+    elapsedMs = simulationMs;
   }
 
   function killPlayer(now: number) {
@@ -230,66 +199,66 @@
   }
 
   function advanceFrame(deltaMs: number) {
-    elapsedMs += deltaMs;
+    simulationMs += deltaMs;
     spawnElapsed += deltaMs;
-
     movePlayer(deltaMs / 1000);
-
     while (spawnElapsed >= nextSpawnDelay) {
       spawnElapsed -= nextSpawnDelay;
       spawnArrow();
-      nextSpawnDelay = createSpawnDelay(elapsedMs);
+      nextSpawnDelay = createSpawnDelay(simulationMs);
     }
-
     let collisionDetected = false;
-
-    arrows = arrows
-      .map((arrow) => {
-        const nextArrow = {
-          ...arrow,
-          x: arrow.x + arrow.vx * (deltaMs / 1000),
-          y: arrow.y + arrow.vy * (deltaMs / 1000),
-        };
-
-        if (!collisionDetected && hasSweptCollision(arrow, nextArrow)) {
-          collisionDetected = true;
-        }
-
-        return nextArrow;
-      })
-      .filter(
-        (arrow) =>
-          arrow.x + arrow.width > -48 &&
-          arrow.x < ARENA_WIDTH + 48 &&
-          arrow.y + arrow.height > -48 &&
-          arrow.y < ARENA_HEIGHT + 48,
-      );
-
-    return collisionDetected || arrows.some(hasCollision);
+    let retained = 0;
+    for (const arrow of arrowBodies) {
+      const previousX = arrow.x;
+      const previousY = arrow.y;
+      arrow.x += arrow.vx * (deltaMs / 1000);
+      arrow.y += arrow.vy * (deltaMs / 1000);
+      if (!collisionDetected && hasSweptCollision(arrow, previousX, previousY)) collisionDetected = true;
+      if (arrow.x + arrow.width > -48 && arrow.x < ARENA_WIDTH + 48 &&
+          arrow.y + arrow.height > -48 && arrow.y < ARENA_HEIGHT + 48) {
+        arrowBodies[retained++] = arrow;
+      }
+    }
+    arrowBodies.length = retained;
+    return collisionDetected;
   }
 
   function loop(now: number) {
-    if (gameStatus !== "running") {
-      return;
-    }
-
-    const deltaMs = now - lastFrameAt;
+    animationFrameId = null;
+    if (gameStatus !== "running" || document.hidden) return;
+    // Bound recovery work after a stalled frame; never run an unbounded catch-up loop.
+    let remainingMs = Math.min(Math.max(0, now - lastFrameAt), 100);
     lastFrameAt = now;
-    let remainingMs = deltaMs;
-
     while (remainingMs > 0) {
       const stepMs = Math.min(remainingMs, MAX_SIMULATION_STEP_MS);
-
       if (advanceFrame(stepMs)) {
-        killPlayer(elapsedMs);
+        publishFrame();
+        killPlayer(simulationMs);
         return;
       }
-
       remainingMs -= stepMs;
     }
-
-    animationFrameId = window.requestAnimationFrame(loop);
+    publishFrame();
+    animationFrameId = requestAnimationFrame(loop);
   }
+
+  function releaseControls() { pressedKeys.clear(); }
+  function handleVisibility() {
+    releaseControls();
+    stopLoop();
+    if (!document.hidden && gameStatus === "running") {
+      lastFrameAt = performance.now();
+      animationFrameId = requestAnimationFrame(loop);
+    }
+  }
+
+  $effect(() => {
+    if (!arenaViewport) return;
+    const observer = new ResizeObserver(([entry]) => { arenaScale = Math.min(1, entry.contentRect.width / ARENA_WIDTH); });
+    observer.observe(arenaViewport);
+    return () => observer.disconnect();
+  });
 
   function onKeyDown(event: KeyboardEvent) {
     const target = event.target;
@@ -297,7 +266,8 @@
       target instanceof HTMLElement &&
       (target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable)
+        target.isContentEditable ||
+        target.closest("button, a, select"))
     ) {
       return;
     }
@@ -339,10 +309,13 @@
     event.preventDefault();
 
     if (isPressed && gameStatus === "running") {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       pressedKeys.add(key);
       return;
     }
 
+    const element = event.currentTarget as HTMLElement;
+    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
     pressedKeys.delete(key);
   }
 
@@ -396,36 +369,39 @@
     resetToIdle();
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseControls);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       stopLoop();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseControls);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   });
 </script>
 
 <svelte:head>
-  <title>짭림고수</title>
+  <title>짭림고수 · 장난감 웹</title>
 </svelte:head>
 
 <section class="jjaprim-page">
-  <article class="hero">
-    <h1>짭림고수</h1>
-  </article>
+  <header class="game-heading">
+    <div><h1>짭림고수</h1><p>쏟아지는 화살을 피하고, 가장 오래 살아남아 보세요.</p></div>
+    <span class="game-status">{gameStatus === "running" ? "플레이 중" : gameStatus === "dead" ? "게임 종료" : "시작 대기"}</span>
+  </header>
 
   <div class="game-layout">
     <article class="arena-card">
-      <div class="arena">
-        <div class="sky"></div>
-        <div class="bamboo bamboo-a"></div>
-        <div class="bamboo bamboo-b"></div>
-        <div class="bamboo bamboo-c"></div>
+      <div class="arena-toolbar"><span>생존 시간</span><strong>{elapsedSeconds}<small>초</small></strong></div>
+      <div class="arena-viewport" bind:this={arenaViewport}>
+      <div class="arena" style={`transform:scale(${arenaScale});`}>
 
         <div
           class="player"
           style={`transform: translate(${player.x}px, ${player.y}px);`}
-          aria-label="player"
+          aria-label="플레이어"
         >
           <span class="player-head"></span>
           <span class="player-body"></span>
@@ -443,10 +419,11 @@
           </div>
         {/each}
 
+      </div>
         {#if gameStatus !== "running"}
           <div class="overlay">
             <div class="overlay-panel">
-              <h2>{gameStatus === "dead" ? "사망" : "대기 중"}</h2>
+              <h2>{gameStatus === "dead" ? "게임 종료" : "화살을 피해 보세요"}</h2>
               <p>
                 {#if gameStatus === "dead"}
                   {finalSeconds}초 버텼습니다. 이름을 입력하면 랭킹에 등록합니다.
@@ -472,7 +449,7 @@
                 </label>
                 <button
                   type="button"
-                  class="submit-btn"
+                  class="game-action"
                   onclick={submitScore}
                   disabled={!userName.trim() || isSubmitting}
                 >
@@ -483,23 +460,12 @@
                 {/if}
               {/if}
 
-              <button type="button" class="submit-btn start-btn" onclick={startGame}>
+              <button type="button" class="game-action start-btn" onclick={startGame} disabled={isSubmitting}>
                 {gameStatus === "dead" ? "다시 도전" : "게임 시작"}
               </button>
             </div>
           </div>
         {/if}
-      </div>
-
-      <div class="guide">
-        <p><strong>시작</strong> 스페이스바</p>
-        <p><strong>이동</strong> 방향키 또는 WASD</p>
-      </div>
-    </article>
-
-    <aside class="ranking-card">
-      <div class="ranking-head">
-        <h2>랭킹</h2>
       </div>
 
       <div class="touch-controls" aria-label="화면 이동 버튼">
@@ -511,7 +477,7 @@
           onpointerup={(event) => setTouchControl(event, "arrowup", false)}
           onpointercancel={(event) => setTouchControl(event, "arrowup", false)}
           onpointerleave={(event) => setTouchControl(event, "arrowup", false)}
-        >↑</button>
+        ><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6" /></svg></button>
         <span></span>
         <button
           type="button"
@@ -520,7 +486,7 @@
           onpointerup={(event) => setTouchControl(event, "arrowleft", false)}
           onpointercancel={(event) => setTouchControl(event, "arrowleft", false)}
           onpointerleave={(event) => setTouchControl(event, "arrowleft", false)}
-        >←</button>
+        ><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg></button>
         <button
           type="button"
           aria-label="아래로 이동"
@@ -528,7 +494,7 @@
           onpointerup={(event) => setTouchControl(event, "arrowdown", false)}
           onpointercancel={(event) => setTouchControl(event, "arrowdown", false)}
           onpointerleave={(event) => setTouchControl(event, "arrowdown", false)}
-        >↓</button>
+        ><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6" /></svg></button>
         <button
           type="button"
           aria-label="오른쪽으로 이동"
@@ -536,8 +502,20 @@
           onpointerup={(event) => setTouchControl(event, "arrowright", false)}
           onpointercancel={(event) => setTouchControl(event, "arrowright", false)}
           onpointerleave={(event) => setTouchControl(event, "arrowright", false)}
-        >→</button>
+        ><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 6 6 6-6 6" /></svg></button>
       </div>
+      <div class="guide game-rules">
+        <p><strong>시작</strong> <kbd>Space</kbd></p>
+        <p><strong>이동</strong> 방향키 또는 <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></p>
+      </div>
+    </article>
+
+    <aside class="ranking-card">
+      <div class="ranking-head">
+        <h2>랭킹</h2>
+      </div>
+
+
 
       {#if isRankingLoading}
         <p class="ranking-empty">랭킹 불러오는 중...</p>
@@ -566,403 +544,46 @@
 </section>
 
 <style>
-  .jjaprim-page {
-    display: grid;
-    gap: 16px;
-    color: var(--text);
-  }
-
-  .hero {
-    padding: 12px 4px 4px;
-    background:
-      none;
-    color: var(--text-strong);
-    box-shadow: none;
-  }
-
-  .hero h1 {
-    margin: 0;
-    font-size: 2.25rem;
-    line-height: 1.05;
-    letter-spacing: 0;
-  }
-  .submit-btn {
-    border: none;
-    border-radius: var(--control-radius);
-    cursor: pointer;
-    font-weight: 700;
-  }
-
-  .game-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.85fr) 280px;
-    gap: 16px;
-    align-items: start;
-  }
-
-  .arena-card,
-  .ranking-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--panel-radius);
-    padding: 16px;
-    box-shadow: var(--shadow-card);
-  }
-
-  .arena-card {
-    display: grid;
-    justify-items: center;
-    align-content: start;
-  }
-
-  .arena {
-    position: relative;
-    width: 800px;
-    height: 600px;
-    border-radius: 18px;
-    overflow: hidden;
-    background:
-      radial-gradient(circle at top, rgba(255, 255, 255, 0.38), transparent 24%),
-      linear-gradient(180deg, #dff5df 0%, #b9deb9 38%, #6f9858 82%, #557240 100%);
-    border: 1px solid rgba(50, 108, 63, 0.18);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.4),
-      inset 0 -40px 80px rgba(36, 62, 26, 0.16);
-  }
-
-  .sky {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.88), transparent 13%),
-      radial-gradient(circle at 78% 12%, rgba(255, 255, 255, 0.44), transparent 10%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, transparent 36%);
-  }
-
-  .bamboo {
-    position: absolute;
-    bottom: -10%;
-    width: 34px;
-    height: 130%;
-    border-radius: 999px;
-    background:
-      repeating-linear-gradient(
-        180deg,
-        #3c7a46 0 44px,
-        #23472d 44px 48px,
-        #63a35d 48px 92px,
-        #23472d 92px 96px
-      );
-    opacity: 0.78;
-    filter: drop-shadow(0 12px 12px rgba(20, 48, 29, 0.16));
-  }
-
-  .bamboo-a {
-    left: 14%;
-    transform: rotate(4deg);
-  }
-
-  .bamboo-b {
-    left: 68%;
-    transform: rotate(-5deg);
-  }
-
-  .bamboo-c {
-    left: 84%;
-    width: 24px;
-    opacity: 0.54;
-    transform: rotate(3deg);
-  }
-
-  .player {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 28px;
-    height: 28px;
-    transition: transform 0.05s linear;
-    filter: drop-shadow(0 6px 8px rgba(24, 32, 17, 0.22));
-  }
-
-  .player-head,
-  .player-body {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    display: block;
-    border-radius: 999px;
-  }
-
-  .player-head {
-    top: 0;
-    width: 14px;
-    height: 14px;
-    background: linear-gradient(180deg, #f6d5b7 0%, #e9b98f 100%);
-    border: 2px solid #2c1b0f;
-  }
-
-  .player-body {
-    top: 11px;
-    width: 18px;
-    height: 17px;
-    background: linear-gradient(180deg, #8d1f1f 0%, #431016 100%);
-    border: 2px solid #1f2937;
-  }
-
-  .arrow {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: center;
-  }
-
-  .shaft,
-  .tip,
-  .feather {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  .shaft {
-    left: 0;
-    right: 10px;
-    height: 3px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #996238 0%, #4a2b13 100%);
-  }
-
-  .tip {
-    right: 0;
-    width: 0;
-    height: 0;
-    border-left: 8px solid #c2410c;
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-  }
-
-  .feather {
-    left: -4px;
-    width: 10px;
-    height: 8px;
-    background: linear-gradient(135deg, #e5e7eb 0%, #94a3b8 100%);
-    clip-path: polygon(100% 50%, 0 0, 18% 50%, 0 100%);
-  }
-
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgba(12, 25, 20, 0.36);
-    backdrop-filter: blur(4px);
-  }
-
-  .overlay-panel {
-    width: min(380px, calc(100% - 32px));
-    display: grid;
-    gap: 12px;
-    padding: 20px;
-    border-radius: 18px;
-    background: rgba(252, 252, 248, 0.92);
-    color: #10261f;
-    box-shadow: 0 24px 42px rgba(12, 25, 20, 0.18);
-  }
-
-  .overlay-panel h2,
-  .overlay-panel p,
-  .ranking-head h2 {
-    margin: 0;
-  }
-
-  .name-field {
-    display: grid;
-    gap: 6px;
-    font-size: 15px;
-    font-weight: 700;
-  }
-
-  .name-field input {
-    height: 42px;
-    border: 1px solid #b9cec0;
-    border-radius: 14px;
-    padding: 0 12px;
-    font: inherit;
-    background: #fff;
-  }
-
-  .submit-btn {
-    height: 44px;
-    color: #f8fafc;
-    background: linear-gradient(135deg, #1f5d48 0%, #134e4a 100%);
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .start-btn {
-    width: 100%;
-    margin-top: 10px;
-  }
-
-  .submit-message {
-    font-size: 15px;
-    color: #14532d;
-  }
-
-  .guide {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    margin-top: 12px;
-    color: #446253;
-    font-size: 15px;
-  }
-
-  .touch-controls {
-    display: none;
-    grid-template-columns: repeat(3, 52px);
-    grid-template-rows: repeat(2, 52px);
-    gap: 8px;
-    justify-content: center;
-    margin-top: 14px;
-    touch-action: none;
-  }
-
-  .touch-controls button {
-    width: 52px;
-    height: 52px;
-    border: 1px solid var(--line);
-    border-radius: var(--control-radius);
-    background: var(--surface-muted);
-    color: var(--text-strong);
-    font-size: 1.35rem;
-    font-weight: 900;
-    user-select: none;
-  }
-
-  .touch-controls button:active {
-    background: var(--brand-soft);
-    color: var(--brand-strong);
-  }
-
-  .ranking-head {
-    display: flex;
-        gap: 12px;
-    align-items: center;
-    margin-bottom: 14px;
-  }
-
-  .ranking-empty {
-    margin: 14px 0 0;
-    color: #4b6358;
-    font-size: 15px;
-  }
-
-  .ranking-error {
-    display: grid;
-    justify-items: start;
-    gap: 10px;
-  }
-
-  .ranking-error button {
-    min-height: 36px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--control-radius);
-    background: var(--surface-muted);
-    color: var(--brand-strong);
-    font-size: 0.78rem;
-    font-weight: 800;
-  }
-
-  .ranking-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 10px;
-  }
-
-  .ranking-list li {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 12px;
-    align-items: center;
-    padding: 12px 14px;
-    border-radius: 14px;
-    background: linear-gradient(180deg, #f6fbf7 0%, #edf7ef 100%);
-    border: 1px solid #d4e7d7;
-  }
-
-  .rank-no {
-    min-width: 46px;
-    text-align: center;
-    padding: 6px 8px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, #173d34 0%, #356453 100%);
-    color: #f8fafc;
-    font-weight: 700;
-  }
-
-  .rank-body {
-    display: grid;
-    gap: 4px;
-  }
-
-  .rank-body strong {
-    font-size: 15px;
-  }
-
-  .rank-body span {
-    color: #4b6358;
-    font-size: 15px;
-  }
-
-  @media (max-width: 920px) {
-    .hero,
-    .game-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .touch-controls {
-      display: grid;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .hero,
-    .arena-card,
-    .ranking-card {
-      padding: 16px;
-      border-radius: var(--panel-radius);
-    }
-
-    .arena-card {
-      overflow-x: auto;
-    }
-  }
-
-  :global(html[data-theme="dark"]) .jjaprim-page {
-    color: var(--text);
-  }
-
-  :global(html[data-theme="dark"]) .jjaprim-page .arena-card,
-  :global(html[data-theme="dark"]) .jjaprim-page .ranking-card,
-  :global(html[data-theme="dark"]) .jjaprim-page .ranking-list li,
-  :global(html[data-theme="dark"]) .jjaprim-page .overlay-panel,
-  :global(html[data-theme="dark"]) .jjaprim-page .name-field input {
-    background: var(--surface);
-    color: var(--text);
-    border-color: var(--line);
-  }
-
-  :global(html[data-theme="dark"]) .jjaprim-page .ranking-empty,
-  :global(html[data-theme="dark"]) .jjaprim-page .rank-body span,
-  :global(html[data-theme="dark"]) .jjaprim-page .guide,
-  :global(html[data-theme="dark"]) .jjaprim-page .submit-message {
-    color: var(--muted);
-  }
+  .game-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
+  .arena-card, .ranking-card { min-width: 0; padding: 24px; border-radius: var(--panel-radius); background: var(--surface); }
+  .arena-toolbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; color: var(--muted); font-size: 12px; }
+  .arena-toolbar strong { color: var(--brand-strong); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .arena-toolbar small { margin-left: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .arena-viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 12px; background: var(--surface-muted); }
+  .arena { position: absolute; top: 0; left: 0; width: 800px; height: 600px; transform-origin: top left; contain: layout paint; background: var(--surface-muted); }
+  .player { position: absolute; left: 0; top: 0; width: 28px; height: 28px; }
+  .player-head, .player-body { position: absolute; left: 50%; transform: translateX(-50%); display: block; border-radius: 8px; }
+  .player-head { top: 0; width: 14px; height: 14px; background: #efc9a8; border: 2px solid #523a2e; }
+  .player-body { top: 11px; width: 18px; height: 17px; background: var(--brand); border: 2px solid var(--brand-strong); }
+  .arrow { position: absolute; left: 0; top: 0; transform-origin: center; }
+  .shaft, .tip, .feather { position: absolute; top: 50%; transform: translateY(-50%); }
+  .shaft { left: 0; right: 8px; height: 3px; border-radius: 2px; background: var(--text); }
+  .tip { right: 0; width: 0; height: 0; border-left: 8px solid var(--danger); border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+  .feather { left: -4px; width: 8px; height: 6px; background: var(--muted); border-radius: 2px; }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 84%, transparent); }
+  .overlay-panel { display: grid; gap: 12px; width: min(360px, 100%); max-height: 100%; overflow-y: auto; padding: 24px; border-radius: 12px; background: var(--surface); }
+  .overlay-panel h2, .overlay-panel p { margin: 0; }
+  .overlay-panel h2 { color: var(--text-strong); font-size: 20px; }
+  .overlay-panel p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .name-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+  .name-field input { width: 100%; height: 44px; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--control-radius); padding: 0 12px; background: var(--surface-muted); color: var(--text); }
+  .overlay-panel .submit-message { color: var(--danger); }
+  .guide { margin-top: 16px; }
+  .touch-controls { display: none; grid-template-columns: repeat(3, 48px); gap: 6px; justify-content: center; margin-top: 16px; touch-action: none; }
+  .touch-controls button { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface-muted); color: var(--text); user-select: none; touch-action: none; }
+  .touch-controls button:active { background: var(--brand-soft); color: var(--brand-strong); }
+  .ranking-head h2 { margin: 0 0 16px; font-size: 16px; font-weight: 650; }
+  .ranking-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .ranking-error { display: grid; justify-items: start; gap: 12px; }
+  .ranking-error button { min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); font-size: 13px; }
+  .ranking-list { list-style: none; margin: 0; padding: 0; }
+  .ranking-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 56px; }
+  .rank-no { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .rank-body { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; font-size: 13px; }
+  .rank-body strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .rank-body span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ranking-list li:first-child .rank-no, .ranking-list li:first-child .rank-body span { color: var(--brand-strong); }
+  @media (max-width: 1000px) { .game-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .arena-card, .ranking-card { padding: 16px; } .overlay-panel { padding: 16px; gap: 10px; } .overlay-panel h2 { font-size: 17px; } }
+  @media (pointer: coarse), (max-width: 920px) { .touch-controls { display: grid; } }
 </style>

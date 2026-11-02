@@ -13,6 +13,17 @@ export type AppleGameCell = {
   value: number;
 };
 
+export type AppleGameProps = { vertical?: boolean };
+export type AppleEndReason = "clear" | "timeout" | null;
+export type AppleSelectionBox = { left: number; top: number; width: number; height: number };
+export type ApplePointerPoint = { x: number; y: number };
+export type AppleBoardCell = AppleGameCell & {
+  row: number;
+  col: number;
+  removed: boolean;
+  style: string;
+};
+
 export type AppleScoreRequest = {
   userName: string;
   gameName: string;

@@ -6,25 +6,12 @@
 		ByulnanbayaFieldUnit,
 		ByulnanbayaStatus,
 		ByulnanbayaUnitDefinition,
+		ByulnanbayaGemKind as GemKind,
+		ByulnanbayaGem as Gem,
+		ByulnanbayaSwipeStart as SwipeStart,
+		ByulnanbayaSwapMotion as SwapMotion,
 		RankingListItem
 	} from "$lib";
-
-	type GemKind = "ruby" | "sun" | "leaf" | "wave" | "violet";
-	type Gem = {
-		id: number;
-		kind: GemKind;
-	};
-	type SwipeStart = {
-		index: number;
-		x: number;
-		y: number;
-	};
-	type SwapMotion = {
-		from: number;
-		to: number;
-		dx: number;
-		dy: number;
-	};
 
 	const BOARD_COLS = 7;
 	const BOARD_ROWS = 4;
@@ -68,8 +55,8 @@
 	let status = $state<ByulnanbayaStatus>("ready");
 	let currency = $state(100);
 	let castleHp = $state(CASTLE_MAX_HP);
-	let units = $state<ByulnanbayaFieldUnit[]>([]);
-	let board = $state<Gem[]>([]);
+	let units = $state.raw<ByulnanbayaFieldUnit[]>([]);
+	let board = $state.raw<Gem[]>([]);
 	let matchedIndexes = $state(new Set<number>());
 	let fallingIndexes = $state(new Set<number>());
 	let isExpanded = $state(false);
@@ -91,7 +78,12 @@
 	let recordSubmitted = $state(false);
 	let userName = $state("");
 	let followResumeHandle: ReturnType<typeof setTimeout> | null = null;
-	let fieldScroller: HTMLDivElement | null = null;
+	let fieldScroller = $state<HTMLDivElement | null>(null);
+	let fieldHeight = 0;
+	let lastFollowAt = 0;
+	let lastFollowTop = -1;
+	let hiddenAt = 0;
+	let matchRevision = 0;
 	let swipeStart: SwipeStart | null = null;
 	let swapMotion = $state<SwapMotion | null>(null);
 
@@ -226,6 +218,7 @@
 	}
 
 	function hasPossibleMove(source: Gem[]) {
+		const swapped = [...source];
 		for (let index = 0; index < source.length; index += 1) {
 			for (const [dx, dy] of [
 				[1, 0],
@@ -234,10 +227,10 @@
 				const target = neighborIndex(index, dx, dy);
 				if (target === null) continue;
 
-				const swapped = [...source];
 				[swapped[index], swapped[target]] = [swapped[target], swapped[index]];
-
-				if (findMatches(swapped).size > 0) {
+				const hasMatch = findMatches(swapped).size > 0;
+				[swapped[index], swapped[target]] = [swapped[target], swapped[index]];
+				if (hasMatch) {
 					return true;
 				}
 			}
@@ -305,6 +298,7 @@
 		}
 
 		isResolving = true;
+		const revision = matchRevision;
 		let next = [...source];
 		let total = 0;
 		let matched = findMatches(next);
@@ -313,6 +307,7 @@
 			total += matched.size;
 			matchedIndexes = new Set(matched);
 			await wait(180);
+			if (revision !== matchRevision || status !== "playing") return;
 
 			const collapsed = collapseBoard(next, matched);
 			next = collapsed.next;
@@ -320,6 +315,7 @@
 			matchedIndexes = new Set();
 			fallingIndexes = collapsed.falling;
 			await wait(220);
+			if (revision !== matchRevision || status !== "playing") return;
 			fallingIndexes = new Set();
 
 			matched = findMatches(next);
@@ -356,6 +352,7 @@
 			return;
 		}
 
+		const swipe = swipeStart;
 		const targetElement = event.currentTarget as HTMLElement;
 		if (targetElement.hasPointerCapture(event.pointerId)) {
 			targetElement.releasePointerCapture(event.pointerId);
@@ -365,8 +362,10 @@
 			startGame();
 		}
 
-		const dx = event.clientX - swipeStart.x;
-		const dy = event.clientY - swipeStart.y;
+		if (status !== "playing") { swipeStart = null; return; }
+
+		const dx = event.clientX - swipe.x;
+		const dy = event.clientY - swipe.y;
 		swipeStart = null;
 
 		if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) {
@@ -382,6 +381,7 @@
 			return;
 		}
 
+		const revision = matchRevision;
 		const swapped = [...board];
 		[swapped[index], swapped[target]] = [swapped[target], swapped[index]];
 
@@ -389,6 +389,7 @@
 			isSwapping = true;
 			swapMotion = { from: index, to: target, dx: moveX, dy: moveY };
 			await wait(170);
+			if (revision !== matchRevision || status !== "playing") return;
 			board = swapped;
 			swapMotion = null;
 			isSwapping = false;
@@ -399,6 +400,7 @@
 		isSwapping = true;
 		swapMotion = { from: index, to: target, dx: moveX, dy: moveY };
 		await wait(120);
+		if (revision !== matchRevision || status !== "playing") return;
 		swapMotion = null;
 		isSwapping = false;
 	}
@@ -475,12 +477,12 @@
 		units = [...units, ...spawned];
 	}
 
-	function nearestOpponent(unit: ByulnanbayaFieldUnit) {
+	function nearestOpponent(unit: ByulnanbayaFieldUnit, opponents: ByulnanbayaFieldUnit[]) {
 		let nearest: ByulnanbayaFieldUnit | null = null;
 		let distance = Number.POSITIVE_INFINITY;
 
-		for (const other of units) {
-			if (other.team === unit.team || other.hp <= 0) continue;
+		for (const other of opponents) {
+			if (other.hp <= 0) continue;
 			const yDistance = Math.abs(other.y - unit.y);
 			const xDistance = Math.abs(other.xOffset - unit.xOffset);
 			const nextDistance = yDistance + xDistance * 0.35;
@@ -504,11 +506,13 @@
 			spawnEnemyWave();
 		}
 
+		const allies = units.filter((unit) => unit.team === "ally");
+		const enemies = units.filter((unit) => unit.team === "enemy");
 		const nextUnits = units.map((unit) => ({ ...unit, cooldown: Math.max(0, unit.cooldown - delta) }));
 		const damage = new Map<number, number>();
 
 		for (const unit of nextUnits) {
-			const target = nearestOpponent(unit);
+			const target = nearestOpponent(unit, unit.team === "ally" ? enemies : allies);
 			if (target && unit.cooldown <= 0) {
 				damage.set(target.id, (damage.get(target.id) ?? 0) + unit.attack);
 				unit.cooldown = 0.58;
@@ -525,12 +529,8 @@
 			}
 		}
 
-		units = nextUnits
-			.map((unit) => ({
-				...unit,
-				hp: unit.hp - (damage.get(unit.id) ?? 0)
-			}))
-			.filter((unit) => unit.hp > 0 && unit.y > 120 && unit.y < FIELD_HEIGHT + 60);
+		for (const unit of nextUnits) unit.hp -= damage.get(unit.id) ?? 0;
+		units = nextUnits.filter((unit) => unit.hp > 0 && unit.y > 120 && unit.y < FIELD_HEIGHT + 60);
 
 		if (castleHp <= 0) {
 			clearTimeMs = Math.max(0, Math.round(performance.now() - gameStartTime));
@@ -541,15 +541,19 @@
 			stopLoop();
 		}
 
-		if (followUnits) {
-			followActiveUnit();
-		}
 	}
 
 	function loop(now: number) {
+		loopHandle = null;
+		if (status !== "playing" || document.hidden) return;
 		const delta = Math.min((now - lastFrame) / 1000, 0.05);
 		lastFrame = now;
 		gameStep(delta);
+		if (status !== "playing") return;
+		if (followUnits && now - lastFollowAt >= 50) {
+			lastFollowAt = now;
+			followActiveUnit();
+		}
 		loopHandle = requestAnimationFrame(loop);
 	}
 
@@ -561,7 +565,15 @@
 	}
 
 	function startGame() {
+		if (submittingRecord) return;
 		stopLoop();
+		matchRevision += 1;
+		hiddenAt = 0;
+		lastFollowAt = 0;
+		lastFollowTop = -1;
+		followUnits = true;
+		if (followResumeHandle) clearTimeout(followResumeHandle);
+		followResumeHandle = null;
 		status = "playing";
 		currency = 100;
 		castleHp = CASTLE_MAX_HP;
@@ -585,7 +597,8 @@
 
 	function scrollToBottom() {
 		if (!fieldScroller) return;
-		fieldScroller.scrollTop = fieldScroller.scrollHeight;
+		fieldScroller.scrollTop = FIELD_HEIGHT;
+		lastFollowTop = -1;
 	}
 
 	function followActiveUnit() {
@@ -593,14 +606,17 @@
 			return;
 		}
 
-		const allies = units.filter((unit) => unit.team === "ally");
-		const focusY = allies.length ? Math.min(...allies.map((unit) => unit.y)) : ALLY_SPAWN_Y;
-		const nextTop = Math.max(0, focusY - fieldScroller.clientHeight * 0.58);
-		fieldScroller.scrollTo({ top: nextTop, behavior: "smooth" });
+		let focusY = ALLY_SPAWN_Y;
+		for (const unit of units) if (unit.team === "ally") focusY = Math.min(focusY, unit.y);
+		const nextTop = Math.max(0, Math.min(FIELD_HEIGHT - fieldHeight, focusY - fieldHeight * 0.58));
+		if (Math.abs(nextTop - lastFollowTop) < 1) return;
+		fieldScroller.scrollTop = nextTop;
+		lastFollowTop = nextTop;
 	}
 
-	function handleFieldScroll() {
+	function pauseFollowing() {
 		followUnits = false;
+		lastFollowTop = -1;
 
 		if (followResumeHandle) {
 			clearTimeout(followResumeHandle);
@@ -620,13 +636,37 @@
 		});
 	}
 
+	function handleVisibility() {
+		stopLoop();
+		if (status !== "playing") return;
+		if (document.hidden) {
+			hiddenAt = performance.now();
+		} else {
+			const now = performance.now();
+			if (hiddenAt) gameStartTime += now - hiddenAt;
+			hiddenAt = 0;
+			lastFrame = now;
+			loopHandle = requestAnimationFrame(loop);
+		}
+	}
+
+	$effect(() => {
+		if (!fieldScroller) return;
+		const observer = new ResizeObserver(([entry]) => { fieldHeight = entry.contentRect.height; lastFollowTop = -1; });
+		observer.observe(fieldScroller);
+		return () => observer.disconnect();
+	});
+
 	onMount(() => {
 		createBoard();
 		void loadRankings();
 		void tick().then(scrollToBottom);
+		document.addEventListener("visibilitychange", handleVisibility);
 
 		return () => {
+			matchRevision += 1;
 			stopLoop();
+			document.removeEventListener("visibilitychange", handleVisibility);
 			if (followResumeHandle) {
 				clearTimeout(followResumeHandle);
 			}
@@ -635,10 +675,11 @@
 </script>
 
 <svelte:head>
-	<title>별난바야</title>
+	<title>별난바야 · 장난감 웹</title>
 </svelte:head>
 
 <section class:expanded={isExpanded} class="byul-page">
+  <header class="game-heading"><div><h1>별난바야</h1><p>보석을 맞춰 재화를 모으고, 유닛으로 적의 성을 공략하세요.</p></div></header>
 	<div class="phone-frame">
 		<div class="game-screen">
 			<header class="hud">
@@ -660,7 +701,7 @@
 						<button
 							type="button"
 							class="unit-card"
-							class:disabled={currency < unit.cost}
+							disabled={status === "playing" && currency < unit.cost}
 							onclick={() => summonUnit(unit)}
 							aria-label={`${unit.name} 소환`}
 						>
@@ -673,10 +714,10 @@
 					{/each}
 				</aside>
 
-				<div class="field-viewport" bind:this={fieldScroller} onscroll={handleFieldScroll}>
+				<div class="field-viewport" bind:this={fieldScroller} onwheel={pauseFollowing} onpointerdown={pauseFollowing} onkeydown={(event) => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) pauseFollowing(); }} tabindex="0" role="region" aria-label="전투 지역. 스크롤해서 유닛 위치 보기">
 					<div class="field" style={`height:${FIELD_HEIGHT}px;`}>
 						<div class="castle" style={`top:${CASTLE_Y}px;`}>
-							<div class="castle-hp"><span style={`width:${castleHpPercent}%;`}></span></div>
+							<div class="castle-hp"><span style={`transform:scaleX(${castleHpPercent / 100});`}></span></div>
 						</div>
 
 						<div class="lane"></div>
@@ -684,10 +725,10 @@
 						{#each units as unit (unit.id)}
 							<div
 								class={`field-unit ${unit.team}`}
-								style={`--unit-color:${unit.color}; --unit-x:${unit.xOffset}px; top:${unit.y}px;`}
+								style={`--unit-color:${unit.color}; --unit-x:${unit.xOffset}px; --unit-y:${unit.y}px;`}
 							>
 								<span class="unit-body">{unit.name.slice(0, 1)}</span>
-								<span class="hp-bar"><span style={`width:${Math.max(0, (unit.hp / unit.maxHp) * 100)}%;`}></span></span>
+								<span class="hp-bar"><span style={`transform:scaleX(${Math.max(0, unit.hp / unit.maxHp)});`}></span></span>
 							</div>
 						{/each}
 					</div>
@@ -712,6 +753,7 @@
 										maxlength="12"
 										bind:value={userName}
 										placeholder="이름 입력"
+                    aria-label="기록에 남길 이름"
 										disabled={recordSubmitted || submittingRecord}
 										onkeydown={(event) => {
 											if (event.key === "Enter") {
@@ -732,7 +774,7 @@
 									<small class="error">{rankingError}</small>
 								{/if}
 							{/if}
-							<button type="button" onclick={startGame}>{status === "ready" ? "시작" : "다시 시작"}</button>
+							<button type="button" onclick={startGame} disabled={submittingRecord}>{status === "ready" ? "시작" : "다시 시작"}</button>
 						</div>
 					</div>
 				{/if}
@@ -801,712 +843,93 @@
 </section>
 
 <style>
-	.byul-page {
-		width: min(100%, 520px);
-		margin-inline: auto;
-		display: grid;
-		justify-items: center;
-		color: var(--text);
-	}
-
-	.phone-frame {
-		width: min(100%, 480px);
-		height: min(820px, calc(100dvh - 96px));
-		min-height: 640px;
-		border: 1px solid var(--line);
-		border-radius: var(--panel-radius);
-		padding: 10px;
-		background: var(--surface);
-		box-shadow: var(--shadow-card);
-	}
-
-	.game-screen {
-		position: relative;
-		width: 100%;
-		height: 100%;
-		display: grid;
-		grid-template-rows: 50px minmax(0, 1fr) auto;
-		overflow: hidden;
-		border-radius: 16px;
-		background: #d7d8d8;
-	}
-
-	.hud {
-		position: relative;
-		z-index: 8;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 8px 12px;
-		background: rgba(255, 255, 255, 0.32);
-		backdrop-filter: blur(8px);
-	}
-
-	.hud-actions {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-	}
-
-	.expand-button,
-	.ranking-button,
-	.currency-pill {
-		min-height: 34px;
-		border-radius: 999px;
-		border: 0;
-		background: rgba(255, 255, 255, 0.78);
-		box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-	}
-
-	.expand-button {
-		width: 38px;
-		display: grid;
-		place-items: center;
-		color: #24449f;
-		cursor: pointer;
-	}
-
-	.ranking-button {
-		padding: 0 11px;
-		color: #24449f;
-		font-size: 12px;
-		font-weight: 900;
-		cursor: pointer;
-	}
-
-	.expand-icon {
-		position: relative;
-		width: 16px;
-		height: 16px;
-		display: block;
-	}
-
-	.expand-icon::before,
-	.expand-icon::after {
-		content: "";
-		position: absolute;
-		inset: 0;
-		border: 2px solid currentColor;
-	}
-
-	.expand-icon::before {
-		clip-path: polygon(0 0, 44% 0, 44% 22%, 22% 22%, 22% 44%, 0 44%);
-	}
-
-	.expand-icon::after {
-		clip-path: polygon(56% 56%, 78% 56%, 78% 78%, 100% 78%, 100% 100%, 56% 100%);
-	}
-
-	.expand-icon.contract::before {
-		clip-path: polygon(22% 0, 44% 0, 44% 44%, 0 44%, 0 22%, 22% 22%);
-	}
-
-	.expand-icon.contract::after {
-		clip-path: polygon(56% 56%, 100% 56%, 100% 78%, 78% 78%, 78% 100%, 56% 100%);
-	}
-
-	.currency-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 0 12px;
-	}
-
-	.currency-pill span {
-		color: #5b6475;
-		font-size: 12px;
-		font-weight: 800;
-	}
-
-	.currency-pill strong {
-		font-size: 18px;
-	}
-
-	.battle-wrap {
-		position: relative;
-		display: block;
-		min-height: 0;
-	}
-
-	.unit-shop {
-		position: absolute;
-		top: 10px;
-		left: 8px;
-		z-index: 4;
-		display: grid;
-		align-content: start;
-		gap: 9px;
-		width: 54px;
-		padding: 8px 4px;
-		border-radius: 14px;
-		background: rgba(255, 255, 255, 0.46);
-		backdrop-filter: blur(8px);
-	}
-
-	.unit-card {
-		position: relative;
-		display: grid;
-		gap: 4px;
-		justify-items: center;
-		border: 0;
-		background: transparent;
-		padding: 0;
-		cursor: pointer;
-	}
-
-	.unit-card.disabled {
-		opacity: 0.52;
-	}
-
-	.unit-cost {
-		position: absolute;
-		top: -3px;
-		right: 0;
-		z-index: 2;
-		min-width: 28px;
-		padding: 2px 5px;
-		border-radius: 999px;
-		background: #111827;
-		color: #fff;
-		font-size: 10px;
-		font-weight: 900;
-	}
-
-	.portrait {
-		width: 42px;
-		aspect-ratio: 1;
-		display: grid;
-		place-items: center;
-		border-radius: 11px;
-		background:
-			linear-gradient(145deg, rgba(255, 255, 255, 0.42), transparent 48%),
-			var(--unit-color);
-		box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.48);
-	}
-
-	.portrait span {
-		color: #fff;
-		font-weight: 900;
-		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
-	}
-
-	.unit-card small {
-		width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 10px;
-		font-weight: 800;
-	}
-
-	.field-viewport {
-		width: 100%;
-		height: 100%;
-		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		scrollbar-width: none;
-		touch-action: pan-y;
-	}
-
-	.field-viewport::-webkit-scrollbar {
-		display: none;
-	}
-
-	.field {
-		position: relative;
-		min-width: 0;
-		background:
-			linear-gradient(90deg, rgba(255, 255, 255, 0.18) 49%, rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.18) 51%),
-			linear-gradient(180deg, #c9d6e5 0%, #d7d8d8 62%, #d1d4cf 100%);
-	}
-
-	.lane {
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		left: 50%;
-		width: 150px;
-		transform: translateX(-50%);
-		background: rgba(255, 255, 255, 0.18);
-		border-inline: 1px dashed rgba(30, 41, 59, 0.14);
-	}
-
-	.castle {
-		position: absolute;
-		left: 50%;
-		width: min(220px, 78%);
-		height: 98px;
-		transform: translateX(-50%);
-		display: grid;
-		place-items: center;
-		gap: 8px;
-		padding: 14px;
-		border-radius: 16px 16px 8px 8px;
-		background: linear-gradient(180deg, #5b6475, #343b4b);
-		color: #fff;
-		box-shadow: 0 18px 26px rgba(15, 23, 42, 0.22);
-	}
-
-	.castle-hp,
-	.hp-bar {
-		width: 100%;
-		height: 7px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.28);
-		overflow: hidden;
-	}
-
-	.castle-hp span,
-	.hp-bar span {
-		display: block;
-		height: 100%;
-		background: linear-gradient(90deg, #fb7185, #facc15);
-	}
-
-	.field-unit {
-		position: absolute;
-		left: calc(50% + var(--unit-x));
-		width: 48px;
-		transform: translate(-50%, -50%);
-		display: grid;
-		justify-items: center;
-		gap: 4px;
-		transition: top 0.08s linear;
-	}
-
-	.unit-body {
-		width: 42px;
-		aspect-ratio: 1;
-		display: grid;
-		place-items: center;
-		border-radius: 12px;
-		background: var(--unit-color);
-		color: #fff;
-		font-weight: 900;
-		box-shadow:
-			inset 0 0 0 2px rgba(255, 255, 255, 0.5),
-			0 8px 16px rgba(15, 23, 42, 0.14);
-	}
-
-	.field-unit.enemy .unit-body {
-		filter: saturate(0.75) brightness(0.86);
-	}
-
-	.result-layer {
-		position: absolute;
-		inset: 0;
-		z-index: 7;
-		display: grid;
-		place-items: center;
-		background: rgba(15, 23, 42, 0.22);
-		backdrop-filter: blur(4px);
-	}
-
-	.result-card {
-		width: min(280px, calc(100% - 32px));
-		display: grid;
-		justify-items: center;
-		gap: 10px;
-		padding: 22px;
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.94);
-		text-align: center;
-		box-shadow: 0 20px 38px rgba(15, 23, 42, 0.18);
-	}
-
-	.result-card h2,
-	.result-card p {
-		margin: 0;
-	}
-
-	.result-card p {
-		color: #556274;
-		line-height: 1.55;
-	}
-
-	.clear-time {
-		font-size: 22px;
-		font-variant-numeric: tabular-nums;
-		color: #24449f;
-	}
-
-	.result-card small {
-		min-height: 16px;
-		color: #64748b;
-		font-size: 12px;
-		font-weight: 800;
-	}
-
-	.result-card small.error {
-		color: #be123c;
-	}
-
-	.submit-row {
-		width: 100%;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 8px;
-	}
-
-	.submit-row input,
-	.submit-row button {
-		min-height: 38px;
-		border-radius: 999px;
-		font: inherit;
-		font-weight: 900;
-	}
-
-	.submit-row input {
-		min-width: 0;
-		border: 1px solid rgba(36, 68, 159, 0.22);
-		padding: 0 12px;
-		background: #fff;
-		color: #182033;
-	}
-
-	.submit-row button {
-		border: 0;
-		padding: 0 12px;
-		background: #24449f;
-		color: #fff;
-		cursor: pointer;
-	}
-
-	.submit-row button:disabled,
-	.submit-row input:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
-	}
-
-	.result-card button {
-		min-height: 40px;
-		border: 0;
-		border-radius: 999px;
-		padding: 0 18px;
-		background: #3c63d1;
-		color: #fff;
-		font-weight: 900;
-		cursor: pointer;
-	}
-
-	.modal-backdrop {
-		position: absolute;
-		inset: 0;
-		z-index: 12;
-		display: grid;
-		place-items: center;
-		padding: 18px;
-		background: rgba(15, 23, 42, 0.42);
-		backdrop-filter: blur(5px);
-	}
-
-	.modal-dismiss {
-		position: absolute;
-		inset: 0;
-		border: 0;
-		background: transparent;
-	}
-
-	.ranking-modal {
-		position: relative;
-		z-index: 1;
-		width: min(360px, 100%);
-		max-height: min(520px, calc(100% - 28px));
-		display: grid;
-		grid-template-rows: auto minmax(0, 1fr);
-		gap: 14px;
-		padding: 18px;
-		border-radius: 18px;
-		background: rgba(255, 255, 255, 0.96);
-		box-shadow: 0 22px 48px rgba(15, 23, 42, 0.28);
-	}
-
-	.ranking-modal header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-
-	.ranking-modal h2 {
-		margin: 0;
-		font-size: 20px;
-	}
-
-	.ranking-modal header button {
-		width: 34px;
-		aspect-ratio: 1;
-		border: 0;
-		border-radius: 999px;
-		background: #eef2ff;
-		color: #24449f;
-		font-size: 22px;
-		font-weight: 900;
-		line-height: 1;
-		cursor: pointer;
-	}
-
-	.ranking-message {
-		margin: 0;
-		padding: 28px 0;
-		text-align: center;
-		color: #64748b;
-		font-weight: 800;
-	}
-
-	.ranking-message.error {
-		color: #be123c;
-	}
-
-	.ranking-error {
-		display: grid;
-		justify-items: center;
-		gap: 10px;
-	}
-
-	.ranking-error .ranking-message {
-		padding-bottom: 0;
-	}
-
-	.ranking-error button {
-		min-height: 36px;
-		padding: 0 12px;
-		border: 1px solid var(--line);
-		border-radius: var(--control-radius);
-		background: var(--surface-muted);
-		color: var(--brand-strong);
-		font-size: 0.78rem;
-		font-weight: 800;
-	}
-
-	.ranking-list {
-		min-height: 0;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 8px;
-		overflow-y: auto;
-		list-style: none;
-	}
-
-	.ranking-list li {
-		display: grid;
-		grid-template-columns: 34px minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 10px;
-		padding: 10px;
-		border-radius: 12px;
-		background: #f8fafc;
-	}
-
-	.rank {
-		width: 28px;
-		aspect-ratio: 1;
-		display: grid;
-		place-items: center;
-		border-radius: 999px;
-		background: #24449f;
-		color: #fff;
-		font-size: 12px;
-		font-weight: 900;
-	}
-
-	.runner {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: #334155;
-		font-weight: 900;
-	}
-
-	.ranking-list strong {
-		font-variant-numeric: tabular-nums;
-		color: #111827;
-		font-size: 14px;
-	}
-
-	.match-board {
-		padding: 8px;
-		background: #f5c467;
-		border-top: 2px solid rgba(17, 24, 39, 0.88);
-	}
-
-	.gem-grid {
-		display: grid;
-		grid-template-columns: repeat(7, minmax(0, 1fr));
-		grid-template-rows: repeat(4, 1fr);
-		gap: 3px;
-		touch-action: none;
-	}
-
-	.gem {
-		--swap-x: 0;
-		--swap-y: 0;
-		aspect-ratio: 1;
-		border: 2px solid rgba(17, 24, 39, 0.72);
-		border-radius: 6px;
-		background: #fff;
-		padding: 0;
-		cursor: grab;
-		transition:
-			transform 0.16s ease,
-			opacity 0.16s ease,
-			filter 0.16s ease;
-		will-change: transform;
-		touch-action: none;
-		user-select: none;
-	}
-
-	.gem:active {
-		cursor: grabbing;
-	}
-
-	.gem.swapping {
-		z-index: 2;
-		animation: gem-swap 0.17s ease-in-out;
-	}
-
-	.gem span {
-		display: block;
-		width: 68%;
-		aspect-ratio: 1;
-		margin: auto;
-		border-radius: 999px;
-		box-shadow:
-			inset -6px -8px 10px rgba(0, 0, 0, 0.12),
-			inset 5px 5px 9px rgba(255, 255, 255, 0.38);
-	}
-
-	.gem.matched {
-		animation: match-pop 0.18s ease forwards;
-	}
-
-	.gem.falling {
-		animation: gem-fall 0.22s ease-out;
-	}
-
-	.gem.ruby span {
-		background: #fb7185;
-	}
-
-	.gem.sun span {
-		background: #facc15;
-	}
-
-	.gem.leaf span {
-		background: #34d399;
-	}
-
-	.gem.wave span {
-		background: #38bdf8;
-	}
-
-	.gem.violet span {
-		background: #a78bfa;
-	}
-
-	@keyframes match-pop {
-		0% {
-			transform: scale(1);
-			filter: brightness(1);
-			opacity: 1;
-		}
-
-		70% {
-			transform: scale(1.16);
-			filter: brightness(1.35);
-			opacity: 0.94;
-		}
-
-		100% {
-			transform: scale(0.5);
-			filter: brightness(1.5);
-			opacity: 0;
-		}
-	}
-
-	@keyframes gem-swap {
-		from {
-			transform: translate(0, 0) scale(1);
-		}
-
-		55% {
-			transform: translate(calc(var(--swap-x) * 100%), calc(var(--swap-y) * 100%)) scale(1.05);
-		}
-
-		to {
-			transform: translate(calc(var(--swap-x) * 100%), calc(var(--swap-y) * 100%)) scale(1.02);
-		}
-	}
-
-	@keyframes gem-fall {
-		from {
-			transform: translateY(-34px);
-			opacity: 0.2;
-		}
-
-		to {
-			transform: translateY(0);
-			opacity: 1;
-		}
-	}
-
-	.byul-page.expanded {
-		position: fixed;
-		inset: 0;
-		z-index: 9999;
-		width: 100vw;
-		height: 100dvh;
-		background: #0f172a;
-	}
-
-	.byul-page.expanded .phone-frame {
-		width: min(100vw, 480px);
-		height: 100dvh;
-		min-height: 0;
-		padding: 0;
-		border-radius: 0;
-		box-shadow: none;
-		background: transparent;
-	}
-
-	.byul-page.expanded .game-screen {
-		border-radius: 0;
-	}
-
-	:global(body:has(.byul-page.expanded) .topbar),
-	:global(body:has(.byul-page.expanded) .sidebar) {
-		display: none;
-	}
-
-	:global(body:has(.byul-page.expanded) .content) {
-		padding: 0;
-		margin-left: 0 !important;
-		width: 100% !important;
-	}
-
-	@media (max-width: 540px) {
-		.byul-page {
-			width: 100%;
-		}
-
-		.phone-frame {
-			width: 100%;
-			height: calc(100dvh - 92px);
-			min-height: 0;
-			padding: 0;
-			border-radius: 0;
-		}
-
-		.game-screen {
-			border-radius: 0;
-		}
-	}
-
-	:global(html[data-theme="dark"]) .phone-frame {
-		background: var(--surface);
-		border-color: var(--line);
-	}
+  .byul-page { width: min(100%, 560px); margin-inline: auto; color: var(--text); }
+  .phone-frame { width: min(100%, 480px); height: min(820px, calc(100dvh - 220px)); min-height: 680px; margin-inline: auto; padding: 8px; border-radius: var(--panel-radius); background: var(--surface); }
+  .game-screen { position: relative; width: 100%; height: 100%; display: grid; grid-template-rows: 60px minmax(0,1fr) auto; overflow: hidden; border-radius: 12px; background: var(--surface-muted); }
+  .hud { position: relative; z-index: 8; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--surface); }
+  .hud-actions { display: flex; align-items: center; gap: 12px; }
+  .expand-button, .ranking-button { min-height: 44px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); cursor: pointer; }
+  .expand-button { width: 44px; display: grid; place-items: center; }
+  .ranking-button { padding: 0 12px; font-size: 12px; font-weight: 600; }
+  .expand-button:hover, .ranking-button:hover { background: var(--surface-strong); }
+  .expand-icon { position: relative; width: 16px; height: 16px; display: block; }
+  .expand-icon::before, .expand-icon::after { content: ""; position: absolute; width: 6px; height: 6px; border: 2px solid currentColor; }
+  .expand-icon::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+  .expand-icon::after { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+  .expand-icon.contract { transform: rotate(180deg); }
+  .currency-pill { display: flex; align-items: baseline; gap: 6px; }
+  .currency-pill span { color: var(--muted); font-size: 12px; }
+  .currency-pill strong { color: var(--brand-strong); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .battle-wrap { position: relative; min-height: 0; }
+  .unit-shop { position: absolute; top: 12px; left: 8px; z-index: 4; display: grid; gap: 12px; width: 62px; padding: 10px 6px; border-radius: 10px; background: var(--surface); }
+  .unit-card { position: relative; display: grid; gap: 4px; justify-items: center; border: 0; background: transparent; padding: 0; color: var(--text); cursor: pointer; }
+  .unit-card:disabled { cursor: not-allowed; }
+  .unit-card:disabled .portrait { filter: grayscale(0.9); }
+  .unit-cost { position: absolute; top: -4px; right: -2px; z-index: 2; min-width: 28px; padding: 1px 4px; border-radius: 4px; background: var(--text-strong); color: var(--surface); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .portrait { width: 42px; aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--unit-color); }
+  .portrait span { color: #182235; font-weight: 700; font-size: 17px; }
+  .unit-card small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .field-viewport { width: 100%; height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; touch-action: pan-y; }
+  .field { position: relative; min-width: 0; background: var(--surface-muted); contain: layout paint; }
+  .lane { position: absolute; inset-block: 0; left: 50%; width: 150px; transform: translateX(-50%); background: var(--surface-strong); }
+  .castle { position: absolute; left: 50%; width: min(220px,78%); height: 98px; transform: translateX(-50%); display: grid; place-items: center; padding: 20px; border-radius: 10px 10px 4px 4px; background: var(--text-strong); }
+  .castle::before { content: "적의 성"; color: var(--surface); font-size: 15px; font-weight: 600; }
+  .castle-hp, .hp-bar { width: 100%; height: 5px; border-radius: 3px; background: var(--surface-strong); overflow: hidden; }
+  .castle-hp span, .hp-bar span { display: block; width: 100%; height: 100%; background: var(--danger); transform-origin: left; }
+  .field-unit { position: absolute; top: 0; left: 50%; width: 48px; transform: translate(calc(-50% + var(--unit-x)),calc(var(--unit-y) - 50%)); display: grid; justify-items: center; gap: 4px; }
+  .unit-body { width: 42px; aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--unit-color); color: #182235; font-weight: 700; }
+  .field-unit.ally .hp-bar span { background: var(--success); }
+  .field-unit.enemy .unit-body { border: 3px solid #a62c38; border-radius: 50%; }
+  .result-layer, .modal-backdrop { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 84%, transparent); }
+  .result-layer { z-index: 7; }
+  .result-card { width: min(340px,100%); max-height: 100%; overflow-y: auto; display: grid; gap: 12px; padding: 24px; border-radius: 12px; background: var(--surface); text-align: center; }
+  .result-card h2, .result-card p { margin: 0; }
+  .result-card h2 { font-size: 20px; }
+  .result-card p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .clear-time { color: var(--brand-strong); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .result-card small { color: var(--muted); font-size: 12px; }
+  .result-card small.error { color: var(--danger); }
+  .submit-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+  .submit-row input { min-width: 0; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface-muted); color: var(--text); font-size: 13px; }
+  .result-card button { min-height: 44px; padding: 8px 16px; border: 0; border-radius: var(--control-radius); background: var(--brand); color: var(--on-brand); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .result-card button:hover { background: color-mix(in srgb,var(--brand) 88%,var(--text-strong)); }
+  .result-card button:disabled { background: var(--surface-strong); color: var(--muted); cursor: not-allowed; }
+  .modal-backdrop { z-index: 12; }
+  .modal-dismiss { position: absolute; inset: 0; border: 0; background: transparent; }
+  .ranking-modal { position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(0,1fr); gap: 16px; width: min(360px,100%); max-height: min(520px,100%); padding: 24px; border-radius: var(--panel-radius); background: var(--surface); box-shadow: var(--shadow-float); }
+  .ranking-modal header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .ranking-modal h2 { margin: 0; font-size: 18px; }
+  .ranking-modal header button { width: 44px; height: 44px; border: 0; border-radius: var(--control-radius); background: var(--surface-muted); color: var(--text); font-size: 22px; }
+  .ranking-message { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .ranking-message.error { color: var(--danger); }
+  .ranking-error { display: grid; justify-items: start; gap: 12px; }
+  .ranking-error button { min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); font-size: 13px; }
+  .ranking-list { min-height: 0; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+  .ranking-list li { display: grid; grid-template-columns: 24px minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 44px; font-size: 13px; }
+  .rank { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .runner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ranking-list strong { color: var(--text-strong); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ranking-list li:first-child .rank, .ranking-list li:first-child strong { color: var(--brand-strong); }
+  .match-board { padding: 10px; background: var(--surface); }
+  .gem-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; touch-action: none; }
+  .gem { --swap-x: 0; --swap-y: 0; aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-muted); touch-action: none; user-select: none; cursor: grab; }
+  .gem:active { cursor: grabbing; background: var(--surface-strong); }
+  .gem span { display: block; width: 62%; aspect-ratio: 1; margin: auto; border-radius: 50%; }
+  .gem.ruby span { background: #fb7185; border-radius: 4px; transform: rotate(45deg) scale(0.8); }
+  .gem.sun span { background: #facc15; }
+  .gem.leaf span { background: #34d399; border-radius: 3px 50%; }
+  .gem.wave span { background: #38bdf8; border-radius: 3px 50% 50%; transform: rotate(45deg); }
+  .gem.violet span { background: #a78bfa; border-radius: 4px; }
+  .gem.swapping { z-index: 2; animation: gem-swap 0.17s ease-in-out; }
+  .gem.matched { animation: match-pop 0.18s ease forwards; }
+  .gem.falling { animation: gem-fall 0.22s ease-out; }
+  @keyframes gem-swap { from { transform: translate(0,0); } to { transform: translate(calc(var(--swap-x) * 100%),calc(var(--swap-y) * 100%)); } }
+  @keyframes match-pop { to { transform: scale(0.5); opacity: 0; } }
+  @keyframes gem-fall { from { transform: translateY(-28px); opacity: 0.2; } to { transform: translateY(0); opacity: 1; } }
+  .byul-page.expanded { position: fixed; inset: 0; z-index: 9999; width: 100vw; height: 100dvh; background: var(--bg); }
+  .expanded .game-heading { display: none; }
+  .expanded .phone-frame { width: min(100vw,480px); height: 100dvh; min-height: 0; padding: 0; border-radius: 0; }
+  .expanded .game-screen { border-radius: 0; }
+  :global(body:has(.byul-page.expanded)) { overflow: hidden; }
+  @media (max-width: 540px) { .phone-frame { width: 100%; min-height: 600px; height: min(800px,calc(100dvh - 180px)); padding: 0; } .result-card { padding: 18px; } }
 </style>

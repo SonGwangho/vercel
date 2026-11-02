@@ -15,3 +15,15 @@ export type JjaprimGosuRankingItem = {
 export type JjaprimGosuRankingResponse = {
   rankings: JjaprimGosuRankingItem[];
 };
+
+export type JjaprimGosuStatus = "idle" | "running" | "dead";
+export type JjaprimGosuArrow = {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+};
