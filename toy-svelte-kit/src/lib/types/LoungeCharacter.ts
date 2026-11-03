@@ -1,9 +1,18 @@
-import type { BufferGeometry } from "three";
-import type { LoungeHairStyle } from "./LoungeAppearance";
+import type { Group, Matrix4, Vector3 } from "three";
+import type { LoungeAction, LoungeFoodKind } from "./Lounge";
+import type { LoungeAppearance } from "./LoungeAppearance";
 
-export type LoungeHairPart = "hairShort" | "hairBob" | "hairLong" | "hairPonytail" | "hairBun" | "hairTwintails" | "hairSpiky" | "hairBuzz";
-export type LoungeCharacterGeometry = "head" | "eye" | "smile" | "openMouth" | "neck" | "body" | "tank" | "hoodie" | "shirtDetails" | "hoodieDetails" | "skinLimb" | "sleeve" | "trouser" | "hand" | "shoe" | "waist" | "skirt" | LoungeHairPart;
-export type LoungeCharacterGeometries = Record<LoungeCharacterGeometry, BufferGeometry>;
-export type LoungeHairParts = Record<LoungeHairStyle, LoungeHairPart>;
-export type LoungeModelProfile = readonly (readonly number[])[];
-export type LoungeModelPoint = readonly [number, number, number];
+export type LoungeCharacterPose = {
+  now: number; joinedAt: number; movingSince: number;
+  walking: boolean; stunned: boolean; reducedMotion: boolean;
+  action: LoungeAction | null;
+  carried: LoungeFoodKind | null | undefined;
+};
+export type LoungeCharacterVisual = {
+  group: Group;
+  appearance: (value: LoungeAppearance) => void;
+  pose: (state: LoungeCharacterPose) => void;
+  grip: (matrix: Matrix4) => void;
+  label: (point: Vector3) => void;
+  dispose: () => void;
+};

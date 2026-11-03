@@ -14,6 +14,8 @@
   "rules": {
     "interactionRange": 108,
     "stunMs": 1500,
+    "punchDropDistance": 54,
+    "foodDropMs": 450,
     "requestMs": 12000,
     "inventoryCapacity": 5,
     "foodIntervalMs": 60000,
@@ -24,6 +26,8 @@
     "nicknameMaxLength": 6,
     "bubbleMs": 10000,
     "chatMaxLength": 60,
+    "chatHistoryLimit": 100,
+    "chatHistoryMs": 1800000,
     "pollMs": 100,
     "soloPollMs": 350,
     "syncWaitMs": 6000,

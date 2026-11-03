@@ -25,8 +25,8 @@
 </script>
 
 <fieldset class="avatar-editor" {disabled}>
-  <legend>내 모습</legend>
-  <div class="avatar-editor-heading"><p>마음에 드는 조합을 골라 보세요.</p><button class="avatar-random" type="button" onclick={() => onChange(randomAppearance())}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h3c4 0 6 10 10 10h5m-4-4 4 4-4 4M3 17h3c1.5 0 3-1.5 4-3m4-4c1-1.5 1.5-3 3-3h4m-4-4 4 4-4 4" /></svg>무작위</button></div>
+  <legend class="sr-only">캐릭터 꾸미기</legend>
+  <div class="avatar-editor-heading"><button class="avatar-random" type="button" onclick={() => onChange(randomAppearance())}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h3c4 0 6 10 10 10h5m-4-4 4 4-4 4M3 17h3c1.5 0 3-1.5 4-3m4-4c1-1.5 1.5-3 3-3h4m-4-4 4 4-4 4" /></svg>무작위</button></div>
   <div class="avatar-tabs" role="tablist" aria-label="꾸밀 부위" onkeydown={tabKeys}>{#each avatarOptions.sections as tab}
     <button type="button" role="tab" id={`avatar-tab-${tab.id}`} aria-selected={section === tab.id} aria-controls="avatar-options" tabindex={section === tab.id ? 0 : -1} onclick={() => section = tab.id}>{tab.name}</button>
   {/each}</div>

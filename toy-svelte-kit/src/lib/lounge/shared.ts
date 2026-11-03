@@ -1,15 +1,26 @@
 import config from "../assets/data/lounge/config.json";
-import type { LoungeActionKind, LoungeChannel, LoungeFoodDefinition, LoungePlayer, LoungePoint } from "$lib/types/Lounge";
+import emotes from "../assets/data/lounge/emotes.json";
+import type { LoungeActionKind, LoungeChannel, LoungeEmoteDefinition, LoungeEmoteKind, LoungeFoodDefinition, LoungePlayer, LoungePoint } from "$lib/types/Lounge";
 
 export const loungeWorld = config.world;
 export const loungeRules = config.rules;
 export const loungeColors = config.colors;
 export const loungeChannels: LoungeChannel[] = config.channels;
 export const loungeFoods = config.foods as LoungeFoodDefinition[];
+export const loungeEmotes = emotes as LoungeEmoteDefinition[];
 export const actionNames: Record<LoungeActionKind, string> = {
-  handshake: "악수", hug: "포옹", give: "음식 건네기", punch: "펀치", hit: "기절", eat: "먹기", pickup: "줍기"
+  handshake: "악수", hug: "포옹", give: "음식 건네기", punch: "펀치", hit: "기절", eat: "먹기", pickup: "줍기",
+  ...(Object.fromEntries(loungeEmotes.map((emote) => [emote.kind, emote.name])) as Record<LoungeEmoteKind, string>)
 };
 
+export function isLoungeEmote(kind: unknown): kind is LoungeEmoteKind {
+  return loungeEmotes.some((emote) => emote.kind === kind);
+}
+
+export function actionDuration(kind: LoungeActionKind): number {
+  return loungeEmotes.find((emote) => emote.kind === kind)?.durationMs
+    ?? (kind === "eat" ? 1600 : kind === "pickup" ? 450 : kind === "punch" ? 650 : kind === "hit" ? loungeRules.stunMs : kind === "hug" ? 1800 : 1200);
+}
 export function foodName(kind: string) {
   return loungeFoods.find((food) => food.kind === kind)?.name ?? "음식";
 }

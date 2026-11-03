@@ -1,15 +1,13 @@
-import type { Group, InstancedMesh, Vector3 } from "three";
-import type { LoungeAction, LoungeActionKind, LoungeFoodKind, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
+import type { Group, Vector3 } from "three";
+import type { LoungeAction, LoungeActionKind, LoungeFoodKind, LoungeGroundFood, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
-import type { LoungeHairPart } from "./LoungeCharacter";
+import type { LoungeCharacterVisual } from "./LoungeCharacter";
 
-export type LoungeRigPart = LoungeHairPart | "head" | "neck" | "body" | "tankBody" | "hoodieBody" | "shirtDetails" | "hoodieDetails" | "waist" | "skirt" | "leftUpperArm" | "rightUpperArm" | "leftArm" | "rightArm" | "leftForearm" | "rightForearm" | "leftCuff" | "rightCuff" | "leftHand" | "rightHand" | "leftLeg" | "rightLeg" | "leftShin" | "rightShin" | "leftTrouser" | "rightTrouser" | "leftLowerTrouser" | "rightLowerTrouser" | "leftShoe" | "rightShoe" | "leftEye" | "rightEye" | "mouth" | "mouthOpen" | "shadow";
-export type LoungeRig = Record<LoungeRigPart, InstancedMesh>;
 export type LoungeSceneActor = {
   player: LoungePlayer;
   appearance: LoungeAppearance;
   appearanceKey?: string;
-  slot?: number;
+  visual: LoungeCharacterVisual;
   point: LoungePoint;
   correction: LoungePoint;
   facing: number;
@@ -21,13 +19,14 @@ export type LoungeSceneActor = {
   held: Group | null;
   heldKind: LoungeFoodKind | null;
 };
-export type LoungeSceneFood = { group: Group; point: LoungePoint; createdAt: number; phase: number };
+export type LoungeSceneFood = { group: Group; point: LoungeGroundFood; createdAt: number; phase: number };
 export type LoungeSceneBubble = { element: HTMLDivElement; playerId: string; offset: LoungePoint };
 export type LoungeSceneParticle = { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; age: number; color: number; size: number };
 export type LoungeScenePrediction = { action: LoungeAction; commandId: string; point: LoungePoint; hiddenFoodId?: string };
 export type LoungeSceneOptions = {
   selfId: string;
   preview?: boolean;
+  signal?: AbortSignal;
   getNow: () => number;
   onMove: (point: LoungePoint) => void;
   onContext: (target: LoungeMenuTarget) => void;
@@ -41,6 +40,7 @@ export type LoungeSceneController = {
   position: () => LoungePoint | null;
   predict: (kind: LoungeActionKind, commandId: string, foodKind?: LoungeFoodKind, foodId?: string, peerId?: string) => void;
   settle: (commandId: string, accepted: boolean) => void;
+  stopEmote: () => void;
   carry: (kind: LoungeFoodKind | null, commandId: string) => void;
   say: (text: string, commandId: string) => void;
   finishSay: (commandId: string) => void;

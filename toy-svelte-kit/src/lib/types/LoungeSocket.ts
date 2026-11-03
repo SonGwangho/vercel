@@ -6,6 +6,7 @@ export type LoungeSocketPatch = Pick<LoungeSnapshot, "revision" | "serverNow" | 
   players: LoungePlayer[]; removed: string[];
   foods?: LoungeSnapshot["foods"]; requests?: LoungeSnapshot["requests"];
   messages?: LoungeSnapshot["messages"]; notices?: LoungeSnapshot["notices"];
+  messageChanges?: { added: LoungeSnapshot["messages"]; removed: string[] };
 };
 export type LoungeSocketOperation =
   | { op: "join"; input: LoungeJoinInput }

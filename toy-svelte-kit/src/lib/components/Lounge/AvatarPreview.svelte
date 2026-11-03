@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { avatarOptions } from "$lib/lounge/appearance";
   import { loungeChannels, loungeWorld } from "$lib/lounge/shared";
   import type { LoungeAvatarPreviewProps } from "$lib/types/LoungeAppearance";
   import type { LoungeSceneController } from "$lib/types/LoungeScene";
@@ -10,11 +9,7 @@
   let error = $state("");
   let engine: LoungeSceneController | null = null;
   let revision = 0;
-  const summary = $derived([
-    avatarOptions.hairStyles.find((item) => item.id === appearance.hairStyle)?.name,
-    avatarOptions.topStyles.find((item) => item.id === appearance.topStyle)?.name,
-    avatarOptions.bottomStyles.find((item) => item.id === appearance.bottomStyle)?.name
-  ].join(" · "));
+
 
   $effect(() => {
     const selected = appearance;
@@ -30,20 +25,22 @@
 
   onMount(() => {
     let active = true;
+    const sceneAbort = new AbortController();
     let observer: IntersectionObserver | null = null;
-    void import("$lib/lounge/scene").then(({ LoungeScene }) => {
+    void import("$lib/lounge/scene").then(async ({ createLoungeScene }) => {
       if (!active || !host) return;
-      engine = new LoungeScene(host, { selfId: "preview", preview: true, getNow: Date.now, onMove: () => {}, onContext: () => {}, onHover: () => {}, onError: (message) => { error = message; } });
+      engine = await createLoungeScene(host, { signal: sceneAbort.signal, selfId: "preview", preview: true, getNow: Date.now, onMove: () => {}, onContext: () => {}, onHover: () => {}, onError: (message) => { error = message; } });
+      if (!active) { engine.dispose(); engine = null; return; }
       engine.setMuted(true); ready = true;
       observer = new IntersectionObserver(([entry]) => engine?.setVisible(entry.isIntersecting)); observer.observe(host);
-    }).catch(() => { if (active) error = "3D 미리보기를 열지 못했어요. 그래픽 가속 설정을 확인해 주세요."; });
-    return () => { active = false; observer?.disconnect(); engine?.dispose(); engine = null; };
+    }).catch(() => { if (active) error = "캐릭터를 불러오지 못했어요. 새로고침해 주세요."; });
+    return () => { active = false; sceneAbort.abort(); observer?.disconnect(); engine?.dispose(); engine = null; };
   });
 </script>
 
 <div class="avatar-preview">
   <div class="avatar-preview-canvas" bind:this={host} aria-hidden="true"></div>
-  <div class="avatar-preview-name"><span>반가워요!</span><strong>{nickname.trim() || "당신의 닉네임"}</strong></div>
+  <div class="avatar-preview-name"><strong>{nickname.trim() || "내 캐릭터"}</strong></div>
   {#if error}<p class="avatar-preview-error" role="status">{error}</p>{:else if !ready}<p class="avatar-preview-loading" role="status">내 모습을 불러오는 중…</p>{/if}
-  <div class="avatar-preview-footer"><div class="avatar-turn-controls"><button type="button" disabled={!ready || Boolean(error)} aria-label="캐릭터 왼쪽으로 돌리기" onclick={() => engine?.rotate(Math.PI / 4)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 5-5 5 5 5M3 10h11a6 6 0 0 1 0 12" /></svg></button><span>돌려보기</span><button type="button" disabled={!ready || Boolean(error)} aria-label="캐릭터 오른쪽으로 돌리기" onclick={() => engine?.rotate(-Math.PI / 4)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m16 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12" /></svg></button></div><p>{summary}</p></div>
+  <div class="avatar-preview-footer"><div class="avatar-turn-controls"><button type="button" disabled={!ready || Boolean(error)} aria-label="캐릭터 왼쪽으로 돌리기" onclick={() => engine?.rotate(Math.PI / 4)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 5-5 5 5 5M3 10h11a6 6 0 0 1 0 12" /></svg></button><span>돌려보기</span><button type="button" disabled={!ready || Boolean(error)} aria-label="캐릭터 오른쪽으로 돌리기" onclick={() => engine?.rotate(-Math.PI / 4)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m16 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12" /></svg></button></div></div>
 </div>

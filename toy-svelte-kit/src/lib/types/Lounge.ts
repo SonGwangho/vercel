@@ -9,9 +9,11 @@ export type LoungeProfile = { nickname: string; color: string; channelId: string
 export type LoungeSession = { channelId: string; playerId: string; token: string };
 export type LoungeMove = { from: LoungePoint; to: LoungePoint; path?: LoungePoint[]; startedAt: number; endsAt: number };
 export type LoungeFood = { id: string; kind: LoungeFoodKind };
-export type LoungeGroundFood = LoungeFood & LoungePoint & { createdAt: number };
+export type LoungeGroundFood = LoungeFood & LoungePoint & { createdAt: number; droppedFrom?: LoungePoint };
 export type LoungeConsentKind = "handshake" | "hug" | "give";
-export type LoungeActionKind = LoungeConsentKind | "punch" | "hit" | "eat" | "pickup";
+export type LoungeEmoteKind = "middleFinger" | "laugh" | "dance" | "scratchHead" | "tongueOut";
+export type LoungeEmoteDefinition = { kind: LoungeEmoteKind; name: string; durationMs: number };
+export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup";
 export type LoungeAction = {
   id: string;
   kind: LoungeActionKind;
@@ -51,6 +53,14 @@ export type LoungeRequest = {
   expiresAt: number;
 };
 export type LoungeMessage = { id: string; playerId: string; nickname: string; text: string; createdAt: number };
+export type LoungeChatHistoryProps = {
+  messages: LoungeMessage[];
+  selfId: string;
+  open: boolean;
+  onClose: () => void;
+  onCompose: () => void;
+  onUnread: (count: number) => void;
+};
 export type LoungeNotice = { id: string; text: string; createdAt: number };
 export type LoungeRoomState = {
   players: LoungeStoredPlayer[];
@@ -81,6 +91,8 @@ export type LoungeSyncResult = LoungeSnapshot | { unchanged: true; revision: num
 export type LoungeCommandInput =
   | { type: "move"; x: number; y: number }
   | { type: "chat"; text: string }
+  | { type: "emote"; kind: LoungeEmoteKind }
+  | { type: "stopEmote" }
   | { type: "interact"; kind: LoungeConsentKind | "punch"; targetId: string; foodId?: string }
   | { type: "respond"; requestId: string; accept: boolean }
   | { type: "cancel"; requestId: string }

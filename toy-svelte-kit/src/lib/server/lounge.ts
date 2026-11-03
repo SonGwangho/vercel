@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getNeonSql } from "$lib/server/neon";
 import { normalizeAppearance } from "$lib/lounge/appearance";
-import { actionNames, clampPosition, distance, foodName, interactionBlock, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
+import { ambientFoodCount, dropHeldFood, groundFoodsAt } from "$lib/server/lounge/food";
+import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
 import type { LoungeActionKind, LoungeChannelSummary, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomRow, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer, LoungeRoomCache } from "$lib/types/Lounge";
 
 export class LoungeError extends Error {
@@ -108,15 +109,15 @@ function maintainRoom(state: LoungeRoomState, now: number) {
   for (const player of state.players) {
     if (player.action && player.action.endsAt <= now) { player.action = null; changed = true; }
   }
-  const messages = state.messages.filter((message) => now - message.createdAt < loungeRules.bubbleMs * 2).slice(-24);
+  const messages = state.messages.filter((message) => now - message.createdAt < loungeRules.chatHistoryMs).slice(-loungeRules.chatHistoryLimit);
   if (messages.length !== state.messages.length) { state.messages = messages; changed = true; }
   const notices = state.notices.filter((item) => now - item.createdAt < 20000).slice(-4);
   if (notices.length !== state.notices.length) { state.notices = notices; changed = true; }
-  const foods = state.foods.filter((food) => now - food.createdAt < loungeRules.foodLifetimeMs).slice(-loungeRules.maxGroundFoods);
+  const foods = groundFoodsAt(state.foods, now);
   if (foods.length !== state.foods.length) { state.foods = foods; changed = true; }
   if (state.players.length && now - state.lastFoodAt >= loungeRules.foodIntervalMs) {
     // One respawn per minute, near one live player. Never replay missed spawns in a burst.
-    if (state.foods.length < loungeRules.maxGroundFoods) state.foods.push(spawnFood(now, state.players));
+    if (ambientFoodCount(state.foods) < loungeRules.maxGroundFoods) state.foods.push(spawnFood(now, state.players));
     state.lastFoodAt = now;
     changed = true;
   }
@@ -378,8 +379,16 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       if (!text || [...text].length > loungeRules.chatMaxLength) throw new LoungeError(`대화는 1~${loungeRules.chatMaxLength}자로 입력해 주세요.`, 400);
       if (now - player.lastChatAt < 800) throw new LoungeError("잠깐 기다린 뒤 말씀해 주세요.", 429);
       state.messages.push({ id: randomUUID(), playerId: player.id, nickname: player.nickname, text, createdAt: now });
-      state.messages = state.messages.slice(-24);
+      state.messages = state.messages.slice(-loungeRules.chatHistoryLimit);
       player.lastChatAt = now;
+    } else if (command.type === "emote") {
+      requireAvailable(player, now);
+      if (!isLoungeEmote(command.kind)) throw new LoungeError("지원하지 않는 표현이에요.", 400);
+      player.heldFoodId = null;
+      beginAction(player, command.kind, actionDuration(command.kind), now);
+    } else if (command.type === "stopEmote") {
+      if (player.action && !isLoungeEmote(player.action.kind)) throw new LoungeError("이 행동은 도중에 멈출 수 없어요.");
+      player.action = null;
     } else if (command.type === "interact") {
       requireAvailable(player, now);
       const target = state.players.find((item) => item.id === command.targetId && item.id !== player.id);
@@ -388,10 +397,11 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       requireAvailable(target, now);
       requireNear(player, positionAt(target, now), now);
       if (command.kind === "punch") {
+        const dropped = dropHeldFood(state, target, player, now);
         beginAction(player, "punch", 650, now, target.id);
         beginAction(target, "hit", loungeRules.stunMs, now, player.id);
         target.stunnedUntil = now + loungeRules.stunMs;
-        notice(state, `${player.nickname} 님의 펀치! ${target.nickname} 님이 잠깐 기절했어요.`, now);
+        notice(state, dropped ? `${player.nickname} 님의 펀치! ${target.nickname} 님이 ${foodName(dropped.kind)} 떨어뜨렸어요.` : `${player.nickname} 님의 펀치! ${target.nickname} 님이 잠깐 기절했어요.`, now);
       } else {
         const food = command.kind === "give" ? player.inventory.find((item) => item.id === command.foodId) : undefined;
         if (command.kind === "give" && !food) throw new LoungeError("먼저 건넬 음식을 골라 주세요.");

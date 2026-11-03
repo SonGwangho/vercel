@@ -1,0 +1,8 @@
+{
+  "url": "/models/lounge/kenney/characters.glb",
+  "scale": 2.5,
+  "labelOffset": [0, 0.48, 0],
+  "gripOffset": [-0.258, 0, 0.045],
+  "source": "https://kenney.nl/assets/mini-characters",
+  "license": "CC0-1.0"
+}
