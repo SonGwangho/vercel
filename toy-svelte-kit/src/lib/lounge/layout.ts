@@ -12,7 +12,7 @@ export function nameLabels(players: LoungeRenderedPlayer[], selfId: string, came
   for (const player of visible) {
     const anchorX = player.x - camera.x + offset.x;
     const anchorY = player.y - camera.y + offset.y - 77;
-    const width = Math.min(196, Math.max(52, textWidth(player.nickname) + (player.id === selfId ? 38 : 24)));
+    const width = Math.max(64, textWidth(player.nickname) + (player.id === selfId ? 58 : 34));
     const label: LoungeNameLabel = {
       playerId: player.id, nickname: player.nickname, color: player.color, self: player.id === selfId,
       x: clamp(anchorX - width / 2, 6, viewport.x - width - 6), y: clamp(anchorY - 26, 76, viewport.y - 94),
@@ -35,9 +35,10 @@ export function speechBubbles(messages: LoungeMessage[], labels: LoungeNameLabel
   for (const message of ordered) {
     const label = labels.find((item) => item.playerId === message.playerId);
     if (!label) continue;
-    const width = Math.min(236, viewport.x - 20, Math.max(130, textWidth(message.text) + 28));
+    const desiredLines = viewport.y < 400 ? 2 : 3;
+    const width = Math.min(viewport.y < 400 ? 460 : 320, viewport.x - 20, Math.max(142, textWidth(message.text) / desiredLines + 28));
     const lines = Math.max(1, Math.ceil(textWidth(message.text) / (width - 28)));
-    const height = Math.min(40 + lines * 20, Math.max(70, viewport.y - 170));
+    const height = 40 + lines * 20;
     const desiredX = clamp(label.x + label.width / 2 - width / 2, 10, viewport.x - width - 10);
     const desiredY = label.y - height - 8;
     const candidates: LoungeRect[] = [];
@@ -46,8 +47,9 @@ export function speechBubbles(messages: LoungeMessage[], labels: LoungeNameLabel
         candidates.push({ x: clamp(desiredX + shift, 10, viewport.x - width - 10), y: desiredY - row * (height + 8), width, height });
       }
     }
-    for (let y = 78; y + height < viewport.y - 82; y += height + 8) {
-      for (let x = 10; x + width < viewport.x - 10; x += width + 8) candidates.push({ x, y, width, height });
+    candidates.push({ x: desiredX, y: label.y + label.height + 8, width, height });
+    for (let y = 78; y + height <= viewport.y - 82; y += height + 8) {
+      for (let x = 10; x + width <= viewport.x - 10; x += width + 8) candidates.push({ x, y, width, height });
     }
     const place = candidates.find((rect) => rect.y >= 76 && rect.y + height <= viewport.y - 82 && !labels.some((other) => overlaps(rect, other)) && !bubbles.some((other) => overlaps(rect, other, 7)));
     if (!place) continue;

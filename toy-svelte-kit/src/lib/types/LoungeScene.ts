@@ -1,12 +1,15 @@
 import type { Group, InstancedMesh, Vector3 } from "three";
 import type { LoungeAction, LoungeActionKind, LoungeFoodKind, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
+import type { LoungeHairPart } from "./LoungeCharacter";
 
-export type LoungeRigPart = "head" | "hair" | "hairBack" | "hairLeft" | "hairRight" | "hairTail" | "hairLeftTail" | "hairRightTail" | "hairCrown" | "body" | "hood" | "collar" | "topTrim" | "waist" | "skirt" | "leftArm" | "rightArm" | "leftForearm" | "rightForearm" | "leftHand" | "rightHand" | "leftLeg" | "rightLeg" | "leftTrouser" | "rightTrouser" | "leftShoe" | "rightShoe" | "leftEye" | "rightEye" | "mouth" | "shadow";
+export type LoungeRigPart = LoungeHairPart | "head" | "neck" | "body" | "tankBody" | "hoodieBody" | "shirtDetails" | "hoodieDetails" | "waist" | "skirt" | "leftUpperArm" | "rightUpperArm" | "leftArm" | "rightArm" | "leftForearm" | "rightForearm" | "leftCuff" | "rightCuff" | "leftHand" | "rightHand" | "leftLeg" | "rightLeg" | "leftShin" | "rightShin" | "leftTrouser" | "rightTrouser" | "leftLowerTrouser" | "rightLowerTrouser" | "leftShoe" | "rightShoe" | "leftEye" | "rightEye" | "mouth" | "mouthOpen" | "shadow";
 export type LoungeRig = Record<LoungeRigPart, InstancedMesh>;
 export type LoungeSceneActor = {
   player: LoungePlayer;
   appearance: LoungeAppearance;
+  appearanceKey?: string;
+  slot?: number;
   point: LoungePoint;
   correction: LoungePoint;
   facing: number;
@@ -38,6 +41,7 @@ export type LoungeSceneController = {
   position: () => LoungePoint | null;
   predict: (kind: LoungeActionKind, commandId: string, foodKind?: LoungeFoodKind, foodId?: string, peerId?: string) => void;
   settle: (commandId: string, accepted: boolean) => void;
+  carry: (kind: LoungeFoodKind | null, commandId: string) => void;
   say: (text: string, commandId: string) => void;
   finishSay: (commandId: string) => void;
   setMuted: (muted: boolean) => void;
@@ -51,3 +55,4 @@ export type LoungeSceneController = {
 };
 export type LoungeScenePick = { kind: "player" | "food"; id: string };
 export type LoungeSceneLocalMove = LoungeMove;
+export type LoungeHeldPrediction = { kind: LoungeFoodKind | null; commandId: string };

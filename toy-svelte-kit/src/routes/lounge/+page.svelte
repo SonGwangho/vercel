@@ -4,7 +4,7 @@
   import AvatarEditor from "$lib/components/Lounge/AvatarEditor.svelte";
   import AvatarPreview from "$lib/components/Lounge/AvatarPreview.svelte";
   import { joinLoungeChannel, loadLoungeChannels, loadLoungeProfile } from "$lib/client/lounge";
-  import { loungeChannels } from "$lib/lounge/shared";
+  import { loungeChannels, loungeRules } from "$lib/lounge/shared";
   import { normalizeAppearance } from "$lib/lounge/appearance";
   import type { LoungeAppearance } from "$lib/types/LoungeAppearance";
   import type { LoungeChannelSummary } from "$lib/types/Lounge";
@@ -23,6 +23,11 @@
   let channelAbort: AbortController | null = null;
   const chosen = $derived(channels.find((channel) => channel.id === channelId));
   const full = $derived(chosen ? chosen.count >= chosen.capacity : false);
+  function limitName(event: Event) {
+    if (event instanceof InputEvent && event.isComposing) return;
+    const input = event.currentTarget as HTMLInputElement;
+    nickname = [...input.value.normalize("NFKC")].slice(0, loungeRules.nicknameMaxLength).join(""); input.value = nickname;
+  }
 
   async function refreshChannels() {
     channelError = "";
@@ -60,7 +65,7 @@
     mounted = true;
     void loadLoungeProfile().then((profile) => {
       if (!mounted || !profile || profileTouched) return;
-      if (!nickname && typeof profile.nickname === "string") nickname = profile.nickname;
+      if (!nickname && typeof profile.nickname === "string") nickname = [...profile.nickname.normalize("NFKC")].slice(0, loungeRules.nicknameMaxLength).join("");
       appearance = normalizeAppearance(profile.appearance, profile.color);
       if (loungeChannels.some((channel) => channel.id === profile.channelId)) channelId = profile.channelId;
     });
@@ -69,17 +74,17 @@
   });
 </script>
 
-<svelte:head><title>라운지 · 장난감 웹</title><meta name="description" content="닉네임 하나로 만나는 작은 라운지. 같은 공간에서 걷고 이야기하며 쉬어가세요." /></svelte:head>
+<svelte:head><title>모닥불 라운지 · 장난감 웹</title><meta name="description" content="숲속 캠핑장에서 만나요. 캐릭터를 꾸미고 모닥불 곁에서 이야기하며 쉬어가세요." /></svelte:head>
 
 <div class="lounge-entrance">
-  <header class="lounge-page-heading"><h1>같이 쉬어가는 라운지</h1><p>이름 하나면 충분해요. 잠깐 머물다 가세요.</p></header>
+  <header class="lounge-page-heading"><h1>모닥불 앞에서 만나요.</h1><p>숲길을 걷고, 간식을 나누고, 가볍게 한마디. 오늘은 여기서 쉬어가요.</p></header>
   <div class="entrance-layout">
     <section class="entrance-scene" aria-label="내 캐릭터 미리보기">
       <AvatarPreview {appearance} {nickname} />
     </section>
     <form class="entrance-form" onsubmit={enter} oninput={() => profileTouched = true}>
       <div class="entrance-form-heading"><h2>어떤 이름으로 만날까요?</h2><p>머리 위에 표시될 이름을 정해 주세요.</p></div>
-      <label class="lounge-field"><span>닉네임</span><input bind:value={nickname} maxlength="12" required autocomplete="nickname" placeholder="1~12자로 입력해 주세요" disabled={joining} aria-describedby="nickname-help" /><small id="nickname-help">같은 채널에서 이름이 겹치면 다른 이름을 골라 주세요.</small></label>
+      <label class="lounge-field"><span class="nickname-label">닉네임 <small>{[...nickname].length} / {loungeRules.nicknameMaxLength}</small></span><input bind:value={nickname} oninput={limitName} oncompositionend={limitName} maxlength={loungeRules.nicknameMaxLength * 2} required autocomplete="nickname" placeholder="1~6자로 입력해 주세요" disabled={joining} aria-describedby="nickname-help" /><small id="nickname-help">같은 캠핑장에서 이름이 겹치면 다른 이름을 골라 주세요.</small></label>
       <AvatarEditor value={appearance} disabled={joining} onChange={(value) => { profileTouched = true; appearance = value; }} />
       <fieldset class="channel-field"><legend>입장할 채널</legend><div class="channel-options">{#each loungeChannels as channel}{@const live = channels.find((item) => item.id === channel.id)}{@const channelFull = live ? live.count >= live.capacity : false}<label class:selected={channelId === channel.id} class:full={channelFull}><input type="radio" name="channel" value={channel.id} bind:group={channelId} disabled={joining || channelFull} /><span class="channel-radio" aria-hidden="true"></span><span class="channel-name"><strong>{channel.name}</strong><small>{channel.description}</small></span><span class="channel-count">{channelFull ? "가득 참" : live ? `${live.count} / ${live.capacity}명` : loading ? "확인 중" : "현황 확인 필요"}</span></label>{/each}</div></fieldset>
       {#if channelError}<div class="channel-refresh"><span>{channelError}</span><button type="button" onclick={() => { if (refreshTimer) clearTimeout(refreshTimer); void refreshChannels(); }} disabled={joining}>다시 확인</button></div>{/if}

@@ -1,4 +1,4 @@
-import config from "$lib/assets/data/lounge/config.json";
+import config from "../assets/data/lounge/config.json";
 import type { LoungeActionKind, LoungeChannel, LoungeFoodDefinition, LoungePlayer, LoungePoint } from "$lib/types/Lounge";
 
 export const loungeWorld = config.world;
@@ -17,13 +17,24 @@ export function foodName(kind: string) {
 export function positionAt(player: Pick<LoungePlayer, "move">, now: number): LoungePoint {
   const move = player.move;
   const progress = move.endsAt <= move.startedAt ? 1 : Math.min(1, Math.max(0, (now - move.startedAt) / (move.endsAt - move.startedAt)));
+  if (move.path?.length) {
+    let remaining = 0; let cursor = move.from;
+    for (const point of move.path) { remaining += distance(cursor, point); cursor = point; }
+    remaining *= progress; cursor = move.from;
+    for (const point of move.path) {
+      const length = distance(cursor, point);
+      if (remaining <= length && length > 0) return { x: cursor.x + (point.x - cursor.x) * remaining / length, y: cursor.y + (point.y - cursor.y) * remaining / length };
+      remaining -= length; cursor = point;
+    }
+    return { ...move.to };
+  }
   return { x: move.from.x + (move.to.x - move.from.x) * progress, y: move.from.y + (move.to.y - move.from.y) * progress };
 }
 
 export function clampPosition(point: LoungePoint): LoungePoint {
   return {
     x: Math.min(loungeWorld.width - loungeWorld.padding, Math.max(loungeWorld.padding, point.x)),
-    y: Math.min(loungeWorld.height - loungeWorld.padding, Math.max(116, point.y))
+    y: Math.min(loungeWorld.height - loungeWorld.padding, Math.max(loungeWorld.padding, point.y))
   };
 }
 

@@ -124,7 +124,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
 }
 
 function snapshot(channelId: string, revision: number, state: LoungeRoomState, now: number): LoungeSnapshot {
-  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
+  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
     players, foods: state.foods, requests: state.requests,
@@ -215,7 +215,7 @@ export async function joinLounge(input: LoungeJoinInput): Promise<LoungeJoinResu
   if (!input || typeof input.channelId !== "string" || typeof input.nickname !== "string") throw new LoungeError("닉네임과 채널을 선택해 주세요.", 400);
   const channel = channelFor(input.channelId);
   const nickname = input.nickname.normalize("NFKC").trim();
-  if (!nickname || [...nickname].length > 12 || /[\p{C}]/u.test(nickname)) throw new LoungeError("닉네임은 보이지 않는 문자를 제외한 1~12자로 입력해 주세요.", 400);
+  if (!nickname || [...nickname].length > loungeRules.nicknameMaxLength || /[\p{C}]/u.test(nickname)) throw new LoungeError("닉네임은 보이지 않는 문자를 제외한 1~6자로 입력해 주세요.", 400);
   const appearance = normalizeAppearance(input.appearance, input.color);
   const color = appearance.topColor;
   const token = randomBytes(32).toString("hex");
@@ -230,12 +230,12 @@ export async function joinLounge(input: LoungeJoinInput): Promise<LoungeJoinResu
       state.foods = [];
       state.lastFoodAt = now;
     }
-    const point = { x: 400 + Math.random() * 200, y: 420 + Math.random() * 80 };
+    const point = { x: loungeWorld.width / 2 + (Math.random() - 0.5) * 300, y: loungeWorld.height / 2 + 240 + Math.random() * 160 };
     state.players.push({
       id: session.playerId, nickname, color, appearance, tokenHash: tokenHash(token),
       move: { from: point, to: point, startedAt: now, endsAt: now },
-      inventory: [], action: null, pendingRequestId: null, stunnedUntil: 0,
-      joinedAt: now, lastSeenAt: now, lastCommandAt: 0, lastChatAt: 0
+      inventory: [], heldFoodId: null, action: null, pendingRequestId: null, stunnedUntil: 0,
+      joinedAt: now, lastSeenAt: now, lastActivityAt: now, lastCommandAt: 0, lastChatAt: 0
     });
     notice(state, `${nickname} 님이 들어왔어요.`, now);
     return true;
@@ -347,6 +347,7 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
     if (!food) throw new LoungeError("건넬 음식이 더 이상 없어요.");
     if (player.inventory.length >= loungeRules.inventoryCapacity) throw new LoungeError("음식을 받을 공간이 없어요.");
     sender.inventory = sender.inventory.filter((item) => item.id !== food.id);
+    if (sender.heldFoodId === food.id) sender.heldFoodId = null;
     player.inventory.push(food);
     notice(state, `${sender.nickname} 님 → ${player.nickname} 님 · ${foodName(food.kind)} 선물`, now);
   } else {
@@ -417,17 +418,27 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       player.inventory.push({ id: food.id, kind: food.kind });
       beginAction(player, "pickup", 450, now);
       player.action!.foodKind = food.kind;
+    } else if (command.type === "equip") {
+      requireAvailable(player, now);
+      if (!player.inventory.some((food) => food.id === command.foodId)) throw new LoungeError("가방에 없는 음식이에요.");
+      player.heldFoodId = command.foodId;
+    } else if (command.type === "stow") {
+      requireAvailable(player, now);
+      player.heldFoodId = null;
     } else if (command.type === "eat") {
       requireAvailable(player, now);
+      if (player.heldFoodId !== command.foodId) throw new LoungeError("먼저 가방에서 음식을 손에 들어 주세요.");
       const food = player.inventory.find((item) => item.id === command.foodId);
       if (!food) throw new LoungeError("이 음식은 더 이상 가지고 있지 않아요.");
       player.inventory = player.inventory.filter((item) => item.id !== food.id);
+      player.heldFoodId = null;
       beginAction(player, "eat", 1600, now);
       player.action!.foodKind = food.kind;
       notice(state, `${player.nickname} 님이 ${foodName(food.kind)} 먹는 중이에요.`, now);
     } else { throw new LoungeError("지원하지 않는 행동입니다.", 400); }
     player.lastCommandAt = now;
     player.lastSeenAt = now;
+    player.lastActivityAt = now;
     state.appliedCommands.push({ id: command.commandId, playerId: player.id });
     state.appliedCommands = state.appliedCommands.slice(-128);
     return true;

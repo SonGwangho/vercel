@@ -1,4 +1,4 @@
-import catalog from "$lib/assets/data/lounge/appearance.json";
+import catalog from "../assets/data/lounge/appearance.json";
 import type { LoungeAppearance, LoungeAppearanceCatalog, LoungeColorOption, LoungeStyleOption } from "$lib/types/LoungeAppearance";
 
 export const avatarOptions = catalog as LoungeAppearanceCatalog;

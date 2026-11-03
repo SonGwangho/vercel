@@ -7,7 +7,7 @@ export type LoungeChannel = { id: string; name: string; description: string; cap
 export type LoungeChannelSummary = LoungeChannel & { count: number };
 export type LoungeProfile = { nickname: string; color: string; channelId: string; appearance?: LoungeAppearance };
 export type LoungeSession = { channelId: string; playerId: string; token: string };
-export type LoungeMove = { from: LoungePoint; to: LoungePoint; startedAt: number; endsAt: number };
+export type LoungeMove = { from: LoungePoint; to: LoungePoint; path?: LoungePoint[]; startedAt: number; endsAt: number };
 export type LoungeFood = { id: string; kind: LoungeFoodKind };
 export type LoungeGroundFood = LoungeFood & LoungePoint & { createdAt: number };
 export type LoungeConsentKind = "handshake" | "hug" | "give";
@@ -27,6 +27,7 @@ export type LoungePlayer = {
   appearance?: LoungeAppearance;
   move: LoungeMove;
   inventory: LoungeFood[];
+  heldFoodId?: string | null;
   action: LoungeAction | null;
   pendingRequestId: string | null;
   stunnedUntil: number;
@@ -37,6 +38,7 @@ export type LoungeStoredPlayer = LoungePlayer & {
   lastSeenAt: number;
   lastCommandAt: number;
   lastChatAt: number;
+  lastActivityAt?: number;
 };
 export type LoungeRequest = {
   id: string;
@@ -66,6 +68,7 @@ export type LoungeSnapshot = {
   revision: number;
   serverNow: number;
   processingMs?: number;
+  epoch?: string;
   players: LoungePlayer[];
   foods: LoungeGroundFood[];
   requests: LoungeRequest[];
@@ -82,6 +85,8 @@ export type LoungeCommandInput =
   | { type: "respond"; requestId: string; accept: boolean }
   | { type: "cancel"; requestId: string }
   | { type: "pickup"; foodId: string }
+  | { type: "equip"; foodId: string }
+  | { type: "stow" }
   | { type: "eat"; foodId: string }
   | { type: "leave" };
 export type LoungeCommand = LoungeCommandInput & { commandId: string };
