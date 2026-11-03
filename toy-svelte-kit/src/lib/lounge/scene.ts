@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { clampPosition, foodName, loungeRules, loungeWorld, positionAt } from "./shared";
 import { nameLabels, speechBubbles } from "./layout";
+import { isSkirt, normalizeAppearance } from "./appearance";
+import type { LoungeAppearance } from "$lib/types/LoungeAppearance";
 import type { LoungeActionKind, LoungeFoodKind, LoungeMessage, LoungePoint, LoungeRenderedPlayer, LoungeSnapshot } from "$lib/types/Lounge";
 import type { LoungeRig, LoungeRigPart, LoungeSceneActor, LoungeSceneBubble, LoungeSceneController, LoungeSceneFood, LoungeSceneLocalMove, LoungeSceneOptions, LoungeSceneParticle, LoungeScenePick, LoungeScenePrediction } from "$lib/types/LoungeScene";
 
@@ -59,6 +61,8 @@ export class LoungeScene implements LoungeSceneController {
   private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private audio: AudioContext | null = null;
   private zoomLevel = 1;
+  private previewFacing = 0.58;
+  private inViewport = true;
   private hover = "";
   private hoverAt = 0;
   private hold: ReturnType<typeof setTimeout> | null = null;
@@ -144,6 +148,10 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   private makeRoom() {
+    if (this.options.preview) {
+      const podium = new THREE.Mesh(this.geometry("podium", () => new THREE.CylinderGeometry(0.62, 0.67, 0.08, 32)), this.solid("#dce8df"));
+      podium.position.y = -0.055; this.scene.add(podium); return podium;
+    }
     const ground = this.box(this.scene, "#dce8df", 0, -0.12, 0, 10, 0.24, 6.4);
     ground.name = "room-floor";
     this.box(this.scene, "#becfc4", 0, -0.27, 0, 10.12, 0.12, 6.52);
@@ -178,7 +186,6 @@ export class LoungeScene implements LoungeSceneController {
     const box = this.geometry("box", () => new THREE.BoxGeometry(1, 1, 1));
     const skin = this.solid("#f1c9a4");
     const cloth = this.solid("#ffffff");
-    const hair = this.solid("#3c4354");
     const add = (part: LoungeRigPart, geometry: THREE.BufferGeometry, material: THREE.Material) => {
       const mesh = new THREE.InstancedMesh(geometry, material, CAPACITY);
       mesh.count = 0; mesh.frustumCulled = false;
@@ -189,11 +196,31 @@ export class LoungeScene implements LoungeSceneController {
       if (part !== "shadow") this.pickables.push(mesh);
     };
     add("head", sphere, skin);
-    add("hair", this.geometry("hair", () => new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI * 0.53)), hair);
+    add("hair", this.geometry("hair", () => new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI * 0.53)), cloth);
+    for (const part of ["hairBack", "hairLeft", "hairRight", "hairTail", "hairLeftTail", "hairRightTail"] as const) add(part, sphere, cloth);
+    add("hairCrown", this.geometry("hairCrown", () => {
+      const positions: number[] = [];
+      for (const [x, height] of [[-0.13, 0.13], [0, 0.2], [0.13, 0.12]]) {
+        for (let n = 0; n < 5; n += 1) {
+          const a = n * TAU / 5; const b = (n + 1) * TAU / 5;
+          positions.push(x + Math.cos(b) * 0.085, 0, Math.sin(b) * 0.08, x + Math.cos(a) * 0.085, 0, Math.sin(a) * 0.08, x + 0.025, height, 0);
+        }
+      }
+      const geometry = new THREE.BufferGeometry(); geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3)); geometry.computeVertexNormals(); return geometry;
+    }), cloth);
     add("body", capsule, cloth);
+    add("hood", this.geometry("hood", () => new THREE.TorusGeometry(1, 0.25, 5, 12)), cloth);
+    add("collar", this.geometry("collar", () => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute([-0.11,0.035,0,-0.018,-0.09,0.016,-0.005,0.04,0,0.11,0.035,0,0.005,0.04,0,0.018,-0.09,0.016], 3));
+      geometry.computeVertexNormals(); return geometry;
+    }), this.solid("#f5f0e3"));
+    add("topTrim", box, this.solid("#f5f0e3"));
+    add("waist", box, cloth);
+    add("skirt", this.geometry("skirt", () => new THREE.CylinderGeometry(0.72, 1, 1, 12)), cloth);
     for (const side of ["left", "right"] as const) {
-      add(`${side}Arm`, capsule, cloth); add(`${side}Hand`, sphere, skin);
-      add(`${side}Leg`, capsule, this.solid("#43516a")); add(`${side}Shoe`, box, this.solid("#2f3a4d"));
+      add(`${side}Arm`, capsule, cloth); add(`${side}Forearm`, capsule, skin); add(`${side}Hand`, sphere, skin);
+      add(`${side}Leg`, capsule, skin); add(`${side}Trouser`, capsule, cloth); add(`${side}Shoe`, box, this.solid("#2f3a4d"));
       add(`${side}Eye`, sphere, this.solid("#343746"));
     }
     add("mouth", box, this.solid("#b07865"));
@@ -246,7 +273,7 @@ export class LoungeScene implements LoungeSceneController {
           this.options.onContext({ kind: "player", id: player.id, x: rect.right, y: rect.bottom });
         });
         this.overlay.appendChild(label);
-        actor = { player, point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
+        actor = { player, appearance: normalizeAppearance(player.appearance, player.color), point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
         this.actors.set(player.id, actor);
       }
       if (player.id !== this.options.selfId && player.move.startedAt !== actor.player.move.startedAt) {
@@ -254,8 +281,14 @@ export class LoungeScene implements LoungeSceneController {
         actor.correction.x = actor.point.x - point.x; actor.correction.y = actor.point.y - point.y;
       }
       actor.player = player;
+      actor.appearance = normalizeAppearance(player.appearance, player.color);
       const index = this.actorIds.indexOf(player.id);
-      for (const part of ["body", "leftArm", "rightArm"] as const) this.rig[part].setColorAt(index, this.color.set(player.color));
+      const appearance = actor.appearance;
+      for (const part of ["body", "leftArm", "rightArm", "hood"] as const) this.rig[part].setColorAt(index, this.color.set(appearance.topColor));
+      for (const part of ["hair", "hairBack", "hairLeft", "hairRight", "hairTail", "hairLeftTail", "hairRightTail", "hairCrown"] as const) this.rig[part].setColorAt(index, this.color.set(appearance.hairColor));
+      for (const part of ["leftTrouser", "rightTrouser"] as const) this.rig[part].setColorAt(index, this.color.set(appearance.pantsColor));
+      this.rig.skirt.setColorAt(index, this.color.set(appearance.skirtColor));
+      this.rig.waist.setColorAt(index, this.color.set(isSkirt(appearance) ? appearance.skirtColor : appearance.pantsColor));
       actor.label.style.setProperty("--person-color", player.color);
       actor.label.classList.toggle("mine", player.id === this.options.selfId);
       if (player.action && player.action.endsAt > now && this.lastAction.get(player.id) !== player.action.id) {
@@ -316,22 +349,47 @@ export class LoungeScene implements LoungeSceneController {
     this.matrix.multiplyMatrices(parent, this.dummy.matrix); this.rig[part].setMatrixAt(index, this.matrix);
   }
 
-  private limb(index: number, side: "left" | "right", arm: boolean, swing: number, spread: number, bob: number) {
+  private hidePart(part: LoungeRigPart, index: number) { this.dummy.matrix.makeScale(0, 0, 0); this.rig[part].setMatrixAt(index, this.dummy.matrix); }
+
+  private hairstyle(appearance: LoungeAppearance, index: number, bob: number, step: number) {
+    const style = appearance.hairStyle;
+    for (const part of ["hairBack", "hairLeft", "hairRight", "hairTail", "hairLeftTail", "hairRightTail", "hairCrown"] as const) this.hidePart(part, index);
+    this.setPart("hair", index, 0, 0.98 + bob, -0.015, style === "buzz" ? 0.227 : 0.236, style === "buzz" ? 0.222 : 0.232, style === "buzz" ? 0.207 : 0.218);
+    if (style === "bob" || style === "long") {
+      const long = style === "long";
+      this.setPart("hairBack", index, 0, (long ? 0.76 : 0.9) + bob, -0.13, 0.238, long ? 0.34 : 0.205, long ? 0.125 : 0.17);
+      for (const side of ["left", "right"] as const) this.setPart(side === "left" ? "hairLeft" : "hairRight", index, side === "left" ? -0.205 : 0.205, (long ? 0.76 : 0.86) + bob, 0.01, 0.075, long ? 0.26 : 0.15, 0.095);
+    } else if (style === "ponytail") this.setPart("hairTail", index, 0, 0.84 + bob, -0.29, 0.095, 0.235, 0.105, 0.2 + step * 0.13);
+    else if (style === "bun") this.setPart("hairTail", index, 0, 1.15 + bob, -0.17, 0.135, 0.13, 0.125);
+    else if (style === "twintails") {
+      for (const side of ["left", "right"] as const) this.setPart(side === "left" ? "hairLeftTail" : "hairRightTail", index, side === "left" ? -0.255 : 0.255, 0.82 + bob, -0.09, 0.09, 0.23, 0.105, 0, 0, (side === "left" ? -1 : 1) * (0.12 + step * 0.08));
+    } else if (style === "spiky") this.setPart("hairCrown", index, 0, 1.13 + bob, 0, 1, 1, 1);
+  }
+
+  private limb(index: number, side: "left" | "right", arm: boolean, swing: number, spread: number, bob: number, appearance: LoungeAppearance) {
     const sign = side === "left" ? -1 : 1;
     this.dummy.position.set(sign * (arm ? 0.205 : 0.087), (arm ? 0.69 : 0.33) + bob, 0);
     this.dummy.rotation.set(swing, 0, spread); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
     this.joint.multiplyMatrices(this.root, this.dummy.matrix);
     if (arm) {
-      this.setPart(`${side}Arm`, index, 0, -0.12, 0, 0.058, 0.085, 0.058, 0, 0, 0, this.joint);
+      const tank = appearance.topStyle === "sleeveless";
+      const short = appearance.topStyle === "shortSleeve";
+      const hoodie = appearance.topStyle === "hoodie";
+      if (tank) this.hidePart(`${side}Arm`, index);
+      else this.setPart(`${side}Arm`, index, 0, short ? -0.04 : -0.12, 0, hoodie ? 0.07 : 0.061, short ? 0.04 : 0.087, hoodie ? 0.07 : 0.061, 0, 0, 0, this.joint);
+      this.setPart(`${side}Forearm`, index, 0, tank ? -0.12 : short ? -0.17 : -0.24, 0, 0.056, tank ? 0.085 : short ? 0.053 : 0.018, 0.056, 0, 0, 0, this.joint);
       this.setPart(`${side}Hand`, index, 0, -0.27, 0, 0.067, 0.067, 0.067, 0, 0, 0, this.joint);
     } else {
       this.setPart(`${side}Leg`, index, 0, -0.11, 0, 0.067, 0.08, 0.067, 0, 0, 0, this.joint);
+      if (isSkirt(appearance)) this.hidePart(`${side}Trouser`, index);
+      else this.setPart(`${side}Trouser`, index, 0, appearance.bottomStyle === "shortPants" ? -0.035 : -0.1, 0, 0.074, appearance.bottomStyle === "shortPants" ? 0.045 : 0.09, 0.074, 0, 0, 0, this.joint);
       this.setPart(`${side}Shoe`, index, 0, -0.24, 0.025, 0.14, 0.08, 0.21, 0, 0, 0, this.joint);
     }
   }
 
   private drawActor(actor: LoungeSceneActor, index: number, now: number, delta: number) {
     const player = actor.player;
+    const appearance = actor.appearance;
     const self = player.id === this.options.selfId;
     const serverBusy = Boolean(player.action && player.action.endsAt > now);
     const stunned = player.stunnedUntil > now;
@@ -367,20 +425,31 @@ export class LoungeScene implements LoungeSceneController {
     this.dummy.position.set(worldX(position.x), 0.025, worldZ(position.y));
     this.dummy.rotation.set(punching ? Math.sin(progress * Math.PI) * 0.18 : 0, actor.facing, stunned ? 0.45 + Math.sin(now * 0.02) * 0.07 : 0);
     this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix(); this.root.copy(this.dummy.matrix);
-    this.setPart("body", index, 0, 0.54 + bob, 0, 0.16, 0.155, 0.13);
+    const hoodie = appearance.topStyle === "hoodie";
+    const tank = appearance.topStyle === "sleeveless";
+    this.setPart("body", index, 0, 0.54 + bob, 0, hoodie ? 0.18 : tank ? 0.137 : 0.16, hoodie ? 0.165 : 0.155, hoodie ? 0.15 : 0.13);
     this.setPart("head", index, 0, 0.95 + bob, 0, 0.225, 0.24, 0.205, eating ? Math.sin(now * 0.018) * 0.09 : 0);
-    this.setPart("hair", index, 0, 0.98 + bob, -0.015, 0.231, 0.225, 0.21);
+    this.hairstyle(appearance, index, bob, step);
+    if (hoodie) this.setPart("hood", index, 0, 0.74 + bob, -0.11, 0.155, 0.13, 0.1);
+    else this.hidePart("hood", index);
+    if (appearance.topStyle === "shirt") this.setPart("collar", index, 0, 0.72 + bob, 0.13, 1, 1, 1);
+    else this.hidePart("collar", index);
+    if (hoodie || appearance.topStyle === "shirt") this.setPart("topTrim", index, 0, 0.59 + bob, hoodie ? 0.153 : 0.133, 0.012, hoodie ? 0.13 : 0.23, 0.014);
+    else this.hidePart("topTrim", index);
+    this.setPart("waist", index, 0, 0.36 + bob, 0, 0.31, 0.085, 0.25);
+    if (isSkirt(appearance)) this.setPart("skirt", index, 0, (appearance.bottomStyle === "longSkirt" ? 0.255 : 0.345) + bob, 0, 0.25, appearance.bottomStyle === "longSkirt" ? 0.35 : 0.17, 0.225, 0, 0, step * 0.025);
+    else this.hidePart("skirt", index);
     this.setPart("leftEye", index, -0.078, 0.95 + bob, 0.191, 0.018, stunned ? 0.006 : 0.025, 0.012);
     this.setPart("rightEye", index, 0.078, 0.95 + bob, 0.191, 0.018, stunned ? 0.006 : 0.025, 0.012);
     this.setPart("mouth", index, 0, 0.86 + bob, 0.196, eating ? 0.045 + Math.sin(now * 0.025) * 0.012 : 0.045, 0.012, 0.012);
-    this.limb(index, "left", false, step * 0.45, 0, bob);
-    this.limb(index, "right", false, -step * 0.45, 0, bob);
+    this.limb(index, "left", false, step * 0.45, 0, bob, appearance);
+    this.limb(index, "right", false, -step * 0.45, 0, bob, appearance);
     let rightSwing = -step * 0.35;
     if (eating) rightSwing = -1.7 + Math.sin(now * 0.02) * 0.17;
     else if (punching) rightSwing = -Math.sin(Math.min(1, progress * 2) * Math.PI) * 1.8;
     else if (action?.kind === "handshake" || action?.kind === "give") rightSwing = -1.05 + Math.sin(now * 0.024) * 0.16;
-    this.limb(index, "left", true, hugging ? -1.1 : step * 0.35, hugging ? -0.55 : 0.08, bob);
-    this.limb(index, "right", true, hugging ? -1.1 : rightSwing, hugging ? 0.55 : -0.08, bob);
+    this.limb(index, "left", true, hugging ? -1.1 : step * 0.35, hugging ? -0.55 : 0.08, bob, appearance);
+    this.limb(index, "right", true, hugging ? -1.1 : rightSwing, hugging ? 0.55 : -0.08, bob, appearance);
     this.dummy.position.set(worldX(position.x), 0.012, worldZ(position.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(0.26, 0.16, 1); this.dummy.updateMatrix(); this.rig.shadow.setMatrixAt(index, this.dummy.matrix);
     if (action?.foodKind) {
       if (actor.heldKind !== action.foodKind) { if (actor.held) this.scene.remove(actor.held); actor.held = this.createFood(action.foodKind); actor.held.matrixAutoUpdate = false; actor.heldKind = action.foodKind; this.scene.add(actor.held); }
@@ -476,9 +545,11 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   private frame = (at: number) => {
-    if (this.disposed || document.hidden || !this.state) return;
+    if (this.disposed || document.hidden || !this.inViewport || !this.state) return;
     const now = this.options.getNow();
-    const active = this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
+    const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
+    const active = turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
     if (at - this.lastFrame < 1000 / (active ? 60 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
@@ -486,10 +557,13 @@ export class LoungeScene implements LoungeSceneController {
     if (this.width / this.height < 1.15 && self) this.target.set(worldX(self.point.x) * 0.7, 0, worldZ(self.point.y) * 0.7);
     else this.target.set(0, 0, 0);
     this.look.lerp(this.target, ease(5, delta));
-    this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); this.camera.updateMatrixWorld();
+    if (this.options.preview) { this.camera.position.set(2.6, 1.8, 4); this.camera.lookAt(0, 0.65, 0); }
+    else { this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); }
+    this.camera.updateMatrixWorld();
     let stars = 0;
     for (let index = 0; index < this.actorIds.length; index += 1) {
       const actor = this.actors.get(this.actorIds[index])!;
+      if (this.options.preview) actor.facing += (this.previewFacing - actor.facing) * (this.reducedMotion ? 1 : ease(16, delta));
       this.drawActor(actor, index, now, delta);
       if (actor.player.stunnedUntil > now) for (let n = 0; n < 3; n += 1) {
         const angle = (this.reducedMotion ? 0 : this.elapsed * 5) + n * TAU / 3;
@@ -510,7 +584,7 @@ export class LoungeScene implements LoungeSceneController {
       this.marker.visible = life < 1; this.marker.scale.setScalar(0.7 + life * 0.8); (this.marker.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - life);
     }
     this.animateParticles(delta);
-    if (now - this.lastOverlay > 100) { this.layoutLabels(now); this.lastOverlay = now; }
+    if (!this.options.preview && now - this.lastOverlay > 100) { this.layoutLabels(now); this.lastOverlay = now; }
     for (const actor of this.actors.values()) {
       const x = (actor.head.x * 0.5 + 0.5) * this.width; const y = (-actor.head.y * 0.5 + 0.5) * this.height;
       actor.label.style.transform = `translate3d(${x + actor.nameOffset.x}px,${y + actor.nameOffset.y}px,0)`;
@@ -525,12 +599,14 @@ export class LoungeScene implements LoungeSceneController {
   private resize(width: number, height: number) {
     this.width = Math.max(1, width); this.height = Math.max(1, height);
     const aspect = this.width / this.height;
-    const span = aspect < 0.8 ? 7.2 : 8.6;
+    const span = this.options.preview ? aspect > 1 ? 2.35 : 2.05 : aspect < 0.8 ? 7.2 : 8.6;
     this.camera.left = -span * aspect / 2; this.camera.right = span * aspect / 2; this.camera.top = span / 2; this.camera.bottom = -span / 2;
     this.camera.zoom = this.zoomLevel; this.camera.updateProjectionMatrix();
     this.renderer.setSize(this.width, this.height, false); this.lastOverlay = 0;
   }
   zoom(delta: number) { this.zoomLevel = THREE.MathUtils.clamp(this.zoomLevel + delta, 0.55, 1.8); this.resize(this.width, this.height); }
+  rotate(delta: number) { this.previewFacing += delta; }
+  setVisible(visible: boolean) { this.inViewport = visible; this.visibility(); }
   selfScreen() {
     const rect = this.host.getBoundingClientRect(); const actor = this.actors.get(this.options.selfId);
     return actor ? { x: rect.left + (actor.head.x * 0.5 + 0.5) * this.width, y: rect.top + (-actor.head.y * 0.5 + 0.5) * this.height } : { x: rect.left + this.width / 2, y: rect.top + this.height / 2 };
@@ -565,6 +641,7 @@ export class LoungeScene implements LoungeSceneController {
     return null;
   }
   private pointerDown = (event: PointerEvent) => {
+    if (this.options.preview) return;
     if (event.target instanceof Element && event.target.closest(".scene-speech")) { this.down = null; return; }
     if (event.button !== 0) return;
     this.unlockAudio(); this.down = { x: event.clientX, y: event.clientY, at: performance.now() }; this.suppressClick = false;
@@ -580,6 +657,7 @@ export class LoungeScene implements LoungeSceneController {
     if (hit) this.options.onMove(clampPosition({ x: hit.point.x / SCALE + loungeWorld.width / 2, y: hit.point.z / SCALE + loungeWorld.height / 2 }));
   };
   private pointerMove = (event: PointerEvent) => {
+    if (this.options.preview) return;
     if (this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 8) this.cancelHold();
     if (performance.now() - this.hoverAt < 70) return; this.hoverAt = performance.now();
     const target = this.pick(event);
@@ -587,16 +665,18 @@ export class LoungeScene implements LoungeSceneController {
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private contextMenu = (event: MouseEvent) => {
+    if (this.options.preview) { event.preventDefault(); return; }
     if (event.target instanceof Element && event.target.closest(".scene-speech")) return;
     event.preventDefault(); this.cancelHold(); this.unlockAudio(); const target = this.pick(event);
     if (target) this.options.onContext({ ...target, x: event.clientX, y: event.clientY });
   };
   private cancelHold = () => { if (this.hold) clearTimeout(this.hold); this.hold = null; };
   private wheel = (event: WheelEvent) => {
+    if (this.options.preview) return;
     if (event.target instanceof Element && event.target.closest(".scene-speech")) return;
     event.preventDefault(); this.zoom(event.deltaY > 0 ? -0.07 : 0.07);
   };
-  private visibility = () => { this.renderer.setAnimationLoop(document.hidden ? null : this.frame); this.lastFrame = 0; };
+  private visibility = () => { this.renderer.setAnimationLoop(document.hidden || !this.inViewport ? null : this.frame); this.lastFrame = 0; };
   private contextLost = (event: Event) => { event.preventDefault(); this.renderer.setAnimationLoop(null); this.options.onError("3D 화면 연결이 끊겼어요. 화면을 다시 불러와 주세요."); };
 
   dispose() {

@@ -1,10 +1,12 @@
 import type { Group, InstancedMesh, Vector3 } from "three";
 import type { LoungeAction, LoungeActionKind, LoungeFoodKind, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
+import type { LoungeAppearance } from "./LoungeAppearance";
 
-export type LoungeRigPart = "head" | "hair" | "body" | "leftArm" | "rightArm" | "leftHand" | "rightHand" | "leftLeg" | "rightLeg" | "leftShoe" | "rightShoe" | "leftEye" | "rightEye" | "mouth" | "shadow";
+export type LoungeRigPart = "head" | "hair" | "hairBack" | "hairLeft" | "hairRight" | "hairTail" | "hairLeftTail" | "hairRightTail" | "hairCrown" | "body" | "hood" | "collar" | "topTrim" | "waist" | "skirt" | "leftArm" | "rightArm" | "leftForearm" | "rightForearm" | "leftHand" | "rightHand" | "leftLeg" | "rightLeg" | "leftTrouser" | "rightTrouser" | "leftShoe" | "rightShoe" | "leftEye" | "rightEye" | "mouth" | "shadow";
 export type LoungeRig = Record<LoungeRigPart, InstancedMesh>;
 export type LoungeSceneActor = {
   player: LoungePlayer;
+  appearance: LoungeAppearance;
   point: LoungePoint;
   correction: LoungePoint;
   facing: number;
@@ -22,6 +24,7 @@ export type LoungeSceneParticle = { x: number; y: number; z: number; vx: number;
 export type LoungeScenePrediction = { action: LoungeAction; commandId: string; point: LoungePoint; hiddenFoodId?: string };
 export type LoungeSceneOptions = {
   selfId: string;
+  preview?: boolean;
   getNow: () => number;
   onMove: (point: LoungePoint) => void;
   onContext: (target: LoungeMenuTarget) => void;
@@ -40,6 +43,8 @@ export type LoungeSceneController = {
   setMuted: (muted: boolean) => void;
   setTheme: (dark: boolean) => void;
   zoom: (delta: number) => void;
+  rotate: (delta: number) => void;
+  setVisible: (visible: boolean) => void;
   selfScreen: () => LoungePoint;
   unlockAudio: () => void;
   dispose: () => void;

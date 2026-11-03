@@ -1,9 +1,11 @@
+import type { LoungeAppearance } from "./LoungeAppearance";
+
 export type LoungePoint = { x: number; y: number };
 export type LoungeFoodKind = "rice" | "chicken" | "pizza";
 export type LoungeFoodDefinition = { kind: LoungeFoodKind; name: string };
 export type LoungeChannel = { id: string; name: string; description: string; capacity: number };
 export type LoungeChannelSummary = LoungeChannel & { count: number };
-export type LoungeProfile = { nickname: string; color: string; channelId: string };
+export type LoungeProfile = { nickname: string; color: string; channelId: string; appearance?: LoungeAppearance };
 export type LoungeSession = { channelId: string; playerId: string; token: string };
 export type LoungeMove = { from: LoungePoint; to: LoungePoint; startedAt: number; endsAt: number };
 export type LoungeFood = { id: string; kind: LoungeFoodKind };
@@ -22,6 +24,7 @@ export type LoungePlayer = {
   id: string;
   nickname: string;
   color: string;
+  appearance?: LoungeAppearance;
   move: LoungeMove;
   inventory: LoungeFood[];
   action: LoungeAction | null;
@@ -69,7 +72,7 @@ export type LoungeSnapshot = {
   messages: LoungeMessage[];
   notices: LoungeNotice[];
 };
-export type LoungeJoinInput = { channelId: string; nickname: string; color: string };
+export type LoungeJoinInput = { channelId: string; nickname: string; color: string; appearance?: LoungeAppearance };
 export type LoungeJoinResult = { session: LoungeSession; snapshot: LoungeSnapshot };
 export type LoungeSyncResult = LoungeSnapshot | { unchanged: true; revision: number; serverNow: number; processingMs?: number };
 export type LoungeCommandInput =

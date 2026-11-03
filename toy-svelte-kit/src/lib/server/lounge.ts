@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getNeonSql } from "$lib/server/neon";
-import { actionNames, clampPosition, distance, foodName, interactionBlock, loungeChannels, loungeColors, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
+import { normalizeAppearance } from "$lib/lounge/appearance";
+import { actionNames, clampPosition, distance, foodName, interactionBlock, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
 import type { LoungeActionKind, LoungeChannelSummary, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomRow, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer, LoungeRoomCache } from "$lib/types/Lounge";
 
 export class LoungeError extends Error {
@@ -123,7 +124,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
 }
 
 function snapshot(channelId: string, revision: number, state: LoungeRoomState, now: number): LoungeSnapshot {
-  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, ...player }) => player);
+  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
     players, foods: state.foods, requests: state.requests,
@@ -215,7 +216,8 @@ export async function joinLounge(input: LoungeJoinInput): Promise<LoungeJoinResu
   const channel = channelFor(input.channelId);
   const nickname = input.nickname.normalize("NFKC").trim();
   if (!nickname || [...nickname].length > 12 || /[\p{C}]/u.test(nickname)) throw new LoungeError("닉네임은 보이지 않는 문자를 제외한 1~12자로 입력해 주세요.", 400);
-  const color = loungeColors.includes(input.color) ? input.color : loungeColors[0];
+  const appearance = normalizeAppearance(input.appearance, input.color);
+  const color = appearance.topColor;
   const token = randomBytes(32).toString("hex");
   const session = { channelId: channel.id, playerId: randomUUID(), token };
   const result = await updateRoom(channel.id, (state, now) => {
@@ -230,7 +232,7 @@ export async function joinLounge(input: LoungeJoinInput): Promise<LoungeJoinResu
     }
     const point = { x: 400 + Math.random() * 200, y: 420 + Math.random() * 80 };
     state.players.push({
-      id: session.playerId, nickname, color, tokenHash: tokenHash(token),
+      id: session.playerId, nickname, color, appearance, tokenHash: tokenHash(token),
       move: { from: point, to: point, startedAt: now, endsAt: now },
       inventory: [], action: null, pendingRequestId: null, stunnedUntil: 0,
       joinedAt: now, lastSeenAt: now, lastCommandAt: 0, lastChatAt: 0

@@ -1,0 +1,39 @@
+{
+  "sections": [{"id":"hair","name":"머리"},{"id":"top","name":"상의"},{"id":"bottom","name":"하의"}],
+  "hairStyles": [
+    {"id":"short","name":"짧은 머리"},{"id":"bob","name":"단발"},
+    {"id":"long","name":"긴 머리"},{"id":"ponytail","name":"포니테일"},
+    {"id":"bun","name":"올림머리"},{"id":"twintails","name":"양갈래"},
+    {"id":"spiky","name":"뾰족 머리"},{"id":"buzz","name":"아주 짧게"}
+  ],
+  "topStyles": [
+    {"id":"longSleeve","name":"긴팔"},{"id":"shortSleeve","name":"반팔"},
+    {"id":"sleeveless","name":"나시"},{"id":"hoodie","name":"후드티"},{"id":"shirt","name":"셔츠"}
+  ],
+  "bottomStyles": [
+    {"id":"longPants","name":"긴바지"},{"id":"shortPants","name":"반바지"},
+    {"id":"longSkirt","name":"긴치마"},{"id":"shortSkirt","name":"짧은 치마"}
+  ],
+  "hairColors": [
+    {"value":"#303340","name":"흑발"},{"value":"#614638","name":"짙은 갈색"},
+    {"value":"#946447","name":"갈색"},{"value":"#c18a56","name":"밝은 갈색"},
+    {"value":"#dfbd79","name":"금발"},{"value":"#b1b6c1","name":"은발"},
+    {"value":"#b65b53","name":"적갈색"},{"value":"#c980a0","name":"분홍"},
+    {"value":"#8171ae","name":"보라"},{"value":"#648f9c","name":"청록"}
+  ],
+  "topColors": [
+    {"value":"#4778d8","name":"파랑"},{"value":"#d66578","name":"분홍"},
+    {"value":"#37977b","name":"초록"},{"value":"#c88a3c","name":"주황"},
+    {"value":"#8b70bf","name":"보라"},{"value":"#558b9d","name":"청록"},
+    {"value":"#eee8d9","name":"크림"},{"value":"#353c4a","name":"차콜"},
+    {"value":"#b6bcc3","name":"연회색"},{"value":"#b05449","name":"벽돌색"},
+    {"value":"#81b9a3","name":"민트"},{"value":"#b99a75","name":"베이지"}
+  ],
+  "bottomColors": [
+    {"value":"#43516a","name":"진청"},{"value":"#6d93b3","name":"연청"},
+    {"value":"#333b46","name":"차콜"},{"value":"#817b70","name":"회갈색"},
+    {"value":"#c3ae89","name":"베이지"},{"value":"#e3dece","name":"아이보리"},
+    {"value":"#6a8569","name":"카키"},{"value":"#8b70bf","name":"보라"},
+    {"value":"#c3758d","name":"분홍"},{"value":"#915d59","name":"버건디"}
+  ]
+}
