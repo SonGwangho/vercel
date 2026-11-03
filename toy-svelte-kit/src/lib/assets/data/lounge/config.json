@@ -1,0 +1,28 @@
+{
+  "world": { "width": 1000, "height": 640, "padding": 52, "speed": 190 },
+  "channels": [
+    { "id": "1", "name": "라운지 1", "description": "가볍게 인사를 나눠요", "capacity": 16 },
+    { "id": "2", "name": "라운지 2", "description": "새로운 사람들과 쉬어가요", "capacity": 16 },
+    { "id": "3", "name": "라운지 3", "description": "조용한 자리에서 만나요", "capacity": 16 }
+  ],
+  "colors": ["#4778d8", "#d66578", "#37977b", "#c88a3c", "#8b70bf", "#558b9d"],
+  "foods": [
+    { "kind": "rice", "name": "삼각김밥" },
+    { "kind": "chicken", "name": "닭다리" },
+    { "kind": "pizza", "name": "피자" }
+  ],
+  "rules": {
+    "interactionRange": 108,
+    "stunMs": 1500,
+    "requestMs": 12000,
+    "inventoryCapacity": 5,
+    "foodIntervalMs": 10000,
+    "foodLifetimeMs": 120000,
+    "maxGroundFoods": 12,
+    "playerTimeoutMs": 60000,
+    "bubbleMs": 7000,
+    "chatMaxLength": 120,
+    "pollMs": 700,
+    "heartbeatMs": 12000
+  }
+}

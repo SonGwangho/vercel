@@ -163,7 +163,7 @@ export const load = async ({ url }: RootLoadEvent) => {
   const menuTabs: MenuTab[] = topMenus.map((menu) => ({
     key: menu.id,
     label: menu.name || menuLabelFromKey(menu.id),
-    path: menu.id === activeMenu ? url.pathname : menu.path || firstMenuPath(menuMap.get(menu.id) ?? [], menu.id),
+    path: menu.id === "lounge" ? menu.path : menu.id === activeMenu ? url.pathname : menu.path || firstMenuPath(menuMap.get(menu.id) ?? [], menu.id),
   }));
 
   return {

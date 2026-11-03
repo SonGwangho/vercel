@@ -25,3 +25,4 @@ export * from "./types/Home.ts";
 export * from "./types/Calendar.ts";
 export * from "./types/Byulnanbaya.ts";
 export * from "./types/Fitness.ts";
+export * from "./types/Lounge.ts";
