@@ -368,8 +368,10 @@ export class LoungeScene implements LoungeSceneController {
         visual = { element, playerId: bubble.playerId, offset: { x: 0, y: 0 } }; this.bubbles.set(bubble.id, visual);
       }
       visual.offset.x = bubble.x - (actor.head.x * 0.5 + 0.5) * this.width;
-      visual.offset.y = bubble.y - (-actor.head.y * 0.5 + 0.5) * this.height;
+      visual.offset.y = bubble.y + bubble.height - (-actor.head.y * 0.5 + 0.5) * this.height;
       visual.element.style.width = `${bubble.width}px`;
+      visual.element.style.zIndex = String(bubble.zIndex);
+      visual.element.style.setProperty("--speech-tail-x", `${Math.max(12, Math.min(bubble.width - 12, bubble.anchorX - bubble.x))}px`);
     }
   }
 
@@ -483,7 +485,7 @@ export class LoungeScene implements LoungeSceneController {
     }
     for (const bubble of this.bubbles.values()) {
       const actor = this.actors.get(bubble.playerId); if (!actor) continue;
-      bubble.element.style.transform = `translate3d(${(actor.head.x * 0.5 + 0.5) * this.width + bubble.offset.x}px,${(-actor.head.y * 0.5 + 0.5) * this.height + bubble.offset.y}px,0)`;
+      bubble.element.style.transform = `translate3d(${(actor.head.x * 0.5 + 0.5) * this.width + bubble.offset.x}px,${(-actor.head.y * 0.5 + 0.5) * this.height + bubble.offset.y}px,0) translateY(-100%)`;
     }
     this.renderer.render(this.scene, this.camera);
   };

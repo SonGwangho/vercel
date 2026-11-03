@@ -115,6 +115,8 @@ def colored(triangles, mode, sample):
     result = copy.deepcopy(triangles)
     for triangle in result:
         for vertex in triangle:
+            if 'TEXCOORD_0' not in vertex:
+                continue
             uv = vertex['TEXCOORD_0']
             shade = 0.82 + 0.18 * min(1, max(0, (0.975 - uv[1]) / 0.2))
             rgb = [239, 196, 156] if mode == 'skin' else sample(uv)
@@ -152,6 +154,67 @@ def box(center, size, bone, color):
     result = []
     for indices in [(4, 5, 6, 7), (1, 0, 3, 2), (0, 4, 7, 3), (5, 1, 2, 6), (7, 6, 2, 3), (0, 1, 5, 4)]:
         result.extend(face([points[n] for n in indices], bone, color))
+    return result
+
+
+def ellipse(x, y, z, rx, ry, color, segments=20):
+    return face([(x + math.cos(n * math.tau / segments) * rx, y + math.sin(n * math.tau / segments) * ry, z) for n in range(segments)], 6, color)
+
+
+def arc(x, y, z, rx, ry, start, end, color, thickness=.0025):
+    result = []
+    for n in range(16):
+        a = start + (end - start) * n / 16
+        b = start + (end - start) * (n + 1) / 16
+        result.extend(face([(x + math.cos(a) * (rx + thickness), y + math.sin(a) * (ry + thickness), z), (x + math.cos(b) * (rx + thickness), y + math.sin(b) * (ry + thickness), z), (x + math.cos(b) * (rx - thickness), y + math.sin(b) * (ry - thickness), z), (x + math.cos(a) * (rx - thickness), y + math.sin(a) * (ry - thickness), z)], 6, color))
+    return result
+
+
+def hair_volume(rings):
+    outline = [(math.sin(n * math.tau / 12), math.cos(n * math.tau / 12)) for n in range(12)]
+    layers = [[(x * w, y, z * d + shift) for x, z in outline] for y, w, d, shift in rings]
+    result = []
+    for row in range(len(layers) - 1):
+        for n in range(12):
+            m = (n + 1) % 12
+            result.extend(face([layers[row][n], layers[row][m], layers[row + 1][m], layers[row + 1][n]], 6, (.94, .94, .94)))
+    for n in range(12):
+        m = (n + 1) % 12
+        result.extend(face([(0,rings[0][0],rings[0][3]),layers[0][m],layers[0][n]],6,(.86,.86,.86)))
+        result.extend(face([(0,rings[-1][0],rings[-1][3]),layers[-1][n],layers[-1][m]],6,(1,1,1)))
+    return result
+
+
+def bob_curtain():
+    rings = [(.388,.205,.18),(.405,.218,.188),(.48,.222,.19),(.555,.208,.186),(.615,.17,.164)]
+    columns = 20
+    layers = []
+    for inner in [0, 1]:
+        layers.append([[(math.sin(math.pi * (.36 + n / columns * 1.28)) * (w - inner * .025), y, math.cos(math.pi * (.36 + n / columns * 1.28)) * (d - inner * .025) - .006) for n in range(columns + 1)] for y,w,d in rings])
+    result = []
+    for row in range(len(rings) - 1):
+        for n in range(columns):
+            result.extend(face([layers[0][row][n],layers[0][row][n+1],layers[0][row+1][n+1],layers[0][row+1][n]],6,(.94,.94,.94)))
+            result.extend(face([layers[1][row][n+1],layers[1][row][n],layers[1][row+1][n],layers[1][row+1][n+1]],6,(.84,.84,.84)))
+    for n in range(columns):
+        result.extend(face([layers[1][0][n],layers[1][0][n+1],layers[0][0][n+1],layers[0][0][n]],6,(.88,.88,.88)))
+        result.extend(face([layers[0][-1][n],layers[0][-1][n+1],layers[1][-1][n+1],layers[1][-1][n]],6,(1,1,1)))
+    for row in range(len(rings) - 1):
+        for n in [0, columns]:
+            result.extend(face([layers[0][row][n],layers[0][row+1][n],layers[1][row+1][n],layers[1][row][n]],6,(.95,.95,.95)))
+    return result
+
+
+def skirt(length):
+    bottom = .052 if length == 'long' else .118
+    result = garment([(bottom,.185,.168), (bottom + .014,.184,.167), (.205,.15,.14)])
+    for triangle in result:
+        for vertex in triangle:
+            x,y,_ = vertex['POSITION']
+            blend = min(.65,max(0,(.205-y)/(.205-bottom)*.65))
+            left = min(1,max(0,.5+x/.22))
+            vertex['JOINTS_0'] = [3,1,2,0]
+            vertex['WEIGHTS_0'] = [1-blend,blend*left,blend*(1-left),0]
     return result
 
 
@@ -204,6 +267,8 @@ class Package:
             return
         vertices = [v for t in triangles for v in t]
         attributes = {key: self.attribute([v[key] for v in vertices], kind, component) for key, kind, component in [('POSITION', 'VEC3', 5126), ('NORMAL', 'VEC3', 5126), ('COLOR_0', 'VEC3', 5126), ('JOINTS_0', 'VEC4', 5123), ('WEIGHTS_0', 'VEC4', 5126)]}
+        if '_LOUNGE_ZONE' in vertices[0]:
+            attributes['_LOUNGE_ZONE'] = self.attribute([v['_LOUNGE_ZONE'] for v in vertices], 'SCALAR')
         self.doc['meshes'].append(dict(name=name, primitives=[dict(attributes=attributes, material=material)]))
         node = dict(name=name, mesh=len(self.doc['meshes']) - 1, skin=0, extras=dict(loungePart=name))
         self.doc['nodes'].append(node)
@@ -228,36 +293,52 @@ def main(archive):
         package = Package(source)
         body = source.triangles(0)
         skin_strip = (11, 3)
-        buckets = {key: [] for key in ['skin', 'body', 'waist', 'sleeve', 'arm', 'hand_left', 'hand_right', 'legs', 'pants', 'shoes']}
+        palm_triangles = []
+        body_mesh = []
         for triangle in body:
             bone = joint(triangle[0])
             skin = strip(triangle[0]) == skin_strip
             y = sum(v['POSITION'][1] for v in triangle) / 3
-            if bone in [4, 5] and skin:
-                side = 'left' if bone == 4 else 'right'
-                limit = .338 if bone == 4 else -.338
-                buckets['hand_' + side].extend(clip(triangle, 0, limit, bone == 4))
-                buckets['arm'].extend(clip(triangle, 0, limit, bone == 5))
+            if bone in [4,5]:
+                zone = 3 if skin else 2
+                if bone == 5 and skin:
+                    palm_triangles.extend(clip(triangle, 0, -.338, False))
+            elif bone in [1,2]:
+                zone = 0 if not skin and y < .085 else 5 if skin else 4
             else:
-                key = 'shoes' if bone in [1, 2] and not skin and y < .085 else 'legs' if bone in [1, 2] and skin else 'pants' if bone in [1, 2] else 'sleeve' if bone in [4, 5] else 'skin' if skin else 'waist' if y < .217 else 'body'
-                buckets[key].append(triangle)
-        for name, key, mode, material in [('body_skin', 'skin', 'skin', 0), ('top_body', 'body', 'tint', 1), ('bottom_waist', 'waist', 'tint', 1), ('top_sleeves', 'sleeve', 'tint', 1), ('tank_arms', 'sleeve', 'skin', 0), ('arm_skin', 'arm', 'skin', 0), ('long_sleeves', 'arm', 'tint', 1), ('hand_left', 'hand_left', 'skin', 0), ('hand_right', 'hand_right', 'skin', 0), ('leg_skin', 'legs', 'skin', 0), ('pants_short', 'pants', 'tint', 1), ('shoes', 'shoes', 'original', 3)]:
-            package.mesh(name, colored(buckets[key], mode, sample), material)
-        package.mesh('pants_long', colored(buckets['pants'] + buckets['legs'], 'tint', sample), 1)
-        package.mesh('skirt_short', garment([(.118,.17,.137),(.135,.168,.136),(.205,.145,.125)]), 1)
-        package.mesh('skirt_long', garment([(.052,.18,.145),(.07,.18,.145),(.205,.145,.125)]), 1)
+                zone = 7 if skin else 6 if y < .217 else 1
+            part = colored([triangle], 'original' if zone == 0 else 'tint', sample)
+            for vertex in part[0]:
+                vertex['_LOUNGE_ZONE'] = [zone]
+            body_mesh.extend(part)
+        package.mesh('body_base', body_mesh, 1)
+        package.mesh('skirt_short', skirt('short'), 1)
+        package.mesh('skirt_long', skirt('long'), 1)
         head = source.triangles(1)
         head_skin = [t for t in head if strip(t[0]) == skin_strip]
-        features = [t for t in head if strip(t[0]) == (1, 3) and all(.159 < v['POSITION'][2] < .1603 for v in t)]
         package.mesh('head_skin', colored(head_skin, 'skin', sample), 0)
-        package.mesh('face_default', colored(features, 'original', sample), 4)
+        face_config = json.loads((root / 'src/lib/assets/data/lounge/character-face.json').read_text(encoding='utf-8'))
+        ink = face_config['ink']
+        z_face = face_config['surfaceZ']
+        eye_x, eye_y = face_config['eyeX'], face_config['eyeY']
+        rx, ry = face_config['eyeRadius']
+        def eye(x):
+            return ellipse(x,eye_y,z_face,rx,ry,ink) + ellipse(x-.004,eye_y+.006,z_face+.0004,.0035,.0045,(1,1,1),12)
+        smile = arc(0,face_config['mouthY'],z_face,.021,.011,math.pi,math.tau,ink)
+        package.mesh('face_default', eye(-eye_x) + eye(eye_x) + smile, 4)
+        cheeks = ellipse(-.113,.448,z_face,.020,.008,face_config['blush']) + ellipse(.113,.448,z_face,.020,.008,face_config['blush'])
+        package.mesh('face_blush', cheeks, 4)
+        happy = arc(-eye_x,eye_y,z_face,.016,.009,0,math.pi,ink) + arc(eye_x,eye_y,z_face,.016,.009,0,math.pi,ink)
+        package.mesh('face_laugh', happy + ellipse(0,.437,z_face,.018,.014,ink), 4)
+        tease = eye(-eye_x) + arc(eye_x,eye_y,z_face,.016,.009,0,math.pi,ink) + ellipse(0,.436,z_face,.016,.008,ink) + ellipse(0,.423,z_face+.001,.010,.014,face_config['tongue'])
+        package.mesh('face_tease', tease, 4)
         skin_strips = {'male-f': (11,3), 'male-d': (15,3), 'female-a': (13,3), 'female-f': (15,3)}
         def hair(name):
             triangles = load(name).triangles(1)
             return [t for t in triangles if strip(t[0]) != skin_strips[name] and strip(t[0])[1] == 3 and not all(.159 < v['POSITION'][2] < .1603 for v in t)]
         short = hair('male-f')
-        bob = hair('male-d')
-        long = copy.deepcopy(bob)
+        bob = copy.deepcopy(short) + bob_curtain()
+        long = copy.deepcopy(hair('male-d'))
         buzz = copy.deepcopy(short)
         spiky = copy.deepcopy(short)
         for triangle in long:
@@ -282,16 +363,18 @@ def main(archive):
                     x,y,z = v['POSITION']
                     v['POSITION'] = [x * .65 + sign * .17, .56 + (y - .72) * 1.8, -.15 + (z + .2) * .75]
             tails.extend(twin)
-        for triangles in [long, buzz, spiky, tails]:
+        ponytail = copy.deepcopy(short) + hair_volume([(.325,.018,.025,-.285),(.36,.048,.045,-.30),(.43,.065,.05,-.30),(.51,.07,.055,-.26),(.575,.055,.045,-.205),(.615,.025,.025,-.17)])
+        ponytail.extend(hair_volume([(.564,.059,.049,-.212),(.584,.059,.049,-.20)]))
+        hairstyles = [('short',short),('bob',bob),('long',long),('ponytail',ponytail),('bun',bun),('twintails',tails),('spiky',spiky),('buzz',buzz)]
+        for name,triangles in hairstyles:
+            for triangle in triangles:
+                for vertex in triangle:
+                    x,y,z = vertex['POSITION']
+                    if abs(x) < .13 and z > .145 and y < .525:
+                        vertex['POSITION'][1] = .525
             update_normals(triangles)
-        for name, triangles in [('short', short), ('bob', bob), ('long', long), ('ponytail', hair('female-f')), ('bun', bun), ('twintails', tails), ('spiky', spiky), ('buzz', buzz)]:
-            package.mesh('hair_' + name, colored(triangles, 'tint', sample), 2)
-        ink = (.025,.023,.032)
-        eyes = box((-.075,.495,.1605),(.025,.007,.002),6,ink) + box((.075,.495,.1605),(.025,.007,.002),6,ink)
-        mouth = box((0,.43,.1605),(.045,.025,.002),6,ink)
-        package.mesh('face_laugh', eyes + mouth, 4)
-        package.mesh('face_tease', eyes + box((0,.43,.1605),(.035,.014,.002),6,ink) + box((0,.416,.163),(.022,.026,.003),6,(.68,.19,.25)), 4)
-        palm = colored(buckets['hand_right'], 'skin', sample)
+            package.mesh('hair_' + name, colored(triangles,'tint',sample),2)
+        palm = colored(palm_triangles, 'skin', sample)
         palm.extend(box((-.408,.287,.042),(.07,.025,.025),5,(.84,.59,.37)))
         package.mesh('hand_gesture', palm, 0)
         collar = face([(-.085,.34,.083),(-.015,.335,.085),(-.055,.288,.086)],3,(.93,.91,.85)) + face([(.085,.34,.083),(.055,.288,.086),(.015,.335,.085)],3,(.93,.91,.85))
@@ -307,7 +390,7 @@ def main(archive):
         package.mesh('hoodie_strings', strings, 3)
         package.save(target / 'characters.glb')
         (target / 'LICENSE.txt').write_text(source_zip.read('License.txt').decode().replace('\r',''), encoding='utf-8')
-        (target / 'SOURCE.json').write_text(json.dumps(dict(author='Kenney', pack='Mini Characters 1.0', license='CC0-1.0', url='https://kenney.nl/assets/mini-characters', archiveSha256=hashlib.sha256(Path(archive).read_bytes()).hexdigest(), adaptation='Modular parts, palette colors, outfit variants and expression meshes; original seven-bone rig and animations retained.'), indent=2) + '\n', encoding='utf-8')
+        (target / 'SOURCE.json').write_text(json.dumps(dict(author='Kenney', pack='Mini Characters 1.0', license='CC0-1.0', url='https://kenney.nl/assets/mini-characters', archiveSha256=hashlib.sha256(Path(archive).read_bytes()).hexdigest(), adaptation='Intact source body with shader-based clothing colors, closed weighted skirts, chin-length bob, single ponytail and soft facial expressions; original seven-bone rig and animations retained.'), indent=2) + '\n', encoding='utf-8')
         print('Imported Kenney Mini Characters:', len(package.doc['meshes']), 'parts,', len(package.doc['animations']), 'animations')
 
 

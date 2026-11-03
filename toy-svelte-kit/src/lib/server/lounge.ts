@@ -1,8 +1,9 @@
+import { arrangeSocialPlayers } from "$lib/server/lounge/interaction";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getNeonSql } from "$lib/server/neon";
 import { normalizeAppearance } from "$lib/lounge/appearance";
 import { ambientFoodCount, dropHeldFood, groundFoodsAt } from "$lib/server/lounge/food";
-import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
+import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
 import type { LoungeActionKind, LoungeChannelSummary, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomRow, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer, LoungeRoomCache } from "$lib/types/Lounge";
 
 export class LoungeError extends Error {
@@ -185,8 +186,8 @@ function requireAvailable(player: LoungeStoredPlayer, now: number) {
   if (reason) throw new LoungeError(reason);
 }
 
-function requireNear(a: LoungeStoredPlayer, b: LoungePoint, now: number) {
-  if (distance(positionAt(a, now), b) > loungeRules.interactionRange) {
+function requireNear(a: LoungeStoredPlayer, b: LoungePoint, now: number, range = loungeRules.interactionRange) {
+  if (distance(positionAt(a, now), b) > range) {
     throw new LoungeError("조금 더 가까이 이동한 후 시도해 주세요.");
   }
 }
@@ -341,7 +342,8 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
   requireAwake(sender, now);
   requireAwake(player, now);
   if (sender.action || player.action || sender.pendingRequestId !== request.id || player.pendingRequestId !== request.id) throw new LoungeError("이미 다른 행동을 진행하고 있어요.");
-  requireNear(sender, positionAt(player, now), now);
+  requireNear(sender, positionAt(player, now), now, interactionRangeFor(request.kind));
+  if (!arrangeSocialPlayers(sender, player, request.kind, now)) throw new LoungeError("주변에 공간이 부족해요. 조금 이동해 주세요.");
   const duration = request.kind === "hug" ? 1800 : 1200;
   if (request.kind === "give") {
     const food = sender.inventory.find((item) => item.id === request.foodId);
@@ -395,7 +397,7 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       if (!target) throw new LoungeError("상대를 찾을 수 없어요.");
       if (!["handshake", "hug", "give", "punch"].includes(command.kind)) throw new LoungeError("지원하지 않는 행동입니다.", 400);
       requireAvailable(target, now);
-      requireNear(player, positionAt(target, now), now);
+      requireNear(player, positionAt(target, now), now, interactionRangeFor(command.kind));
       if (command.kind === "punch") {
         const dropped = dropHeldFood(state, target, player, now);
         beginAction(player, "punch", 650, now, target.id);

@@ -173,7 +173,7 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
   background: var(--surface); color: var(--text-strong); box-shadow: 0 3px 12px rgb(20 36 29 / 9%); will-change: transform;
   box-sizing: border-box; overflow: visible; pointer-events: none;
 }
-.scene-speech::after { content: ""; position: absolute; bottom: -5px; left: calc(50% - 4px); width: 8px; height: 8px; background: var(--surface); border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); transform: rotate(45deg); }
+.scene-speech::after { content: ""; position: absolute; bottom: -5px; left: calc(var(--speech-tail-x, 50%) - 4px); width: 8px; height: 8px; background: var(--surface); border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); transform: rotate(45deg); }
 .scene-speech strong { display: block; font-size: 10px; font-weight: 500; line-height: 16px; color: var(--muted); white-space: nowrap; margin-bottom: 2px; }
 .scene-speech p { margin: 0; font-size: 13px; line-height: 20px; word-break: break-all; overflow-wrap: anywhere; }
 .game-hud { position: absolute; top: var(--game-inset-top); left: var(--game-inset-left); right: var(--game-inset-right); z-index: 3; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; pointer-events: none; }

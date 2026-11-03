@@ -13,6 +13,9 @@
   ],
   "rules": {
     "interactionRange": 108,
+    "socialRange": 190,
+    "handshakeDistance": 158,
+    "hugDistance": 142,
     "stunMs": 1500,
     "punchDropDistance": 54,
     "foodDropMs": 450,

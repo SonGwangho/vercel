@@ -25,6 +25,14 @@ export function foodName(kind: string) {
   return loungeFoods.find((food) => food.kind === kind)?.name ?? "음식";
 }
 
+export function interactionRangeFor(kind: LoungeActionKind): number {
+  return kind === "handshake" || kind === "hug" ? loungeRules.socialRange : loungeRules.interactionRange;
+}
+
+export function interactionSpacingFor(kind: LoungeActionKind): number {
+  return kind === "handshake" ? loungeRules.handshakeDistance : kind === "hug" ? loungeRules.hugDistance : 58;
+}
+
 export function positionAt(player: Pick<LoungePlayer, "move">, now: number): LoungePoint {
   const move = player.move;
   const progress = move.endsAt <= move.startedAt ? 1 : Math.min(1, Math.max(0, (now - move.startedAt) / (move.endsAt - move.startedAt)));

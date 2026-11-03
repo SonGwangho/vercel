@@ -30,30 +30,25 @@ export function nameLabels(players: LoungeRenderedPlayer[], selfId: string, came
 export function speechBubbles(messages: LoungeMessage[], labels: LoungeNameLabel[], viewport: LoungePoint, now: number): LoungeBubble[] {
   const bubbles: LoungeBubble[] = [];
   const latest = new Map<string, LoungeMessage>();
-  for (const message of messages) if (now - message.createdAt < loungeRules.bubbleMs) latest.set(message.playerId, message);
-  const ordered = [...latest.values()].sort((a, b) => b.createdAt - a.createdAt);
-  for (const message of ordered) {
+  for (const message of messages) {
+    if (now - message.createdAt >= loungeRules.bubbleMs) continue;
+    const previous = latest.get(message.playerId);
+    if (!previous || message.createdAt >= previous.createdAt) latest.set(message.playerId, message);
+  }
+  const ordered = [...latest.values()].sort((a, b) => a.createdAt - b.createdAt || messages.indexOf(a) - messages.indexOf(b));
+  for (let index = 0; index < ordered.length; index += 1) {
+    const message = ordered[index];
     const label = labels.find((item) => item.playerId === message.playerId);
     if (!label) continue;
     const desiredLines = viewport.y < 400 ? 2 : 3;
     const width = Math.min(viewport.y < 400 ? 460 : 320, viewport.x - 20, Math.max(142, textWidth(message.text) / desiredLines + 28));
     const lines = Math.max(1, Math.ceil(textWidth(message.text) / (width - 28)));
     const height = 40 + lines * 20;
-    const desiredX = clamp(label.x + label.width / 2 - width / 2, 10, viewport.x - width - 10);
-    const desiredY = label.y - height - 8;
-    const candidates: LoungeRect[] = [];
-    for (let row = 0; row < 5; row += 1) {
-      for (const shift of [0, -width - 8, width + 8]) {
-        candidates.push({ x: clamp(desiredX + shift, 10, viewport.x - width - 10), y: desiredY - row * (height + 8), width, height });
-      }
-    }
-    candidates.push({ x: desiredX, y: label.y + label.height + 8, width, height });
-    for (let y = 78; y + height <= viewport.y - 82; y += height + 8) {
-      for (let x = 10; x + width <= viewport.x - 10; x += width + 8) candidates.push({ x, y, width, height });
-    }
-    const place = candidates.find((rect) => rect.y >= 76 && rect.y + height <= viewport.y - 82 && !labels.some((other) => overlaps(rect, other)) && !bubbles.some((other) => overlaps(rect, other, 7)));
-    if (!place) continue;
-    bubbles.push({ ...place, id: message.id, playerId: message.playerId, nickname: message.nickname, text: message.text, anchorX: label.x + label.width / 2, anchorY: label.y });
+    bubbles.push({
+      id: message.id, playerId: message.playerId, nickname: message.nickname, text: message.text,
+      x: clamp(label.anchorX - width / 2, 10, viewport.x - width - 10), y: label.anchorY - height - 36,
+      width, height, anchorX: label.anchorX, anchorY: label.anchorY, zIndex: index + 1
+    });
   }
   return bubbles;
 }

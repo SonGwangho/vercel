@@ -1,4 +1,4 @@
-import type { Group, Matrix4, Vector3 } from "three";
+import type { Color, Group, IUniform, Matrix4, Vector3 } from "three";
 import type { LoungeAction, LoungeFoodKind } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
 
@@ -15,4 +15,13 @@ export type LoungeCharacterVisual = {
   grip: (matrix: Matrix4) => void;
   label: (point: Vector3) => void;
   dispose: () => void;
+};
+export type LoungeBodyUniforms = {
+  uLoungeTop: IUniform<Color>;
+  uLoungePants: IUniform<Color>;
+  uLoungeSkirt: IUniform<Color>;
+  uLoungeSkin: IUniform<Color>;
+  uLoungeSleeve: IUniform<number>;
+  uLoungeBottom: IUniform<number>;
+  uLoungeGesture: IUniform<number>;
 };

@@ -4,7 +4,8 @@
   import FoodIcon from "./FoodIcon.svelte";
   import ChatHistory from "./ChatHistory.svelte";
   import { loungeSocket, forgetLoungeSession, loadLoungeSession, LoungeClientError, postLoungeCommand, takeInitialLoungeSnapshot } from "$lib/client/lounge";
-  import { actionNames, clampPosition, distance, foodName, interactionBlock, isLoungeEmote, loungeEmotes, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
+  import { actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, interactionSpacingFor, isLoungeEmote, loungeEmotes, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
+  import { walkablePoint } from "$lib/lounge/navigation";
   import { Storage } from "$lib/utils/Storage";
   import type { LoungeApproach, LoungeCommand, LoungeCommandInput, LoungeMenuTarget, LoungePoint, LoungeRoomClientState, LoungeRoomProps, LoungeSession, LoungeSnapshot } from "$lib/types/Lounge";
   import type { LoungeSceneController } from "$lib/types/LoungeScene";
@@ -134,14 +135,29 @@
     catch (error) { if (version === moveVersion) { engine?.rejectMove(); plan = null; commandError(error); } }
   }
 
-  function nearby(point: LoungePoint) {
-    return Boolean(me && distance(positionAt(me, now), point) <= loungeRules.interactionRange - 12 && distance(engine?.position() ?? positionAt(me, now), point) <= loungeRules.interactionRange - 12);
+  function nearby(point: LoungePoint, range = loungeRules.interactionRange) {
+    return Boolean(me && distance(positionAt(me, now), point) <= range - 12 && distance(engine?.position() ?? positionAt(me, now), point) <= range - 12);
   }
 
-  function approachPoint(point: LoungePoint) {
+  function approachPoint(point: LoungePoint, spacing = 58) {
     const from = engine?.position() ?? (me ? positionAt(me, now) : point);
-    const length = Math.max(1, distance(from, point));
-    return clampPosition({ x: point.x + (from.x - point.x) / length * 58, y: point.y + (from.y - point.y) / length * 58 });
+    const initial = Math.atan2(from.y - point.y, from.x - point.x);
+    let best = walkablePoint({ x: point.x + Math.cos(initial) * spacing, y: point.y + Math.sin(initial) * spacing });
+    let cost = Infinity;
+    for (let n = 0; n < 16; n += 1) {
+      const angle = initial + n * Math.PI / 8;
+      const candidate = walkablePoint({ x: point.x + Math.cos(angle) * spacing, y: point.y + Math.sin(angle) * spacing });
+      const moved = distance(candidate, from);
+      if (distance(candidate, point) >= spacing - 2 && distance(candidate, point) <= spacing + 12 && moved < cost) { best = candidate; cost = moved; }
+    }
+    return best;
+  }
+
+  function readyFor(input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>, point: LoungePoint) {
+    const kind = input.type === "pickup" ? "pickup" : input.kind;
+    const spacing = interactionSpacingFor(kind);
+    if (!nearby(point, interactionRangeFor(kind))) return false;
+    return spacing === 58 || Boolean(me && distance(positionAt(me, now), point) >= spacing - 14 && distance(engine?.position() ?? positionAt(me, now), point) >= spacing - 14);
   }
 
   function choose(input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>) {
@@ -150,9 +166,9 @@
     const target = input.type === "pickup" ? room?.foods.find((food) => food.id === input.foodId) : room?.players.find((player) => player.id === input.targetId);
     if (!target) { inform("대상이 더 이상 여기에 없어요."); return; }
     const point = "move" in target ? positionAt(target, now) : target;
-    if (nearby(point)) { void perform(input); return; }
+    if (readyFor(input, point)) { void perform(input); return; }
     plan = { input, target: point, startedAt: now, lastSentAt: now };
-    queueMove(approachPoint(point));
+    queueMove(approachPoint(point, interactionSpacingFor(input.type === "pickup" ? "pickup" : input.kind)));
   }
 
   function advancePlan() {
@@ -163,9 +179,9 @@
     if (!target) { plan = null; inform("대상이 더 이상 여기에 없어요."); return; }
     if ("move" in target && interactionBlock(target, now)) { plan = null; inform("상대가 다른 행동을 시작했어요."); return; }
     const point = "move" in target ? positionAt(target, now) : target;
-    if (nearby(point) && !queuedMove) { plan = null; void perform(input); }
+    if (readyFor(input, point) && !queuedMove) { plan = null; void perform(input); }
     else if (distance(point, plan.target) > 38 && now - plan.lastSentAt > 600) {
-      plan = { ...plan, target: point, lastSentAt: now }; queueMove(approachPoint(point));
+      plan = { ...plan, target: point, lastSentAt: now }; queueMove(approachPoint(point, interactionSpacingFor(input.type === "pickup" ? "pickup" : input.kind)));
     }
   }
 
@@ -392,7 +408,7 @@
           <button type="button" role="menuitem" disabled={sending || Boolean(block) || food.id === me.heldFoodId} onclick={() => void perform({ type: "equip", foodId: food.id })}><FoodIcon kind={food.kind} size={26} /><span>{foodName(food.kind)}</span><small>{food.id === me.heldFoodId ? "들고 있음" : "손에 들기"}</small></button>
         {/each}
         {#if block}<p class="context-hint">{block}</p>{/if}
-      {:else if menuPlayer}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "handshake", targetId: menuPlayer!.id })}><span>악수하기</span><small>상대 동의</small></button><button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "hug", targetId: menuPlayer!.id })}><span>포옹하기</span><small>상대 동의</small></button>{#if me.inventory.length}<p class="context-section-label">음식 건네기 · 상대 동의</p>{#each me.inventory as food (food.id)}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock) || menuPlayer.inventory.length >= loungeRules.inventoryCapacity} onclick={() => choose({ type: "interact", kind: "give", targetId: menuPlayer!.id, foodId: food.id })}><FoodIcon kind={food.kind} size={24} /><span>{foodName(food.kind)} 건네기</span></button>{/each}{/if}<button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "punch", targetId: menuPlayer!.id })}><span>펀치하기</span><small>즉시 실행</small></button>{#if targetBlock}<p class="context-hint">{targetBlock}</p>{:else if !nearby(positionAt(menuPlayer, now))}<p class="context-hint">가까이 다가간 뒤 행동해요.</p>{/if}
+      {:else if menuPlayer}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "handshake", targetId: menuPlayer!.id })}><span>악수하기</span><small>상대 동의</small></button><button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "hug", targetId: menuPlayer!.id })}><span>포옹하기</span><small>상대 동의</small></button>{#if me.inventory.length}<p class="context-section-label">음식 건네기 · 상대 동의</p>{#each me.inventory as food (food.id)}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock) || menuPlayer.inventory.length >= loungeRules.inventoryCapacity} onclick={() => choose({ type: "interact", kind: "give", targetId: menuPlayer!.id, foodId: food.id })}><FoodIcon kind={food.kind} size={24} /><span>{foodName(food.kind)} 건네기</span></button>{/each}{/if}<button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "punch", targetId: menuPlayer!.id })}><span>펀치하기</span><small>즉시 실행</small></button>{#if targetBlock}<p class="context-hint">{targetBlock}</p>{:else if !nearby(positionAt(menuPlayer, now))}<p class="context-hint">거리를 맞춘 뒤 행동해요.</p>{/if}
       {:else}<p class="context-hint">다른 캐릭터나 음식을 선택해 주세요.</p>{/if}
     </div>
   {/if}

@@ -1,6 +1,7 @@
 import type { LoungeAppearance } from "./LoungeAppearance";
 
 export type LoungePoint = { x: number; y: number };
+export type LoungePairPositions = { first: LoungePoint; second: LoungePoint };
 export type LoungeFoodKind = "rice" | "chicken" | "pizza";
 export type LoungeFoodDefinition = { kind: LoungeFoodKind; name: string };
 export type LoungeChannel = { id: string; name: string; description: string; capacity: number };
@@ -106,7 +107,7 @@ export type LoungeAvatarProps = { color: string; walking?: boolean; action?: Lou
 export type LoungeFoodIconProps = { kind: LoungeFoodKind; size?: number };
 export type LoungeRenderedPlayer = LoungePlayer & LoungePoint & { walking: boolean; stunned: boolean; busy: boolean };
 export type LoungeMenuTarget = { kind: "player" | "food"; id: string; x: number; y: number };
-export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number };
+export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number; zIndex: number };
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;
 export type LoungeRoomProps = { channel: LoungeChannel };
