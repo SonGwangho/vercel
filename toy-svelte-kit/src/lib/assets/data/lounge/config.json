@@ -1,5 +1,5 @@
 {
-  "world": { "width": 1000, "height": 640, "padding": 52, "speed": 190 },
+  "world": { "width": 1000, "height": 640, "padding": 52, "speed": 240 },
   "channels": [
     { "id": "1", "name": "라운지 1", "description": "가볍게 인사를 나눠요", "capacity": 16 },
     { "id": "2", "name": "라운지 2", "description": "새로운 사람들과 쉬어가요", "capacity": 16 },
@@ -16,13 +16,15 @@
     "stunMs": 1500,
     "requestMs": 12000,
     "inventoryCapacity": 5,
-    "foodIntervalMs": 10000,
+    "foodIntervalMs": 60000,
     "foodLifetimeMs": 120000,
-    "maxGroundFoods": 12,
+    "maxGroundFoods": 2,
     "playerTimeoutMs": 60000,
-    "bubbleMs": 7000,
+    "bubbleMs": 10000,
     "chatMaxLength": 120,
-    "pollMs": 700,
+    "pollMs": 100,
+    "soloPollMs": 350,
+    "syncWaitMs": 6000,
     "heartbeatMs": 12000
   }
 }

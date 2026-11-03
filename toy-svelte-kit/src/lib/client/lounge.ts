@@ -1,5 +1,5 @@
 import { Storage } from "$lib/utils/Storage";
-import type { LoungeChannelSummary, LoungeCommand, LoungeJoinInput, LoungeJoinResult, LoungeProfile, LoungeSession, LoungeSnapshot } from "$lib/types/Lounge";
+import type { LoungeChannelSummary, LoungeCommand, LoungeJoinInput, LoungeJoinResult, LoungeProfile, LoungeSession, LoungeSnapshot, LoungeSyncResult } from "$lib/types/Lounge";
 
 const sessions = new Map<string, LoungeSession>();
 const snapshots = new Map<string, LoungeSnapshot>();
@@ -64,11 +64,12 @@ export async function forgetLoungeSession(session: LoungeSession) {
   } catch { /* Session cleanup is best effort after leaving the server. */ }
 }
 
-export async function fetchLoungeSnapshot(session: LoungeSession, signal: AbortSignal) {
-  const response = await fetch(`/api/lounge/${encodeURIComponent(session.channelId)}`, {
+export async function fetchLoungeSnapshot(session: LoungeSession, signal: AbortSignal, revision?: number) {
+  const suffix = revision === undefined ? "" : `?since=${revision}&wait=1`;
+  const response = await fetch(`/api/lounge/${encodeURIComponent(session.channelId)}${suffix}`, {
     headers: { authorization: `Bearer ${session.token}`, "x-lounge-player": session.playerId }, cache: "no-store", signal
   });
-  return responseBody<LoungeSnapshot>(response);
+  return responseBody<LoungeSyncResult>(response);
 }
 
 export async function postLoungeCommand(session: LoungeSession, command: LoungeCommand, keepalive = false, signal?: AbortSignal) {

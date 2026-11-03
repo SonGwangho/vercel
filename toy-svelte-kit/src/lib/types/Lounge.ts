@@ -57,10 +57,12 @@ export type LoungeRoomState = {
   appliedCommands: { id: string; playerId: string }[];
 };
 export type LoungeRoomRow = { channel_id: string; revision: number | string; state: LoungeRoomState };
+export type LoungeRoomCache = { row: LoungeRoomRow; expiresAt: number };
 export type LoungeSnapshot = {
   channel: LoungeChannel;
   revision: number;
   serverNow: number;
+  processingMs?: number;
   players: LoungePlayer[];
   foods: LoungeGroundFood[];
   requests: LoungeRequest[];
@@ -69,6 +71,7 @@ export type LoungeSnapshot = {
 };
 export type LoungeJoinInput = { channelId: string; nickname: string; color: string };
 export type LoungeJoinResult = { session: LoungeSession; snapshot: LoungeSnapshot };
+export type LoungeSyncResult = LoungeSnapshot | { unchanged: true; revision: number; serverNow: number; processingMs?: number };
 export type LoungeCommandInput =
   | { type: "move"; x: number; y: number }
   | { type: "chat"; text: string }
@@ -87,5 +90,11 @@ export type LoungeBubble = { id: string; playerId: string; nickname: string; tex
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;
 export type LoungeRoomProps = { channel: LoungeChannel };
+export type LoungeApproach = {
+  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>;
+  target: LoungePoint;
+  startedAt: number;
+  lastSentAt: number;
+};
 export type LoungeRect = { x: number; y: number; width: number; height: number };
 export type LoungeNameLabel = LoungeRect & { playerId: string; nickname: string; color: string; anchorX: number; anchorY: number; self: boolean };

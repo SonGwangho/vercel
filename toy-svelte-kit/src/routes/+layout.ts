@@ -146,7 +146,7 @@ function buildAdminMenus(url: URL): TreeMenu[] {
 
 export const load = async ({ url }: RootLoadEvent) => {
   const chromeHiddenPaths = new Set(["/info/fitness"]);
-  const hideChrome = chromeHiddenPaths.has(url.pathname);
+  const hideChrome = chromeHiddenPaths.has(url.pathname) || /^\/lounge\/[^/]+\/?$/.test(url.pathname);
   const menuMap = buildMenuMap();
   const topMenuKeys = new Set(topMenus.map((menu) => menu.id.toLowerCase()));
   const pathFirstSegment = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase();

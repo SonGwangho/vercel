@@ -1,13 +1,42 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getNeonSql } from "$lib/server/neon";
 import { actionNames, clampPosition, distance, foodName, interactionBlock, loungeChannels, loungeColors, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
-import type { LoungeActionKind, LoungeChannelSummary, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomRow, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer } from "$lib/types/Lounge";
+import type { LoungeActionKind, LoungeChannelSummary, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomRow, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer, LoungeRoomCache } from "$lib/types/Lounge";
 
 export class LoungeError extends Error {
   constructor(message: string, public status = 409) { super(message); }
 }
 
 let tableReady: Promise<void> | null = null;
+const readCache = new Map<string, LoungeRoomCache>();
+const readFlights = new Map<string, Promise<LoungeRoomRow>>();
+const roomWaiters = new Map<string, Set<() => void>>();
+
+function cacheRow(row: LoungeRoomRow) {
+  const existing = readCache.get(row.channel_id);
+  if (!existing || Number(existing.row.revision) <= Number(row.revision)) {
+    readCache.set(row.channel_id, { row: structuredClone(row), expiresAt: Date.now() + 85 });
+    if (!existing || Number(existing.row.revision) < Number(row.revision)) {
+      for (const wake of roomWaiters.get(row.channel_id) ?? []) wake();
+    }
+  }
+}
+
+async function readRoomRow(channelId: string, shared: boolean, optimistic = false): Promise<LoungeRoomRow> {
+  const cached = readCache.get(channelId);
+  if (cached && ((shared && cached.expiresAt > Date.now()) || (optimistic && cached.expiresAt + 915 > Date.now()))) return structuredClone(cached.row);
+  if (shared && readFlights.has(channelId)) return structuredClone(await readFlights.get(channelId)!);
+  const pending = (async () => {
+    const sql = getNeonSql();
+    const rows = await sql`SELECT channel_id, revision, state FROM lounge_rooms WHERE channel_id = ${channelId}` as LoungeRoomRow[];
+    if (!rows[0]) throw new LoungeError("채널을 불러오지 못했습니다.", 503);
+    cacheRow(rows[0]);
+    return rows[0];
+  })();
+  if (shared) readFlights.set(channelId, pending);
+  try { return structuredClone(await pending); }
+  finally { if (readFlights.get(channelId) === pending) readFlights.delete(channelId); }
+}
 
 function emptyRoom(): LoungeRoomState {
   return { players: [], foods: [], requests: [], messages: [], notices: [], lastFoodAt: Date.now(), appliedCommands: [] };
@@ -41,15 +70,19 @@ function channelFor(id: string) {
 
 function notice(state: LoungeRoomState, text: string, now: number) {
   state.notices.push({ id: randomUUID(), text, createdAt: now });
-  state.notices = state.notices.slice(-12);
+  state.notices = state.notices.slice(-4);
 }
 
-function spawnFood(now: number): LoungeGroundFood {
+function spawnFood(now: number, players: LoungeStoredPlayer[]): LoungeGroundFood {
   const definition = loungeFoods[Math.floor(Math.random() * loungeFoods.length)];
+  const player = players[Math.floor(Math.random() * players.length)];
+  const origin = positionAt(player, now);
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 62 + Math.random() * 34;
+  const point = clampPosition({ x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius });
   return {
     id: randomUUID(), kind: definition.kind, createdAt: now,
-    x: 100 + Math.random() * (loungeWorld.width - 200),
-    y: 170 + Math.random() * (loungeWorld.height - 260)
+    ...point
   };
 }
 
@@ -74,11 +107,15 @@ function maintainRoom(state: LoungeRoomState, now: number) {
   for (const player of state.players) {
     if (player.action && player.action.endsAt <= now) { player.action = null; changed = true; }
   }
-  const foods = state.foods.filter((food) => now - food.createdAt < loungeRules.foodLifetimeMs);
+  const messages = state.messages.filter((message) => now - message.createdAt < loungeRules.bubbleMs * 2).slice(-24);
+  if (messages.length !== state.messages.length) { state.messages = messages; changed = true; }
+  const notices = state.notices.filter((item) => now - item.createdAt < 20000).slice(-4);
+  if (notices.length !== state.notices.length) { state.notices = notices; changed = true; }
+  const foods = state.foods.filter((food) => now - food.createdAt < loungeRules.foodLifetimeMs).slice(-loungeRules.maxGroundFoods);
   if (foods.length !== state.foods.length) { state.foods = foods; changed = true; }
   if (state.players.length && now - state.lastFoodAt >= loungeRules.foodIntervalMs) {
-    const count = Math.min(3, Math.floor((now - state.lastFoodAt) / loungeRules.foodIntervalMs), loungeRules.maxGroundFoods - state.foods.length);
-    for (let i = 0; i < count; i += 1) state.foods.push(spawnFood(now));
+    // One respawn per minute, near one live player. Never replay missed spawns in a burst.
+    if (state.foods.length < loungeRules.maxGroundFoods) state.foods.push(spawnFood(now, state.players));
     state.lastFoodAt = now;
     changed = true;
   }
@@ -94,27 +131,34 @@ function snapshot(channelId: string, revision: number, state: LoungeRoomState, n
   };
 }
 
-async function updateRoom(channelId: string, mutate: LoungeRoomMutation) {
+async function updateRoom(channelId: string, mutate: LoungeRoomMutation, sharedRead = false, optimisticWrite = false) {
   channelFor(channelId);
   await ensureRooms();
   const sql = getNeonSql();
   // Revision-checked writes serialize actions across Vercel instances. A failed write is retried
   // against the latest room, so two people cannot acquire a food or reserve the same player twice.
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const rows = await sql`SELECT channel_id, revision, state FROM lounge_rooms WHERE channel_id = ${channelId}` as LoungeRoomRow[];
-    const row = rows[0];
-    if (!row) throw new LoungeError("채널을 불러오지 못했습니다.", 503);
+    const row = await readRoomRow(channelId, sharedRead && attempt === 0, optimisticWrite && attempt === 0);
     const state = row.state;
     const now = Date.now();
     const maintained = maintainRoom(state, now);
-    const changed = mutate(state, now);
+    let changed: boolean;
+    try { changed = mutate(state, now); }
+    catch (error) {
+      // Recheck failed optimistic preconditions against fresh data before rejecting an action.
+      if (attempt === 0 && error instanceof LoungeError && (optimisticWrite || (sharedRead && error.status === 401))) { readCache.delete(channelId); continue; }
+      throw error;
+    }
     if (!maintained && !changed) return snapshot(channelId, Number(row.revision), state, now);
     const written = await sql`UPDATE lounge_rooms
       SET state = ${JSON.stringify(state)}::jsonb, revision = revision + 1, updated_at = NOW()
       WHERE channel_id = ${channelId} AND revision = ${Number(row.revision)}
       RETURNING revision` as { revision: number | string }[];
-    if (written.length) return snapshot(channelId, Number(written[0].revision), state, now);
-    await new Promise((resolve) => setTimeout(resolve, 10 + Math.random() * 25));
+    if (written.length) {
+      cacheRow({ channel_id: channelId, revision: written[0].revision, state });
+      return snapshot(channelId, Number(written[0].revision), state, Date.now());
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2 + Math.random() * 4));
   }
   throw new LoungeError("다른 행동을 처리하고 있어요. 잠시 후 다시 시도해 주세요.", 409);
 }
@@ -181,7 +225,7 @@ export async function joinLounge(input: LoungeJoinInput): Promise<LoungeJoinResu
     }
     if (!state.players.length) {
       state.messages = []; state.requests = []; state.notices = []; state.appliedCommands = [];
-      state.foods = Array.from({ length: 5 }, () => spawnFood(now));
+      state.foods = [];
       state.lastFoodAt = now;
     }
     const point = { x: 400 + Math.random() * 200, y: 420 + Math.random() * 80 };
@@ -202,7 +246,87 @@ export async function readLounge(session: LoungeSession) {
     const player = authorize(state, session);
     if (now - player.lastSeenAt >= loungeRules.heartbeatMs) { player.lastSeenAt = now; return true; }
     return false;
+  }, true);
+}
+
+function waitForRoomWake(channelId: string, revision: number, duration: number, signal: AbortSignal) {
+  const advanced = () => Number(readCache.get(channelId)?.row.revision ?? -1) > revision;
+  if (signal.aborted || advanced()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const listeners = roomWaiters.get(channelId) ?? new Set<() => void>();
+    roomWaiters.set(channelId, listeners);
+    const finish = () => {
+      if (timer) clearTimeout(timer);
+      signal.removeEventListener("abort", finish); listeners.delete(finish);
+      if (!listeners.size) roomWaiters.delete(channelId);
+      resolve();
+    };
+    listeners.add(finish); signal.addEventListener("abort", finish, { once: true });
+    timer = setTimeout(finish, duration);
+    if (signal.aborted || advanced()) finish();
   });
+}
+
+export async function waitForLoungeChange(session: LoungeSession, initial: LoungeSnapshot, signal: AbortSignal) {
+  const deadline = Date.now() + loungeRules.syncWaitMs;
+  let result = initial;
+  while (!signal.aborted && result.revision === initial.revision && Date.now() < deadline) {
+    const interval = result.players.length > 1 ? loungeRules.pollMs : loungeRules.soloPollMs;
+    await waitForRoomWake(session.channelId, initial.revision, Math.min(interval, deadline - Date.now()), signal);
+    if (signal.aborted) break;
+    result = await readLounge(session);
+  }
+  return result;
+}
+
+async function moveLounge(session: LoungeSession, command: Extract<LoungeCommand, { type: "move" }>) {
+  if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
+  channelFor(session.channelId);
+  await ensureRooms();
+  const to = clampPosition(command);
+  const now = Date.now();
+  const hash = tokenHash(session.token);
+  const sql = getNeonSql();
+  // Evaluate the current path and action guards inside the UPDATE. Concurrent moves update
+  // only their own player without a preceding read or a channel-wide revision retry.
+  const rows = await sql`UPDATE lounge_rooms AS room
+    SET state = jsonb_set(room.state, '{players}', (
+      SELECT jsonb_agg(CASE WHEN player->>'id' = ${session.playerId} THEN
+        player || jsonb_build_object(
+          'move', jsonb_build_object(
+            'from', jsonb_build_object('x', point.x, 'y', point.y),
+            'to', jsonb_build_object('x', ${to.x}::double precision, 'y', ${to.y}::double precision),
+            'startedAt', ${now}::bigint,
+            'endsAt', ${now}::double precision + sqrt(power(${to.x}::double precision - point.x, 2) + power(${to.y}::double precision - point.y, 2)) / ${loungeWorld.speed}::double precision * 1000
+          ), 'lastSeenAt', ${now}::bigint
+        ) ELSE player END ORDER BY ordinal)
+      FROM jsonb_array_elements(room.state->'players') WITH ORDINALITY AS people(player, ordinal)
+      CROSS JOIN LATERAL (SELECT CASE
+        WHEN (player->'move'->>'endsAt')::double precision <= (player->'move'->>'startedAt')::double precision THEN 1
+        ELSE LEAST(1, GREATEST(0, (${now}::double precision - (player->'move'->>'startedAt')::double precision) /
+          GREATEST(1, (player->'move'->>'endsAt')::double precision - (player->'move'->>'startedAt')::double precision))) END AS fraction) AS progress
+      CROSS JOIN LATERAL (SELECT
+        (player->'move'->'from'->>'x')::double precision + ((player->'move'->'to'->>'x')::double precision - (player->'move'->'from'->>'x')::double precision) * progress.fraction AS x,
+        (player->'move'->'from'->>'y')::double precision + ((player->'move'->'to'->>'y')::double precision - (player->'move'->'from'->>'y')::double precision) * progress.fraction AS y) AS point
+    ), false), revision = room.revision + 1, updated_at = NOW()
+    WHERE room.channel_id = ${session.channelId} AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements(room.state->'players') AS candidates(player)
+      WHERE player->>'id' = ${session.playerId} AND player->>'tokenHash' = ${hash}
+        AND (player->>'lastSeenAt')::bigint > ${now - loungeRules.playerTimeoutMs}::bigint
+        AND COALESCE((player->>'stunnedUntil')::bigint, 0) <= ${now}::bigint
+        AND COALESCE((player->'action'->>'endsAt')::bigint, 0) <= ${now}::bigint
+    ) RETURNING channel_id, revision, state` as LoungeRoomRow[];
+  if (!rows[0]) {
+    const current = await readLounge(session);
+    const player = current.players.find((item) => item.id === session.playerId);
+    if (!player) throw new LoungeError("다시 입장해 주세요.", 401);
+    if (player.stunnedUntil > Date.now()) throw new LoungeError("기절 중에는 행동할 수 없어요.");
+    if (player.action && player.action.endsAt > Date.now()) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
+    throw new LoungeError("이동 상태가 바뀌었어요. 다시 클릭해 주세요.");
+  }
+  cacheRow(rows[0]);
+  return snapshot(session.channelId, Number(rows[0].revision), rows[0].state, Date.now());
 }
 
 function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Extract<LoungeCommand, { type: "respond" }>, now: number) {
@@ -234,10 +358,10 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
 
 export async function commandLounge(session: LoungeSession, command: LoungeCommand) {
   if (!command || typeof command.type !== "string" || typeof command.commandId !== "string" || !/^[\w-]{16,64}$/.test(command.commandId)) throw new LoungeError("올바르지 않은 행동 요청입니다.", 400);
+  if (command.type === "move") return moveLounge(session, command);
   return updateRoom(session.channelId, (state, now) => {
     const player = authorize(state, session);
     if (state.appliedCommands.some((item) => item.id === command.commandId && item.playerId === player.id)) return false;
-    if (now - player.lastCommandAt < 100) throw new LoungeError("행동을 너무 빠르게 요청했어요. 잠시 기다려 주세요.", 429);
     if (command.type === "leave") {
       state.players = state.players.filter((item) => item.id !== player.id);
       for (const request of [...state.requests]) if (request.fromId === player.id || request.toId === player.id) releaseRequest(state, request);
@@ -245,19 +369,13 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       return true;
     }
     requireAwake(player, now);
-    if (command.type === "move") {
-      if (player.action) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
-      if (typeof command.x !== "number" || typeof command.y !== "number" || !Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
-      const from = positionAt(player, now);
-      const to = clampPosition(command);
-      player.move = { from, to, startedAt: now, endsAt: now + (distance(from, to) / loungeWorld.speed) * 1000 };
-    } else if (command.type === "chat") {
+    if (command.type === "chat") {
       if (typeof command.text !== "string") throw new LoungeError("보낼 내용을 입력해 주세요.", 400);
       const text = command.text.normalize("NFKC").trim().replace(/[\p{C}]/gu, " ");
       if (!text || [...text].length > loungeRules.chatMaxLength) throw new LoungeError(`대화는 1~${loungeRules.chatMaxLength}자로 입력해 주세요.`, 400);
       if (now - player.lastChatAt < 800) throw new LoungeError("잠깐 기다린 뒤 말씀해 주세요.", 429);
       state.messages.push({ id: randomUUID(), playerId: player.id, nickname: player.nickname, text, createdAt: now });
-      state.messages = state.messages.slice(-80);
+      state.messages = state.messages.slice(-24);
       player.lastChatAt = now;
     } else if (command.type === "interact") {
       requireAvailable(player, now);
@@ -311,7 +429,7 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
     state.appliedCommands.push({ id: command.commandId, playerId: player.id });
     state.appliedCommands = state.appliedCommands.slice(-128);
     return true;
-  });
+  }, false, true);
 }
 
 export function sessionFromRequest(request: Request, channelId: string): LoungeSession {

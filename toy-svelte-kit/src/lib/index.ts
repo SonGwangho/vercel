@@ -26,3 +26,4 @@ export * from "./types/Calendar.ts";
 export * from "./types/Byulnanbaya.ts";
 export * from "./types/Fitness.ts";
 export * from "./types/Lounge.ts";
+export * from "./types/LoungeScene.ts";
