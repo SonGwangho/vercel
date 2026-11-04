@@ -5,10 +5,17 @@ import { signCatch } from "./catch-receipt";
 import type { LoungeCommandInput, LoungeFishingCommand, LoungeStoredPlayer } from "../../types/Lounge";
 
 export function isFishingCommand(command: LoungeCommandInput): command is LoungeFishingCommand {
-  return command.type === "cast" || command.type === "reel" || command.type === "stopFishing";
+  return command.type === "cast" || command.type === "reel" || command.type === "stopFishing" || command.type === "releaseFish";
 }
 
 export function applyFishing(player: LoungeStoredPlayer, command: LoungeFishingCommand, now: number, secret = process.env.LOUNGE_SOCKET_SECRET || process.env.DATABASE_URL || ""): string | null {
+  if (command.type === "releaseFish") {
+    const reason = interactionBlock(player, now);
+    if (reason) return reason;
+    if (!player.fishHeld || player.lastCatch?.id !== command.catchId) return "지금 손에 들고 있는 물고기가 아니에요.";
+    player.fishHeld = false;
+    return null;
+  }
   if (command.type === "cast") {
     const reason = interactionBlock(player, now);
     if (reason) return reason;

@@ -27,6 +27,7 @@ export type LoungeFishingMotion = { windup: number; release: number; flight: num
 export type LoungeFishingCommand =
   | { type: "cast" }
   | { type: "reel"; actionId: string; pressedAt: number }
+  | { type: "releaseFish"; catchId: string }
   | { type: "stopFishing"; actionId: string };
 export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup" | "fish" | "fishCatch" | "collectInsect";
 export type LoungeAction = {

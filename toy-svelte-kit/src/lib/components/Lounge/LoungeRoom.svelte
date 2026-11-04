@@ -267,6 +267,7 @@
       if (wasHoldingFood) inform("음식은 가방에 넣어 뒀어요.");
       if (input.type === "pickup") inform("가방에 넣었어요. 내 캐릭터에서 손에 들 수 있어요.");
       if (input.type === "equip") inform("손에 들었어요. 준비되면 먹어 보세요.");
+      if (input.type === "releaseFish") inform("물고기를 놓아줬어요.");
     } catch (error) { engine?.settle(id, false); commandError(error); }
     finally {
       sending = false;
@@ -471,6 +472,7 @@
         <div class="game-held game-catch">
           <FishIcon kind={caughtFish.kind} />
           <div><small>손에 든 물고기</small><strong><span class="fish-grade">{species.grade}</span> {species.name} · {fishLength(caughtFish.sizeCm)}</strong></div>
+          <button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "releaseFish", catchId: caughtFish!.id })}>놓아주기</button>
         </div>
       {/if}
       {#if toast}<div class="game-toast" role="status">{toast}</div>{:else if connection === "reconnecting"}<div class="game-toast" role="status">연결을 다시 확인하고 있어요.</div>{:else if lastNotice && now - lastNotice.createdAt < 6000}<div class="game-notice" aria-live="polite">{lastNotice.text}</div>{/if}
@@ -505,6 +507,10 @@
           <p class="context-section-label">손에 든 음식</p>
           <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => heldFood && void perform({ type: "eat", foodId: heldFood.id })}><FoodIcon kind={heldFood.kind} size={26} /><span>{foodName(heldFood.kind)} 먹기</span></button>
           <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => void perform({ type: "stow" })}><span>가방에 넣기</span></button>
+        {/if}
+        {#if caughtFish && me.fishHeld}
+          <p class="context-section-label">손에 든 물고기</p>
+          <button type="button" role="menuitem" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "releaseFish", catchId: caughtFish!.id })}><FishIcon kind={caughtFish.kind} /><span>{describeFish(caughtFish.kind).name} 놓아주기</span></button>
         {/if}
         {#if caughtInsect && me.insectHeld}
           <p class="context-section-label">손에 든 곤충</p><button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => void perform({ type: "releaseInsect" })}><InsectIcon kind={caughtInsect.kind} /><span>{describeInsect(caughtInsect.kind).name} 놓아주기</span></button>
