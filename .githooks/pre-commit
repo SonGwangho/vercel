@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node toy-svelte-kit/scripts/version.mjs commit

@@ -3,6 +3,7 @@
   import favicon from "$lib/assets/favicon.ico";
   import ResponsiveMenuItem from "$lib/components/Tree/ResponsiveMenuItem.svelte";
   import GlobalLoadingModal from "$lib/components/Modal/GlobalLoadingModal.svelte";
+  import AppVersion from "$lib/components/UI/AppVersion.svelte";
   import { Storage } from "$lib/utils/Storage";
   import "../app.css";
   import { onMount } from "svelte";
@@ -119,6 +120,7 @@
           <rect x="16" y="16" width="9" height="9" rx="3" fill="currentColor" />
         </svg>
         <span>장난감 웹</span>
+        <AppVersion />
       </a>
       <nav aria-label="주요 메뉴" class="top-menu">
         {#each menuTabs as menu}

@@ -12,6 +12,7 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
   if (command.type === "storeFish" || command.type === "releaseFish") {
     const pending = player.pendingCatch;
     if (pending && pending.id === command.catchId) {
+      if (player.action?.kind === "fishCatch" && player.action.endsAt > now) return "물고기를 끌어올리고 있어요.";
       const catches = player.catches ?? [];
       if (command.type === "storeFish") {
         if (catches.length >= fishingRules.catchCapacity) return "물고기 가방이 가득 찼어요.";
@@ -19,6 +20,7 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
       }
       player.pendingCatch = null;
       player.fishHeld = false;
+      if (player.action?.kind === "fishCatch") player.action = null;
       player.lastCatch = command.type === "storeFish" ? pending : player.catches?.at(-1);
       return null;
     }
@@ -59,8 +61,8 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
       id: randomUUID(),
       kind: "fish",
       startedAt: now,
-      endsAt: now + fishingRules.durationMs,
-      fishing: { center: randomInt(23, 78) / 100, width: fishingRules.zoneWidth }
+      endsAt: now + fishingRules.castMs + fishingRules.durationMs,
+      fishing: { center: randomInt(23, 78) / 100, width: fishingRules.zoneWidth, readyAt: now + fishingRules.castMs }
     };
     return null;
   }
@@ -75,11 +77,13 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
     return null;
   }
   const pressedAt = command.pressedAt;
-  if (!Number.isFinite(pressedAt) || pressedAt < Math.max(action.startedAt, now - fishingRules.inputLagMs) || pressedAt > now + 80) {
+  const readyAt = action.fishing.readyAt ?? action.startedAt;
+  if (now < readyAt || pressedAt < readyAt) return "찌가 내려앉으면 낚아채 주세요.";
+  if (!Number.isFinite(pressedAt) || pressedAt < Math.max(readyAt, now - fishingRules.inputLagMs) || pressedAt > now + 80) {
     return "입력 시간이 맞지 않아요. 다시 눌러 주세요.";
   }
   player.action = null;
-  const position = gaugePosition(action.startedAt, Math.min(now, pressedAt));
+  const position = gaugePosition(readyAt, Math.min(now, pressedAt));
   if (Math.abs(position - action.fishing.center) > action.fishing.width / 2) return null;
 
   let roll = randomInt(fishSpecies.reduce((total, fish) => total + fish.weight, 0));
@@ -87,5 +91,6 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
   player.lastCatch = { id: action.id, kind: species.kind, sizeCm: randomInt(species.minCm, species.maxCm + 1) };
   player.pendingCatch = player.lastCatch;
   player.fishHeld = true;
+  player.action = { id: randomUUID(), kind: "fishCatch", startedAt: now, endsAt: now + fishingRules.catchMs };
   return null;
 }

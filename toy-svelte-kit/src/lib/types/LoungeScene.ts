@@ -19,7 +19,7 @@ export type LoungeSceneActor = {
   actionId: string | null;
   held: Group | null;
   heldKind: LoungeFoodKind | LoungeFishKind | "rod" | null;
-  cast?: { line: Line; bobber: Mesh };
+  cast?: { line: Line; bobber: Mesh; fish?: Group; fishKind?: LoungeFishKind; landedFor?: string; liftedFor?: string };
 };
 export type LoungeSceneFood = { group: Group; point: LoungeGroundFood; createdAt: number; phase: number };
 export type LoungeSceneBubble = { element: HTMLDivElement; playerId: string; offset: LoungePoint };

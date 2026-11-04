@@ -7,7 +7,9 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
+		"prepare": "node scripts/version.mjs install && (svelte-kit sync || echo '')",
+		"version:install": "node scripts/version.mjs install",
+		"version:major": "node scripts/version.mjs major",
 		"validate:data": "node scripts/validate-data.mjs",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"

@@ -14,11 +14,15 @@ export type LoungeGroundFood = LoungeFood & LoungePoint & { createdAt: number; d
 export type LoungeConsentKind = "handshake" | "hug" | "give";
 export type LoungeEmoteKind = "middleFinger" | "laugh" | "dance" | "scratchHead" | "tongueOut";
 export type LoungeEmoteDefinition = { kind: LoungeEmoteKind; name: string; durationMs: number };
-export type LoungeFishKind = "carp" | "flounder" | "snapper" | "eel" | "whale";
-export type LoungeFishGrade = "C" | "B" | "A" | "S" | "SS";
+export type LoungeFishKind = "carp" | "flounder" | "snapper" | "eel" | "whale" | "shark";
+export type LoungeFishGrade = "C" | "B" | "A" | "S" | "SS" | "SSS";
+export type LoungeFishVertex = readonly [x: number, y: number, z: number];
+export type LoungeFishSection = readonly [x: number, y: number, height: number, depth: number, z?: number];
+export type LoungeFishIconProps = { kind: LoungeFishKind };
 export type LoungeFishSpecies = { kind: LoungeFishKind; name: string; grade: LoungeFishGrade; weight: number; minCm: number; maxCm: number; color: string };
 export type LoungeFishCatch = { id: string; kind: LoungeFishKind; sizeCm: number };
-export type LoungeFishingGauge = { center: number; width: number };
+export type LoungeFishingGauge = { center: number; width: number; readyAt?: number };
+export type LoungeFishingMotion = { windup: number; release: number; flight: number; pull: number; lift: number; recovery: number };
 export type LoungeFishingCommand =
   | { type: "cast" }
   | { type: "reel"; actionId: string; pressedAt: number }
@@ -26,7 +30,7 @@ export type LoungeFishingCommand =
   | { type: "storeFish"; catchId: string }
   | { type: "releaseFish"; catchId: string }
   | { type: "holdFish"; catchId: string; held: boolean };
-export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup" | "fish";
+export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup" | "fish" | "fishCatch";
 export type LoungeAction = {
   id: string;
   kind: LoungeActionKind;

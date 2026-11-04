@@ -7,6 +7,7 @@ import type { LoungeAppearance } from "../types/LoungeAppearance";
 import type { LoungeAction } from "../types/Lounge";
 import type { LoungeCharacterPose, LoungeCharacterVisual, LoungeChibiJoint, LoungeChibiLimb } from "../types/LoungeCharacter";
 import { ChibiWardrobe } from "./chibi-wardrobe";
+import { fishingMotion } from "./fishing";
 import model from "../assets/data/lounge/character-model.json";
 
 const MODEL_SCALE = model.scale;
@@ -211,7 +212,6 @@ export class LoungeCharacter implements LoungeCharacterVisual {
   pose(state: LoungeCharacterPose) {
     for (const joint of this.joints.values()) joint.bone.quaternion.copy(joint.rotation);
     const { now, delta, reducedMotion, stunned, peer } = state;
-    this.fishHold = THREE.MathUtils.damp(this.fishHold, state.carryingFish && !state.action ? 1 : 0, 20, delta);
     if (state.action) {
       this.lastAction = state.action;
       this.release = 1;
@@ -223,6 +223,12 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     const kind = action?.kind;
     const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
     const elapsed = action ? Math.max(0, now - action.startedAt) / 1000 : 0;
+    const rod = fishingMotion(action, now);
+    const fishPose = state.carryingFish && !state.action ? 1 : state.action?.kind === "fishCatch" ? rod.recovery : 0;
+    this.fishHold = THREE.MathUtils.damp(this.fishHold, fishPose, 20, delta);
+    const windup = rod.windup * (reducedMotion ? .3 : 1);
+    const castRelease = rod.release * (reducedMotion ? .35 : 1);
+    const pull = rod.pull * (1 - .8 * rod.recovery) * (reducedMotion ? .4 : 1);
     const strike = kind === "punch";
     const weight = this.release * smooth(progress, 0, strike ? .29 : .23) * (1 - smooth(progress, strike ? .48 : .76, 1));
     const paired = Boolean(peer && (kind === "handshake" || kind === "hug" || kind === "give"));
@@ -244,10 +250,11 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       - (kind === "pickup" ? 1.3 * weight : 0) + (reducedMotion ? 0 : .16 * Math.cos(this.phase * 2) * moving)
       + .24 * Math.abs(beat) * dance + .14 * chuckle * laugh;
     this.rotate("Spine_02", .035 * moving + .39 * running + (paired ? .13 * weight : 0)
-      + (strike ? .23 * weight : 0) + laugh * .13 - recoil, 0, -.12 * dance * beat);
+      + (strike ? .23 * weight : 0) + laugh * .13 - recoil - .08 * windup + .09 * castRelease - .12 * pull,
+      0, -.12 * dance * beat);
     this.rotate("Spine2_04", (paired ? .33 * weight : 0) + (strike ? .45 * weight : 0)
       + (kind === "pickup" ? .46 * weight : 0) + breath * .024 + laugh * (.25 + .055 * chuckle),
-      (strike ? .3 * weight : 0) + .15 * dance * beat, 0);
+      (strike ? .3 * weight : 0) + .15 * dance * beat - .16 * windup + .08 * castRelease + .05 * pull, 0);
     this.rotate("Neck_05", paired ? -.56 * weight : 0, 0, kind === "hug" ? .17 * weight : 0);
     const look = paired && (kind === "handshake" || kind === "give") ? -.6 : kind === "eat" ? -.24 : 0;
     const headPitch = kind === "eat" ? .55 : kind === "tongueOut" ? .12 : 0;
@@ -333,7 +340,19 @@ export class LoungeCharacter implements LoungeCharacterVisual {
         armWeight = Math.max(weight, .65);
       } else if (kind === "fish" && i === 0) {
         this.palm.set(-5.5, 14.7, 7.9);
+        this.palm.lerp(this.reach.set(-12.2, 20, -2.9), windup);
+        this.palm.lerp(this.reach.set(-6, 16.4, 10), castRelease);
         armWeight = this.release * smooth(elapsed, 0, .24);
+      } else if (kind === "fishCatch") {
+        if (i === 0) {
+          this.palm.set(-5.5, 14.7, 7.9).lerp(this.reach.set(-12, 19.4, 3.7), pull);
+          this.palm.lerp(this.reach.set(-4.7, 15, 10), rod.recovery);
+          armWeight = this.release;
+        } else {
+          this.palm.set(6, 13.2 + beat * .4, 4.3);
+          this.palm.lerp(this.reach.set(4.7, 15, 10), rod.recovery);
+          armWeight = this.release * Math.max(pull * .65, rod.recovery);
+        }
       } else if ((state.carried || state.carryingFish) && i === (paired ? 1 : 0)) {
         this.palm.set(side * 7, 14.4, 7.5);
         armWeight = 1 - running;

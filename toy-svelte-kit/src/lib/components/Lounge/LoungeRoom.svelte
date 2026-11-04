@@ -2,6 +2,8 @@
   import { goto } from "$app/navigation";
   import { onMount, tick } from "svelte";
   import FoodIcon from "./FoodIcon.svelte";
+  import FishIcon from "./FishIcon.svelte";
+  import AppVersion from "$lib/components/UI/AppVersion.svelte";
   import ChatHistory from "./ChatHistory.svelte";
   import FishingGauge from "./FishingGauge.svelte";
   import { canFishFrom, describeFish, fishLength, fishingRules, fishingSpot } from "$lib/lounge/fishing";
@@ -57,6 +59,7 @@
   const currentAction = $derived(me?.action && me.action.endsAt > now ? me.action : null);
   const currentEmote = $derived(currentAction && isLoungeEmote(currentAction.kind) ? currentAction : null);
   const fishing = $derived(currentAction?.kind === "fish" && currentAction.fishing ? currentAction : null);
+  const catching = $derived(currentAction?.kind === "fishCatch");
   const caughtFish = $derived(me?.lastCatch ?? null);
   const pendingCatch = $derived(me?.pendingCatch ?? null);
   const catches = $derived(me?.catches ?? (caughtFish && !pendingCatch ? [caughtFish] : []));
@@ -244,6 +247,7 @@
 
   function reel() {
     if (!fishing || !usable || sending) return;
+    if (gameNow() < (fishing.fishing?.readyAt ?? fishing.startedAt)) return;
     void perform({ type: "reel", actionId: fishing.id, pressedAt: gameNow() });
   }
 
@@ -386,7 +390,7 @@
 <section class="lounge-game" aria-label={`${channel.name} 3D 라운지`}>
   <div class="lounge-scene-host" bind:this={host} tabindex="0" role="application" aria-label="3D 게임 공간. 좌클릭 이동, 우클릭 행동. Enter 대화, Escape 닫기."></div>
   <header class="game-hud">
-    <div class="game-channel"><svg class="camp-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13 2c1 5-4 5-2 9 2-1 3-3 3-5 5 5 7 8 4 12-3 4-10 4-13 0-3-5 2-8 2-11 1 3 2 3 3 4-1-5 3-6 3-9Z"/><path d="m5 23 14-3M5 20l14 3"/></svg><span class="game-live-dot" class:offline={connection !== "connected"}></span><div><h1>{channel.name}</h1><span>{room?.players.length ?? 0} / {channel.capacity}명{#if connection === "reconnecting"} · 연결 중{/if}</span></div></div>
+    <div class="game-channel"><svg class="camp-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13 2c1 5-4 5-2 9 2-1 3-3 3-5 5 5 7 8 4 12-3 4-10 4-13 0-3-5 2-8 2-11 1 3 2 3 3 4-1-5 3-6 3-9Z"/><path d="m5 23 14-3M5 20l14 3"/></svg><span class="game-live-dot" class:offline={connection !== "connected"}></span><div><h1>{channel.name} <AppVersion /></h1><span>{room?.players.length ?? 0} / {channel.capacity}명{#if connection === "reconnecting"} · 연결 중{/if}</span></div></div>
     <nav class="game-tools" aria-label="라운지 설정">
       <button type="button" class="game-tool" disabled={!usable || Boolean(block) || sending} onclick={() => choose({ type: "cast" })} title="호수에서 낚시하기">낚시</button>
       <button type="button" class="game-tool" disabled={!usable} onclick={() => moveTo({ x: loungeWorld.width / 2, y: loungeWorld.height / 2 + 200 })} aria-label="모닥불 앞으로 이동" title="모닥불 앞으로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 17H4L12 3Z"/><path d="m8 20 4-9 4 9M2 20h20"/></svg></button>
@@ -403,7 +407,7 @@
     </div></div>
   {/if}
   {#if ready && room && me && connection !== "expired" && !sceneError}
-    {#if pendingCatch}
+    {#if pendingCatch && !catching}
       {@const species = describeFish(pendingCatch.kind)}
       <section class="catch-choice" aria-label="잡은 물고기 보관 선택" aria-live="polite">
         <span class="catch-choice-grade">{species.grade}등급</span>
@@ -428,7 +432,7 @@
       {:else if caughtFish && !pendingCatch && !chatOpen}
         {@const species = describeFish(caughtFish.kind)}
         <div class="game-held game-catch">
-          <svg viewBox="0 0 48 32" width="42" height="30" aria-hidden="true" style={`color:${species.color}`}><path fill="currentColor" d="M10 16 1 6v20l9-10Zm1 0C17 3 32 3 45 16 32 29 17 29 11 16Z"/><circle cx="35" cy="13" r="2" fill="var(--text-strong)"/></svg>
+          <FishIcon kind={caughtFish.kind} />
           <div><small>{me.fishHeld ? "손에 든 물고기" : "내 물고기"} · {catches.length}/{fishingRules.catchCapacity}마리</small><strong><span class="fish-grade">{species.grade}</span> {species.name} · {fishLength(caughtFish.sizeCm)}</strong></div>
           <button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "holdFish", catchId: caughtFish!.id, held: !me.fishHeld })}>{me.fishHeld ? "넣기" : "손에 들기"}</button>
         </div>

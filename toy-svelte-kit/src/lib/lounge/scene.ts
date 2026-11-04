@@ -4,10 +4,11 @@ import { nameLabels, speechBubbles } from "./layout";
 import { normalizeAppearance } from "./appearance";
 import { Campground } from "./campground";
 import { planMove } from "./navigation";
-import { catchLabel, describeFish, fishLength, lake, lakeCenter } from "./fishing";
+import { catchLabel, describeFish, fishDisplayLength, fishDisplayOffset, fishLength, fishingMotion, lake, lakeCenter } from "./fishing";
+import { LoungeFishModels } from "./fish-models";
 import { LoungeCharacter, loadLoungeCharacters } from "./avatar";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
-import type { LoungeActionKind, LoungeFishKind, LoungeFoodKind, LoungeMessage, LoungePoint, LoungeRenderedPlayer, LoungeSnapshot } from "$lib/types/Lounge";
+import type { LoungeAction, LoungeActionKind, LoungeFishKind, LoungeFoodKind, LoungeMessage, LoungePoint, LoungeRenderedPlayer, LoungeSnapshot } from "$lib/types/Lounge";
 import type { LoungeSceneActor, LoungeSceneBubble, LoungeSceneController, LoungeSceneFood, LoungeSceneLocalMove, LoungeSceneOptions, LoungeSceneParticle, LoungeScenePick, LoungeScenePrediction, LoungeHeldPrediction } from "$lib/types/LoungeScene";
 
 const SCALE = 0.01;
@@ -31,6 +32,9 @@ export class LoungeScene implements LoungeSceneController {
   private project = new THREE.Vector3();
   private peerTarget = new THREE.Vector3();
   private rodTip = new THREE.Vector3();
+  private waterPoint = new THREE.Vector3();
+  private landingPoint = new THREE.Vector3();
+  private catchGrip = new THREE.Matrix4();
   private viewDirection = new THREE.Vector3();
   private catchPosition = new THREE.Vector3();
   private target = new THREE.Vector3();
@@ -38,6 +42,7 @@ export class LoungeScene implements LoungeSceneController {
   private color = new THREE.Color();
   private geometries = new Map<string, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.Material>();
+  private fishModels = new LoungeFishModels();
   private actors = new Map<string, LoungeSceneActor>();
   private actorIds: string[] = [];
   private foods = new Map<string, LoungeSceneFood>();
@@ -195,45 +200,7 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   private createFish(kind: LoungeFishKind) {
-    const group = new THREE.Group();
-    const color = describeFish(kind).color;
-    const whale = kind === "whale";
-    const flat = kind === "flounder";
-    const eel = kind === "eel";
-    const tall = kind === "snapper";
-    if (eel) {
-      const shape = this.geometry("eel-body", () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-        new THREE.Vector3(-.32, .03, -.04), new THREE.Vector3(-.16, .13, .01),
-        new THREE.Vector3(.02, .08, .04), new THREE.Vector3(.21, .12, 0)
-      ]), 14, .059, 7, false));
-      group.add(new THREE.Mesh(shape, this.solid(color)));
-      this.ball(group, color, .235, .117, 0, .105, .068, .074);
-      this.ball(group, "#292a35", .268, .14, .062, .017);
-    } else {
-      const height = whale ? .19 : tall ? .15 : flat ? .085 : .112;
-      const depth = whale ? .136 : flat ? .12 : .082;
-      this.ball(group, color, .026, .14, 0, whale ? .33 : .244, height, depth);
-      this.ball(group, whale ? "#b2c8cf" : "#e8cbab", .05, .092, 0, whale ? .258 : .188, height * .58, depth * .88);
-      const tail = this.geometry("fish-tail", () => {
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0); shape.lineTo(-.19, .12); shape.lineTo(-.15, 0); shape.lineTo(-.19, -.12); shape.closePath();
-        return new THREE.ExtrudeGeometry(shape, { depth: .028, bevelEnabled: false, steps: 1 });
-      });
-      const fin = new THREE.Mesh(tail, this.solid(color));
-      fin.position.set(whale ? -.244 : -.17, .15, -.015);
-      if (whale || flat) fin.rotation.x = Math.PI / 2;
-      group.add(fin);
-      if (tall || kind === "carp") {
-        const dorsal = this.ball(group, color, -.04, .14 + height, 0, .122, .056, .035);
-        dorsal.rotation.z = -.17;
-      }
-      const eyeX = whale ? .248 : .177;
-      for (const side of [-1, 1]) {
-        this.ball(group, "#f5e8d6", eyeX, .185, side * depth * .74, .033, .032, .02);
-        this.ball(group, "#28323a", eyeX + .008, .187, side * (depth * .74 + .016), .017, .018, .009);
-      }
-    }
-    return group;
+    return this.fishModels.create(kind);
   }
 
   private createRod() {
@@ -245,7 +212,7 @@ export class LoungeScene implements LoungeSceneController {
     return group;
   }
 
-  private drawCast(actor: LoungeSceneActor, point: LoungePoint, now: number) {
+  private drawCast(actor: LoungeSceneActor, point: LoungePoint, action: LoungeAction, now: number) {
     if (!actor.cast) {
       const lineGeometry = new THREE.BufferGeometry();
       lineGeometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
@@ -260,14 +227,51 @@ export class LoungeScene implements LoungeSceneController {
     const dz = point.y - lakeCenter.y;
     const fraction = (lake.radius - .95) / Math.max(1, Math.hypot(dx, dz));
     const bob = this.reducedMotion ? 0 : Math.sin(now / 280) * .018;
-    bobber.position.set(lake.x + dx * fraction, .045 + bob, lake.z + dz * fraction);
+    const motion = fishingMotion(action, now);
+    const catching = action.kind === "fishCatch";
+    this.waterPoint.set(lake.x + dx * fraction, .045 + bob, lake.z + dz * fraction);
     this.rodTip.set(0, .39, 1.33).applyMatrix4(actor.held!.matrix);
+    if (catching) {
+      actor.visual.grip(this.catchGrip, false, true);
+      this.landingPoint.set(0, .005, fishDisplayOffset(actor.player.pendingCatch?.sizeCm ?? 100)).applyMatrix4(this.catchGrip);
+      bobber.position.lerpVectors(this.waterPoint, this.landingPoint, motion.lift);
+      if (!this.reducedMotion) bobber.position.y += Math.sin(motion.lift * Math.PI) * .65;
+      const catchFish = actor.player.pendingCatch;
+      if (catchFish) {
+        if (actor.cast.fishKind !== catchFish.kind) {
+          actor.cast.fish?.removeFromParent();
+          actor.cast.fish = this.createFish(catchFish.kind);
+          actor.cast.fishKind = catchFish.kind;
+          this.scene.add(actor.cast.fish);
+        }
+        const fish = actor.cast.fish!;
+        fish.visible = motion.lift > 0;
+        fish.position.copy(bobber.position);
+        fish.rotation.set(.18, actor.facing, this.reducedMotion ? 0 : Math.sin(now / 75) * .14 * (1 - motion.recovery));
+        fish.scale.setScalar(fishDisplayLength(catchFish.sizeCm));
+      }
+      if (motion.lift > 0 && actor.cast.liftedFor !== action.id) {
+        actor.cast.liftedFor = action.id;
+        this.burst({ x: this.waterPoint.x / SCALE + loungeWorld.width / 2, y: this.waterPoint.z / SCALE + loungeWorld.height / 2 }, 0x9fcad0, 9, .6, .07);
+      }
+    } else {
+      if (actor.cast.fish) actor.cast.fish.visible = false;
+      const flight = this.reducedMotion ? Number(motion.flight > 0) : motion.flight;
+      bobber.position.lerpVectors(this.rodTip, this.waterPoint, flight);
+      if (!this.reducedMotion) bobber.position.y += Math.sin(flight * Math.PI) * .55;
+      if (motion.flight >= 1 && actor.cast.landedFor !== action.id) {
+        actor.cast.landedFor = action.id;
+        if (now - (action.fishing?.readyAt ?? action.startedAt) < 250) {
+          this.burst({ x: this.waterPoint.x / SCALE + loungeWorld.width / 2, y: this.waterPoint.z / SCALE + loungeWorld.height / 2 }, 0x9fcad0, 7, .5, .05);
+        }
+      }
+    }
     const vertices = line.geometry.getAttribute("position");
     vertices.setXYZ(0, this.rodTip.x, this.rodTip.y, this.rodTip.z);
     vertices.setXYZ(1, bobber.position.x, bobber.position.y, bobber.position.z);
     vertices.needsUpdate = true;
     line.visible = true;
-    bobber.visible = true;
+    bobber.visible = !catching || motion.lift < .8;
   }
 
   private disposeCast(actor: LoungeSceneActor) {
@@ -275,6 +279,7 @@ export class LoungeScene implements LoungeSceneController {
     actor.cast.line.removeFromParent();
     actor.cast.line.geometry.dispose();
     actor.cast.bobber.removeFromParent();
+    actor.cast.fish?.removeFromParent();
     actor.cast = undefined;
   }
 
@@ -405,7 +410,7 @@ export class LoungeScene implements LoungeSceneController {
     const stunned = player.stunnedUntil > now;
     const predicted = self && this.prediction && this.prediction.action.endsAt > now ? this.prediction.action : null;
     const action = player.action && serverBusy ? (predicted?.kind === player.action.kind ? { ...player.action, startedAt: predicted.startedAt } : player.action) : predicted;
-    const fishing = action?.kind === "fish";
+    const fishing = action?.kind === "fish" || action?.kind === "fishCatch";
     const peer = action?.peerId ? this.actors.get(action.peerId)?.player : undefined;
     const peerAction = peer?.action;
     const social = action?.kind === "handshake" || action?.kind === "hug" || action?.kind === "give";
@@ -473,17 +478,22 @@ export class LoungeScene implements LoungeSceneController {
         actor.heldKind = heldKind;
         this.scene.add(actor.held);
       }
-      this.dummy.position.set(0, 0.005, 0.035);
-      this.dummy.rotation.set(fishing ? 0 : .25, fish && !foodKind ? .12 : 0, eating ? -.2 : 0);
+      this.dummy.position.set(0, .005, fish && !foodKind ? fishDisplayOffset(fish.sizeCm) : .035);
+      const rod = fishingMotion(action, now);
+      const motionScale = this.reducedMotion ? .3 : 1;
+      const rodPitch = (-1.85 * rod.windup + .2 * rod.release - 1.05 * rod.pull * (1 - .57 * rod.recovery)) * motionScale;
+      const rodYaw = (-.13 * rod.windup - .28 * rod.pull) * motionScale;
+      this.dummy.rotation.set(fishing ? rodPitch : .25, fishing ? rodYaw : fish && !foodKind ? .12 : 0, eating ? -.2 : 0);
       const scale = fishing ? 1 : eating ? Math.max(.05, 1 - progress * .85)
-        : fish && !foodKind ? THREE.MathUtils.clamp(.62 + fish.sizeCm / 225, .69, 1.24) : .8;
+        : fish && !foodKind ? fishDisplayLength(fish.sizeCm) : .8;
       this.dummy.scale.setScalar(scale); this.dummy.updateMatrix(); actor.held!.matrix.multiplyMatrices(this.grip, this.dummy.matrix); actor.held!.matrixWorldNeedsUpdate = true;
-      if (fishing) this.drawCast(actor, position, now);
+      if (fishing && action) this.drawCast(actor, position, action, now);
       if (eating && Math.random() < delta * 12) this.burst(position, 0xe4bf7c, 2, 0.75, 1.27);
     } else if (actor.held) { this.scene.remove(actor.held); actor.held = null; actor.heldKind = null; }
     if (!fishing && actor.cast) {
       actor.cast.line.visible = false;
       actor.cast.bobber.visible = false;
+      if (actor.cast.fish) actor.cast.fish.visible = false;
     }
     actor.fishLabel.hidden = !holdingFish || !fish;
     if (holdingFish && fish && actor.held) {
@@ -750,6 +760,7 @@ export class LoungeScene implements LoungeSceneController {
     }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
+    this.fishModels.dispose();
     this.camp?.dispose();
     this.renderer.renderLists.dispose(); this.renderer.dispose(); this.renderer.domElement.remove(); this.overlay.remove();
     if (this.audio) void this.audio.close().catch(() => {});

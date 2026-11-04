@@ -1,15 +1,19 @@
 {
   "durationMs": 12000,
+  "castMs": 900,
+  "catchMs": 1150,
   "cycleMs": 2300,
   "zoneWidth": 0.19,
   "inputLagMs": 250,
   "shoreReach": 96,
   "catchCapacity": 10,
+  "display": { "baseLength": 0.14, "metreLength": 1.04, "largeScale": 0.68, "maxLength": 2.7, "forwardPerMetre": 0.075 },
   "species": [
-    { "kind": "carp", "name": "잉어", "grade": "C", "weight": 55, "minCm": 22, "maxCm": 62, "color": "#be9258" },
-    { "kind": "flounder", "name": "광어", "grade": "B", "weight": 25, "minCm": 35, "maxCm": 95, "color": "#857c66" },
-    { "kind": "snapper", "name": "빨간도미", "grade": "A", "weight": 13, "minCm": 28, "maxCm": 74, "color": "#de6c59" },
-    { "kind": "eel", "name": "장어", "grade": "S", "weight": 6, "minCm": 46, "maxCm": 128, "color": "#616a83" },
-    { "kind": "whale", "name": "고래", "grade": "SS", "weight": 1, "minCm": 380, "maxCm": 1100, "color": "#6186a6" }
+    { "kind": "carp", "name": "잉어", "grade": "C", "weight": 549, "minCm": 22, "maxCm": 62, "color": "#be9258" },
+    { "kind": "flounder", "name": "광어", "grade": "B", "weight": 250, "minCm": 35, "maxCm": 95, "color": "#857c66" },
+    { "kind": "snapper", "name": "빨간도미", "grade": "A", "weight": 130, "minCm": 28, "maxCm": 74, "color": "#de6c59" },
+    { "kind": "eel", "name": "장어", "grade": "S", "weight": 60, "minCm": 46, "maxCm": 128, "color": "#616a83" },
+    { "kind": "whale", "name": "고래", "grade": "SS", "weight": 10, "minCm": 380, "maxCm": 1100, "color": "#6186a6" },
+    { "kind": "shark", "name": "상어", "grade": "SSS", "weight": 1, "minCm": 160, "maxCm": 500, "color": "#7e94a2" }
   ]
 }
