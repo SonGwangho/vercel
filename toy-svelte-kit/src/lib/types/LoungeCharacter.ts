@@ -1,27 +1,42 @@
-import type { Color, Group, IUniform, Matrix4, Vector3 } from "three";
+import type { Bone, Group, Matrix4, Quaternion, Vector3 } from "three";
 import type { LoungeAction, LoungeFoodKind } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
 
 export type LoungeCharacterPose = {
-  now: number; joinedAt: number; movingSince: number;
-  walking: boolean; stunned: boolean; reducedMotion: boolean;
+  now: number;
+  delta: number;
+  speed: number;
+  stunned: boolean;
+  reducedMotion: boolean;
   action: LoungeAction | null;
+  peer: Vector3 | null;
   carried: LoungeFoodKind | null | undefined;
 };
 export type LoungeCharacterVisual = {
   group: Group;
   appearance: (value: LoungeAppearance) => void;
   pose: (state: LoungeCharacterPose) => void;
-  grip: (matrix: Matrix4) => void;
+  grip: (matrix: Matrix4, left?: boolean) => void;
   label: (point: Vector3) => void;
   dispose: () => void;
 };
-export type LoungeBodyUniforms = {
-  uLoungeTop: IUniform<Color>;
-  uLoungePants: IUniform<Color>;
-  uLoungeSkirt: IUniform<Color>;
-  uLoungeSkin: IUniform<Color>;
-  uLoungeSleeve: IUniform<number>;
-  uLoungeBottom: IUniform<number>;
-  uLoungeGesture: IUniform<number>;
+export type LoungeChibiJoint = {
+  bone: Bone;
+  rotation: Quaternion;
+  parentRotation: Quaternion;
+  inverseParentRotation: Quaternion;
+};
+
+export type LoungeChibiLimb = {
+  upper: Bone;
+  lower: Bone;
+  end: Bone;
+  upperAxis: Vector3;
+  lowerAxis: Vector3;
+  upperLength: number;
+  lowerLength: number;
+  endRotation: Quaternion;
+  forward: Vector3;
+  palmAxis: Vector3;
+  restEnd: Vector3;
 };

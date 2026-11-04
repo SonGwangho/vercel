@@ -1,5 +1,5 @@
 {
-  "world": { "width": 2400, "height": 1800, "padding": 96, "speed": 300 },
+  "world": { "width": 2400, "height": 1800, "padding": 96, "speed": 300, "walkSpeed": 155, "runDistance": 300 },
   "channels": [
     { "id": "1", "name": "숲속 캠핑장 1", "description": "모닥불 곁에 둘러앉아요", "capacity": 16 },
     { "id": "2", "name": "숲속 캠핑장 2", "description": "텐트 사이로 산책해요", "capacity": 16 },
@@ -14,8 +14,9 @@
   "rules": {
     "interactionRange": 108,
     "socialRange": 190,
-    "handshakeDistance": 158,
-    "hugDistance": 142,
+    "handshakeDistance": 103,
+    "hugDistance": 99,
+    "giveDistance": 103,
     "stunMs": 1500,
     "punchDropDistance": 54,
     "foodDropMs": 450,

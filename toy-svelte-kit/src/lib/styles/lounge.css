@@ -99,6 +99,7 @@ html[data-theme="dark"] .scene-window span { background: #638b94; }
 .avatar-preview { position: absolute; inset: 0; overflow: hidden; }
 .avatar-preview-canvas { position: absolute; inset: 38px 0 56px; touch-action: pan-y; }
 .avatar-preview .scene-label-layer { display: none; }
+.lounge-model-credit { display: block; width: fit-content; margin: 12px 0 0 auto; color: var(--muted); font-size: 12px; text-underline-offset: 3px; }
 .avatar-preview-name { position: absolute; top: 18px; left: 20px; right: 20px; display: grid; justify-items: center; gap: 10px; pointer-events: none; }
 .avatar-preview-name > span { color: var(--muted); font-size: 13px; }
 .avatar-preview-name > strong { max-width: 100%; padding: 4px 12px; border-radius: 6px; background: var(--surface); color: var(--text-strong); font-size: 13px; font-weight: 600; line-height: 1.6; overflow: visible; white-space: nowrap; }

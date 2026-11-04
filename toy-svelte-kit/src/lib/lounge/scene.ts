@@ -28,6 +28,7 @@ export class LoungeScene implements LoungeSceneController {
   private root = new THREE.Matrix4();
   private grip = new THREE.Matrix4();
   private project = new THREE.Vector3();
+  private peerTarget = new THREE.Vector3();
   private target = new THREE.Vector3();
   private look = new THREE.Vector3();
   private color = new THREE.Color();
@@ -294,10 +295,19 @@ export class LoungeScene implements LoungeSceneController {
     const stunned = player.stunnedUntil > now;
     const predicted = self && this.prediction && this.prediction.action.endsAt > now ? this.prediction.action : null;
     const action = player.action && serverBusy ? (predicted?.kind === player.action.kind ? { ...player.action, startedAt: predicted.startedAt } : player.action) : predicted;
+    const peer = action?.peerId ? this.actors.get(action.peerId)?.player : undefined;
+    const peerAction = peer?.action;
+    const social = action?.kind === "handshake" || action?.kind === "hug" || action?.kind === "give";
+    const paired = Boolean(social && action && peerAction?.kind === action.kind && peerAction.peerId === player.id
+      && peerAction.startedAt === action.startedAt && peerAction.endsAt > now);
+    const peerPosition = peer ? positionAt(peer, now) : null;
     if (self && this.localMove && (stunned || serverBusy)) this.localMove = null;
     const motion = self && this.localMove ? this.localMove : player.move;
     const position = predicted && !serverBusy && !stunned ? this.prediction!.point : positionAt({ move: motion }, now);
-    if (!self) {
+    if (paired) {
+      actor.correction.x = 0;
+      actor.correction.y = 0;
+    } else if (!self) {
       const decay = Math.exp(-(stunned ? 40 : 28) * delta);
       actor.correction.x *= decay; actor.correction.y *= decay;
       position.x += actor.correction.x; position.y += actor.correction.y;
@@ -305,26 +315,33 @@ export class LoungeScene implements LoungeSceneController {
     const dx = position.x - actor.point.x;
     const dy = position.y - actor.point.y;
     const walking = motion.endsAt > now && !action && !stunned;
+    const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
     if (walking && Math.hypot(dx, dy) > 0.02) {
       const desired = Math.atan2(dx, dy);
       actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(18, delta);
-    } else if (action?.peerId) {
-      const peer = this.actors.get(action.peerId);
-      if (peer) actor.facing = Math.atan2(peer.point.x - position.x, peer.point.y - position.y);
+    } else if (peerPosition) {
+      const turn = paired && (action?.kind === "handshake" || action?.kind === "give")
+        ? .6 * THREE.MathUtils.smoothstep(progress, 0, .23) * (1 - THREE.MathUtils.smoothstep(progress, .76, 1)) : 0;
+      const desired = Math.atan2(peerPosition.x - position.x, peerPosition.y - position.y) + turn;
+      actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(22, delta);
     }
     // Position is predicted locally and only constrained immediately by authoritative stun/action states.
     actor.point.x = position.x; actor.point.y = position.y;
     if (self && this.localMove && now >= this.localMove.endsAt && Math.hypot(positionAt(player, now).x - position.x, positionAt(player, now).y - position.y) < 4) this.localMove = null;
-    const progress = action ? Math.max(0, Math.min(1, (now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt))) : 0;
     const eating = action?.kind === "eat";
-    const punching = action?.kind === "punch";
     const carried = self && this.heldPrediction ? this.heldPrediction.kind : player.inventory.find((food) => food.id === player.heldFoodId)?.kind;
-    const foodKind = action?.foodKind ?? carried;
+    const gift = action?.kind === "give";
+    const giftInHand = gift && ((action.giveRole === "receiver" && progress >= .5)
+      || (action.giveRole === "giver" && progress < .5));
+    const foodKind = (gift && !giftInHand ? null : action?.foodKind) ?? carried;
     const visual = actor.visual;
     visual.group.position.set(worldX(position.x), .025, worldZ(position.y));
-    visual.group.rotation.set(punching ? Math.sin(progress * Math.PI) * .08 : 0, actor.facing, stunned ? .35 : 0);
-    visual.pose({ now, joinedAt: player.joinedAt, movingSince: motion.startedAt, walking, stunned, reducedMotion: this.reducedMotion, action: action || null, carried });
-    visual.grip(this.grip);
+    visual.group.rotation.y = actor.facing;
+    const speed = walking ? Math.min(loungeWorld.speed * SCALE, Math.hypot(dx, dy) * SCALE / delta) : 0;
+    const pairTarget = (paired || action?.kind === "punch") && peerPosition
+      ? this.peerTarget.set(worldX(peerPosition.x), .025, worldZ(peerPosition.y)) : null;
+    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried });
+    visual.grip(this.grip, paired && Boolean(carried) && !giftInHand);
     this.root.makeRotationY(actor.facing); this.root.setPosition(worldX(position.x), .025, worldZ(position.y));
     this.dummy.position.set(worldX(position.x), .012, worldZ(position.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.40, .29, 1); this.dummy.updateMatrix(); this.shadows.setMatrixAt(index, this.dummy.matrix);
     if (foodKind) {

@@ -1,8 +1,7 @@
 {
-  "url": "/models/lounge/kenney/characters.glb?v=2",
-  "scale": 2.5,
-  "labelOffset": [0, 0.48, 0],
-  "gripOffset": [-0.258, 0, 0.045],
-  "source": "https://kenney.nl/assets/mini-characters",
-  "license": "CC0-1.0"
+  "url": "/models/lounge/chibi/base.glb",
+  "scale": 0.035,
+  "creator": "PolyOne Studio",
+  "source": "https://sketchfab.com/3d-models/free-pack-chibi-base-mesh-rigged-fed4fb329f224f1594f631eae8d2626b",
+  "license": "CC Attribution"
 }

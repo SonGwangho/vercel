@@ -156,8 +156,11 @@
   function readyFor(input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>, point: LoungePoint) {
     const kind = input.type === "pickup" ? "pickup" : input.kind;
     const spacing = interactionSpacingFor(kind);
-    if (!nearby(point, interactionRangeFor(kind))) return false;
-    return spacing === 58 || Boolean(me && distance(positionAt(me, now), point) >= spacing - 14 && distance(engine?.position() ?? positionAt(me, now), point) >= spacing - 14);
+    if (spacing === 58) return nearby(point, interactionRangeFor(kind));
+    if (!me) return false;
+    const server = positionAt(me, now);
+    const inPosition = (position: LoungePoint) => Math.abs(distance(position, point) - spacing) <= 13;
+    return inPosition(server) && inPosition(engine?.position() ?? server);
   }
 
   function choose(input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>) {
@@ -206,7 +209,6 @@
       engine?.carry(null, id);
       engine?.predict(input.kind, id);
     } else if (input.type === "interact" && input.kind === "punch") engine?.predict("punch", id, undefined, undefined, input.targetId);
-    else if (input.type === "respond" && input.accept && incoming) engine?.predict(incoming.kind, id, incoming.foodKind, undefined, incoming.fromId);
     try {
       await request(input, id); engine?.settle(id, true);
       if (input.type === "stopEmote") engine?.stopEmote();

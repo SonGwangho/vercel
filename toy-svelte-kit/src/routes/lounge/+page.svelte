@@ -1,4 +1,5 @@
 <script lang="ts">
+  import characterModel from "$lib/assets/data/lounge/character-model.json";
   import { goto } from "$app/navigation";
   import { onMount, tick } from "svelte";
   import AvatarEditor from "$lib/components/Lounge/AvatarEditor.svelte";
@@ -111,4 +112,5 @@
       {/if}
     </div>
   </form>
+  <a class="lounge-model-credit" href={characterModel.source} target="_blank" rel="noreferrer">캐릭터 원본 · {characterModel.creator}</a>
 </div>

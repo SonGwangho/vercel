@@ -359,7 +359,12 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
   releaseRequest(state, request);
   beginAction(sender, request.kind, duration, now, player.id);
   beginAction(player, request.kind, duration, now, sender.id);
-  if (request.foodKind) { sender.action!.foodKind = request.foodKind; player.action!.foodKind = request.foodKind; }
+  if (request.foodKind) {
+    sender.action!.foodKind = request.foodKind;
+    sender.action!.giveRole = "giver";
+    player.action!.foodKind = request.foodKind;
+    player.action!.giveRole = "receiver";
+  }
 }
 
 export async function commandLounge(session: LoungeSession, command: LoungeCommand) {

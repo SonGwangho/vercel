@@ -26,11 +26,14 @@ export function foodName(kind: string) {
 }
 
 export function interactionRangeFor(kind: LoungeActionKind): number {
-  return kind === "handshake" || kind === "hug" ? loungeRules.socialRange : loungeRules.interactionRange;
+  return kind === "handshake" || kind === "hug" || kind === "give" ? loungeRules.socialRange : loungeRules.interactionRange;
 }
 
 export function interactionSpacingFor(kind: LoungeActionKind): number {
-  return kind === "handshake" ? loungeRules.handshakeDistance : kind === "hug" ? loungeRules.hugDistance : 58;
+  if (kind === "handshake") return loungeRules.handshakeDistance;
+  if (kind === "hug") return loungeRules.hugDistance;
+  if (kind === "give") return loungeRules.giveDistance;
+  return 58;
 }
 
 export function positionAt(player: Pick<LoungePlayer, "move">, now: number): LoungePoint {

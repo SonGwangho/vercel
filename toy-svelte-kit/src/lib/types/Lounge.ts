@@ -22,6 +22,7 @@ export type LoungeAction = {
   endsAt: number;
   peerId?: string;
   foodKind?: LoungeFoodKind;
+  giveRole?: "giver" | "receiver";
 };
 export type LoungePlayer = {
   id: string;
