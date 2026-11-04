@@ -1,5 +1,5 @@
-import type { Group, Vector3 } from "three";
-import type { LoungeAction, LoungeActionKind, LoungeFoodKind, LoungeGroundFood, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
+import type { Group, Line, Mesh, Vector3 } from "three";
+import type { LoungeAction, LoungeActionKind, LoungeFishKind, LoungeFoodKind, LoungeGroundFood, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
 import type { LoungeCharacterVisual } from "./LoungeCharacter";
 
@@ -13,11 +13,13 @@ export type LoungeSceneActor = {
   facing: number;
   head: Vector3;
   label: HTMLButtonElement;
+  fishLabel: HTMLDivElement;
   nameOffset: LoungePoint;
   nameWidth: number;
   actionId: string | null;
   held: Group | null;
-  heldKind: LoungeFoodKind | null;
+  heldKind: LoungeFoodKind | LoungeFishKind | "rod" | null;
+  cast?: { line: Line; bobber: Mesh };
 };
 export type LoungeSceneFood = { group: Group; point: LoungeGroundFood; createdAt: number; phase: number };
 export type LoungeSceneBubble = { element: HTMLDivElement; playerId: string; offset: LoungePoint };
@@ -53,6 +55,6 @@ export type LoungeSceneController = {
   unlockAudio: () => void;
   dispose: () => void;
 };
-export type LoungeScenePick = { kind: "player" | "food"; id: string };
+export type LoungeScenePick = Pick<LoungeMenuTarget, "kind" | "id">;
 export type LoungeSceneLocalMove = LoungeMove;
 export type LoungeHeldPrediction = { kind: LoungeFoodKind | null; commandId: string };

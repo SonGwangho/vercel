@@ -3,6 +3,8 @@ import camp from "../assets/data/lounge/campground.json";
 
 export class Campground {
   readonly floor: THREE.Mesh;
+  readonly lake: THREE.Mesh;
+  private waterTime = { value: 0 };
   private geometries = new Map<string, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.Material>();
   private batches = new Map<string, THREE.Matrix4[]>();
@@ -27,6 +29,57 @@ export class Campground {
     this.geometries.set("tent-door", new THREE.ShapeGeometry(triangle));
     const earth = new THREE.PlaneGeometry(38, 31, 1, 1); this.geometries.set("earth", earth);
     this.floor = new THREE.Mesh(earth, this.material("#53684c")); this.floor.rotation.x = -Math.PI / 2; this.floor.position.y = -0.025; this.group.add(this.floor);
+    const lake = camp.lake;
+    this.part("circle", "#8a8766", lake.x, -.015, lake.z, lake.radius + .29, lake.radius + .29, 1, -Math.PI / 2);
+    const water = new THREE.ShaderMaterial({
+      uniforms: {
+        time: this.waterTime,
+        deep: { value: new THREE.Color("#31576c") },
+        shallow: { value: new THREE.Color("#679b92") },
+        lightWater: { value: new THREE.Color("#a4c8b5") }
+      },
+      vertexShader: `
+        varying vec2 lakeUv;
+        void main() {
+          lakeUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        varying vec2 lakeUv;
+        uniform float time;
+        uniform vec3 deep, shallow, lightWater;
+        void main() {
+          vec2 uv = lakeUv * 2.0 - 1.0;
+          float shore = smoothstep(.46, 1.0, length(uv));
+          float wake = sin(uv.y * 46.0 + sin(uv.x * 6.0) * 1.35 - time * 1.35);
+          float glint = smoothstep(.94, 1.0, wake) * smoothstep(.03, .72, sin(uv.x * 13.0 + uv.y * 4.0));
+          vec3 color = mix(deep, shallow, shore);
+          color = mix(color, lightWater, glint * .23 + smoothstep(.973, 1.0, length(uv)) * .37);
+          gl_FragColor = vec4(color, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`
+    });
+    this.materials.set("lake-water", water);
+    this.lake = new THREE.Mesh(this.geometries.get("circle"), water);
+    this.lake.rotation.x = -Math.PI / 2;
+    this.lake.scale.set(lake.radius, lake.radius, 1);
+    this.lake.position.set(lake.x, .004, lake.z);
+    this.group.add(this.lake);
+    for (let n = 0; n < 6; n += 1) {
+      this.part("box", n % 2 ? "#aa8962" : "#bb9b71", lake.x + lake.radius - .28 + n * .23, .021, lake.z, .219, .05, 1.14);
+    }
+    for (const z of [-.49, .49]) this.part("cylinder", "#6d5541", lake.x + lake.radius - .3, .08, lake.z + z, .07, .26, .07);
+    for (let n = 1; n < 13; n += 1) {
+      const angle = n * Math.PI * 2 / 13;
+      if (Math.cos(angle) > .85) continue;
+      const x = lake.x + Math.cos(angle) * (lake.radius + .19);
+      const z = lake.z + Math.sin(angle) * (lake.radius + .19);
+      this.part("rock", n % 2 ? "#929887" : "#a2a18b", x, .065, z, .16, .10, .11, 0, angle);
+      if (n % 3 === 0) for (const offset of [-.12, 0, .12]) {
+        this.part("grass", "#758950", x + offset, .18, z + .08, .08, .35 + offset, .08, 0, angle, offset);
+      }
+    }
     this.part("circle", "#827956", 0, -0.014, 0, 4.3, 3.8, 1, -Math.PI / 2);
     this.part("circle", "#958361", 0, -0.009, 0.15, 2.8, 2.5, 1, -Math.PI / 2);
     for (let n = 0; n < 32; n += 1) {
@@ -44,7 +97,8 @@ export class Campground {
     }
     for (let n = 0; n < 200; n += 1) {
       const x = (this.random() - 0.5) * 27; const z = (this.random() - 0.5) * 21;
-      if (Math.hypot(x, z) < 4 || camp.obstacles.some((item) => Math.hypot(x - item.x, z - item.z) < item.radius + 0.5)) continue;
+      if (Math.hypot(x, z) < 4 || Math.hypot(x - lake.x, z - lake.z) < lake.radius + .7
+        || camp.obstacles.some((item) => Math.hypot(x - item.x, z - item.z) < item.radius + 0.5)) continue;
       const size = 0.08 + this.random() * 0.09;
       this.part("grass", n % 2 ? "#66805a" : "#82916a", x, size / 2, z, 0.07, size, 0.08, 0, this.random() * 6);
       if (n % 5 === 0) this.part("rock", "#829080", x + 0.3, 0.07, z, 0.12, 0.08, 0.1, 0, this.random() * 6);
@@ -114,6 +168,7 @@ export class Campground {
   }
   animate(time: number, reduced: boolean) {
     const t = reduced ? 0 : time;
+    this.waterTime.value = t;
     for (let n = 0; n < 9; n += 1) {
       const angle = n * 2.4; const radius = n < 5 ? 0.22 : 0.1; const height = (n < 5 ? 0.64 : 0.5) + Math.sin(t * 4.1 + n) * 0.12;
       this.dummy.position.set(Math.cos(angle) * radius, 0.17 + height / 2, Math.sin(angle) * radius); this.dummy.rotation.set(Math.sin(t * 2 + n) * 0.12, angle, Math.cos(t * 3 + n) * 0.15); this.dummy.scale.set(n < 5 ? 0.24 : 0.14, height, n < 5 ? 0.21 : 0.13); this.dummy.updateMatrix(); this.flames.setMatrixAt(n, this.dummy.matrix);

@@ -11,12 +11,13 @@ export type LoungeCharacterPose = {
   action: LoungeAction | null;
   peer: Vector3 | null;
   carried: LoungeFoodKind | null | undefined;
+  carryingFish: boolean;
 };
 export type LoungeCharacterVisual = {
   group: Group;
   appearance: (value: LoungeAppearance) => void;
   pose: (state: LoungeCharacterPose) => void;
-  grip: (matrix: Matrix4, left?: boolean) => void;
+  grip: (matrix: Matrix4, left?: boolean, twoHanded?: boolean) => void;
   label: (point: Vector3) => void;
   dispose: () => void;
 };

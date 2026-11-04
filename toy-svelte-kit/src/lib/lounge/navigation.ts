@@ -2,7 +2,7 @@ import camp from "../assets/data/lounge/campground.json";
 import { clampPosition, distance, loungeWorld } from "./shared";
 import type { LoungeMove, LoungePoint } from "../types/Lounge";
 
-const obstacles = camp.obstacles.map((item) => ({ x: loungeWorld.width / 2 + item.x * 100, y: loungeWorld.height / 2 + item.z * 100, radius: item.radius * 100 + 24 }));
+const obstacles = [...camp.obstacles, camp.lake].map((item) => ({ x: loungeWorld.width / 2 + item.x * 100, y: loungeWorld.height / 2 + item.z * 100, radius: item.radius * 100 + 24 }));
 const points = obstacles.flatMap((circle) => Array.from({ length: 12 }, (_, index) => ({ x: circle.x + Math.cos(index * Math.PI / 6) * (circle.radius / Math.cos(Math.PI / 12) + 4), y: circle.y + Math.sin(index * Math.PI / 6) * (circle.radius / Math.cos(Math.PI / 12) + 4) })));
 export function clear(a: LoungePoint, b: LoungePoint) {
   const dx = b.x - a.x; const dy = b.y - a.y; const length = dx * dx + dy * dy;

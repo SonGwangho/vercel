@@ -2,6 +2,6 @@
   { "kind": "middleFinger", "name": "뻐큐 날리기", "durationMs": 1800 },
   { "kind": "laugh", "name": "웃기", "durationMs": 2200 },
   { "kind": "dance", "name": "춤추기", "durationMs": 4800 },
-  { "kind": "scratchHead", "name": "머리 긁기", "durationMs": 2200 },
+  { "kind": "scratchHead", "name": "인사", "durationMs": 2200 },
   { "kind": "tongueOut", "name": "메롱하기", "durationMs": 1600 }
 ]

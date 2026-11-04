@@ -4,9 +4,10 @@ import { nameLabels, speechBubbles } from "./layout";
 import { normalizeAppearance } from "./appearance";
 import { Campground } from "./campground";
 import { planMove } from "./navigation";
+import { catchLabel, describeFish, fishLength, lake, lakeCenter } from "./fishing";
 import { LoungeCharacter, loadLoungeCharacters } from "./avatar";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
-import type { LoungeActionKind, LoungeFoodKind, LoungeMessage, LoungePoint, LoungeRenderedPlayer, LoungeSnapshot } from "$lib/types/Lounge";
+import type { LoungeActionKind, LoungeFishKind, LoungeFoodKind, LoungeMessage, LoungePoint, LoungeRenderedPlayer, LoungeSnapshot } from "$lib/types/Lounge";
 import type { LoungeSceneActor, LoungeSceneBubble, LoungeSceneController, LoungeSceneFood, LoungeSceneLocalMove, LoungeSceneOptions, LoungeSceneParticle, LoungeScenePick, LoungeScenePrediction, LoungeHeldPrediction } from "$lib/types/LoungeScene";
 
 const SCALE = 0.01;
@@ -29,6 +30,9 @@ export class LoungeScene implements LoungeSceneController {
   private grip = new THREE.Matrix4();
   private project = new THREE.Vector3();
   private peerTarget = new THREE.Vector3();
+  private rodTip = new THREE.Vector3();
+  private viewDirection = new THREE.Vector3();
+  private catchPosition = new THREE.Vector3();
   private target = new THREE.Vector3();
   private look = new THREE.Vector3();
   private color = new THREE.Color();
@@ -190,12 +194,97 @@ export class LoungeScene implements LoungeSceneController {
     return group;
   }
 
+  private createFish(kind: LoungeFishKind) {
+    const group = new THREE.Group();
+    const color = describeFish(kind).color;
+    const whale = kind === "whale";
+    const flat = kind === "flounder";
+    const eel = kind === "eel";
+    const tall = kind === "snapper";
+    if (eel) {
+      const shape = this.geometry("eel-body", () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-.32, .03, -.04), new THREE.Vector3(-.16, .13, .01),
+        new THREE.Vector3(.02, .08, .04), new THREE.Vector3(.21, .12, 0)
+      ]), 14, .059, 7, false));
+      group.add(new THREE.Mesh(shape, this.solid(color)));
+      this.ball(group, color, .235, .117, 0, .105, .068, .074);
+      this.ball(group, "#292a35", .268, .14, .062, .017);
+    } else {
+      const height = whale ? .19 : tall ? .15 : flat ? .085 : .112;
+      const depth = whale ? .136 : flat ? .12 : .082;
+      this.ball(group, color, .026, .14, 0, whale ? .33 : .244, height, depth);
+      this.ball(group, whale ? "#b2c8cf" : "#e8cbab", .05, .092, 0, whale ? .258 : .188, height * .58, depth * .88);
+      const tail = this.geometry("fish-tail", () => {
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0); shape.lineTo(-.19, .12); shape.lineTo(-.15, 0); shape.lineTo(-.19, -.12); shape.closePath();
+        return new THREE.ExtrudeGeometry(shape, { depth: .028, bevelEnabled: false, steps: 1 });
+      });
+      const fin = new THREE.Mesh(tail, this.solid(color));
+      fin.position.set(whale ? -.244 : -.17, .15, -.015);
+      if (whale || flat) fin.rotation.x = Math.PI / 2;
+      group.add(fin);
+      if (tall || kind === "carp") {
+        const dorsal = this.ball(group, color, -.04, .14 + height, 0, .122, .056, .035);
+        dorsal.rotation.z = -.17;
+      }
+      const eyeX = whale ? .248 : .177;
+      for (const side of [-1, 1]) {
+        this.ball(group, "#f5e8d6", eyeX, .185, side * depth * .74, .033, .032, .02);
+        this.ball(group, "#28323a", eyeX + .008, .187, side * (depth * .74 + .016), .017, .018, .009);
+      }
+    }
+    return group;
+  }
+
+  private createRod() {
+    const group = new THREE.Group();
+    this.box(group, "#614b37", 0, .026, .018, .055, .053, .25);
+    const shaft = this.box(group, "#9b774b", 0, .214, .68, .027, .028, 1.36);
+    shaft.rotation.x = -.27;
+    this.ball(group, "#5b655c", .043, .013, .15, .046, .043, .052);
+    return group;
+  }
+
+  private drawCast(actor: LoungeSceneActor, point: LoungePoint, now: number) {
+    if (!actor.cast) {
+      const lineGeometry = new THREE.BufferGeometry();
+      lineGeometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      const line = new THREE.Line(lineGeometry, this.material("fishing-line", () => new THREE.LineBasicMaterial({ color: "#d2d6c0" })));
+      line.frustumCulled = false;
+      const bobber = this.ball(this.scene, "#e48161", 0, .045, 0, .065, .076, .065);
+      this.scene.add(line);
+      actor.cast = { line, bobber };
+    }
+    const { line, bobber } = actor.cast;
+    const dx = point.x - lakeCenter.x;
+    const dz = point.y - lakeCenter.y;
+    const fraction = (lake.radius - .95) / Math.max(1, Math.hypot(dx, dz));
+    const bob = this.reducedMotion ? 0 : Math.sin(now / 280) * .018;
+    bobber.position.set(lake.x + dx * fraction, .045 + bob, lake.z + dz * fraction);
+    this.rodTip.set(0, .39, 1.33).applyMatrix4(actor.held!.matrix);
+    const vertices = line.geometry.getAttribute("position");
+    vertices.setXYZ(0, this.rodTip.x, this.rodTip.y, this.rodTip.z);
+    vertices.setXYZ(1, bobber.position.x, bobber.position.y, bobber.position.z);
+    vertices.needsUpdate = true;
+    line.visible = true;
+    bobber.visible = true;
+  }
+
+  private disposeCast(actor: LoungeSceneActor) {
+    if (!actor.cast) return;
+    actor.cast.line.removeFromParent();
+    actor.cast.line.geometry.dispose();
+    actor.cast.bobber.removeFromParent();
+    actor.cast = undefined;
+  }
+
   update(snapshot: LoungeSnapshot) {
     if (this.disposed) return;
     this.state = snapshot;
     const ids = new Set(snapshot.players.slice(0, CAPACITY).map((player) => player.id));
     for (const [id, actor] of this.actors) if (!ids.has(id)) {
-      actor.label.remove(); actor.visual.dispose(); this.pickables = this.pickables.filter((object) => object !== actor.visual.group); if (actor.held) this.scene.remove(actor.held); this.actors.delete(id); this.lastAction.delete(id);
+      this.disposeCast(actor);
+      actor.label.remove(); actor.fishLabel.remove(); actor.visual.dispose(); this.pickables = this.pickables.filter((object) => object !== actor.visual.group); if (actor.held) this.scene.remove(actor.held); this.actors.delete(id); this.lastAction.delete(id);
     }
     this.actorIds = snapshot.players.slice(0, CAPACITY).map((player) => player.id);
     const now = this.options.getNow();
@@ -212,16 +301,37 @@ export class LoungeScene implements LoungeSceneController {
           this.options.onContext({ kind: "player", id: player.id, x: rect.right, y: rect.bottom });
         });
         this.overlay.appendChild(label);
+        const fishLabel = document.createElement("div");
+        fishLabel.className = "scene-fish-label";
+        fishLabel.hidden = true;
+        fishLabel.setAttribute("aria-hidden", "true");
+        fishLabel.append(document.createElement("strong"), document.createElement("span"));
+        this.overlay.appendChild(fishLabel);
         const visual = new LoungeCharacter(this.characterAsset, normalizeAppearance(player.appearance, player.color));
         visual.group.userData.playerId = player.id; this.scene.add(visual.group); this.pickables.push(visual.group);
-        actor = { player, visual, appearance: normalizeAppearance(player.appearance, player.color), point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
+        actor = { player, visual, appearance: normalizeAppearance(player.appearance, player.color), point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, fishLabel, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
         this.actors.set(player.id, actor);
       }
       if (player.id !== this.options.selfId && player.move.startedAt !== actor.player.move.startedAt) {
         const point = positionAt(player, now);
         actor.correction.x = actor.point.x - point.x; actor.correction.y = actor.point.y - point.y;
       }
+      if (player.pendingCatch && player.pendingCatch.id !== actor.player.pendingCatch?.id && player.lastCatch) {
+        const fish = describeFish(player.lastCatch.kind);
+        this.burst(positionAt(player, now), new THREE.Color(fish.color).getHex(), 12, .8, 1.05);
+        if (player.id === this.options.selfId) {
+          this.tone(660, .07, .035);
+          this.tone(990, .12, .03, .09);
+        }
+      }
       actor.player = player;
+      actor.label.title = player.fishHeld && player.lastCatch
+        ? `${player.nickname} · ${catchLabel(player.lastCatch)}` : `${player.nickname} · 우클릭으로 행동`;
+      if (player.fishHeld && player.lastCatch) {
+        const fish = describeFish(player.lastCatch.kind);
+        actor.fishLabel.children[0].textContent = `${fish.grade}등급 · ${fish.name}`;
+        actor.fishLabel.children[1].textContent = fishLength(player.lastCatch.sizeCm);
+      }
       actor.appearance = normalizeAppearance(player.appearance, player.color);
       const appearanceKey = JSON.stringify(actor.appearance);
       if (actor.appearanceKey !== appearanceKey) { actor.visual.appearance(actor.appearance); actor.appearanceKey = appearanceKey; }
@@ -295,6 +405,7 @@ export class LoungeScene implements LoungeSceneController {
     const stunned = player.stunnedUntil > now;
     const predicted = self && this.prediction && this.prediction.action.endsAt > now ? this.prediction.action : null;
     const action = player.action && serverBusy ? (predicted?.kind === player.action.kind ? { ...player.action, startedAt: predicted.startedAt } : player.action) : predicted;
+    const fishing = action?.kind === "fish";
     const peer = action?.peerId ? this.actors.get(action.peerId)?.player : undefined;
     const peerAction = peer?.action;
     const social = action?.kind === "handshake" || action?.kind === "hug" || action?.kind === "give";
@@ -316,9 +427,17 @@ export class LoungeScene implements LoungeSceneController {
     const dy = position.y - actor.point.y;
     const walking = motion.endsAt > now && !action && !stunned;
     const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
-    if (walking && Math.hypot(dx, dy) > 0.02) {
+    const holdingFish = Boolean(player.fishHeld && player.lastCatch && !action && !stunned);
+    if (holdingFish) {
+      this.camera.getWorldDirection(this.viewDirection).negate();
+      const desired = Math.atan2(this.viewDirection.x, this.viewDirection.z);
+      actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(24, delta);
+    } else if (walking && Math.hypot(dx, dy) > 0.02) {
       const desired = Math.atan2(dx, dy);
       actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(18, delta);
+    } else if (fishing) {
+      const desired = Math.atan2(lakeCenter.x - position.x, lakeCenter.y - position.y);
+      actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(20, delta);
     } else if (peerPosition) {
       const turn = paired && (action?.kind === "handshake" || action?.kind === "give")
         ? .6 * THREE.MathUtils.smoothstep(progress, 0, .23) * (1 - THREE.MathUtils.smoothstep(progress, .76, 1)) : 0;
@@ -334,24 +453,43 @@ export class LoungeScene implements LoungeSceneController {
     const giftInHand = gift && ((action.giveRole === "receiver" && progress >= .5)
       || (action.giveRole === "giver" && progress < .5));
     const foodKind = (gift && !giftInHand ? null : action?.foodKind) ?? carried;
+    const fish = player.fishHeld && (!action || paired) && !stunned ? player.lastCatch : undefined;
+    const heldKind = fishing ? "rod" : foodKind ?? fish?.kind;
     const visual = actor.visual;
     visual.group.position.set(worldX(position.x), .025, worldZ(position.y));
     visual.group.rotation.y = actor.facing;
     const speed = walking ? Math.min(loungeWorld.speed * SCALE, Math.hypot(dx, dy) * SCALE / delta) : 0;
     const pairTarget = (paired || action?.kind === "punch") && peerPosition
       ? this.peerTarget.set(worldX(peerPosition.x), .025, worldZ(peerPosition.y)) : null;
-    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried });
-    visual.grip(this.grip, paired && Boolean(carried) && !giftInHand);
+    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried, carryingFish: Boolean(fish) });
+    visual.grip(this.grip, paired && Boolean(carried || fish) && !giftInHand, holdingFish);
     this.root.makeRotationY(actor.facing); this.root.setPosition(worldX(position.x), .025, worldZ(position.y));
     this.dummy.position.set(worldX(position.x), .012, worldZ(position.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.40, .29, 1); this.dummy.updateMatrix(); this.shadows.setMatrixAt(index, this.dummy.matrix);
-    if (foodKind) {
-      if (actor.heldKind !== foodKind) { if (actor.held) this.scene.remove(actor.held); actor.held = this.createFood(foodKind); actor.held.matrixAutoUpdate = false; actor.heldKind = foodKind; this.scene.add(actor.held); }
+    if (heldKind) {
+      if (actor.heldKind !== heldKind) {
+        actor.held?.removeFromParent();
+        actor.held = fishing ? this.createRod() : foodKind ? this.createFood(foodKind) : this.createFish(fish!.kind);
+        actor.held.matrixAutoUpdate = false;
+        actor.heldKind = heldKind;
+        this.scene.add(actor.held);
+      }
       this.dummy.position.set(0, 0.005, 0.035);
-      this.dummy.rotation.set(0.25, 0, eating ? -0.2 : 0);
-      const scale = eating ? Math.max(0.05, 1 - progress * 0.85) : 0.8;
+      this.dummy.rotation.set(fishing ? 0 : .25, fish && !foodKind ? .12 : 0, eating ? -.2 : 0);
+      const scale = fishing ? 1 : eating ? Math.max(.05, 1 - progress * .85)
+        : fish && !foodKind ? THREE.MathUtils.clamp(.62 + fish.sizeCm / 225, .69, 1.24) : .8;
       this.dummy.scale.setScalar(scale); this.dummy.updateMatrix(); actor.held!.matrix.multiplyMatrices(this.grip, this.dummy.matrix); actor.held!.matrixWorldNeedsUpdate = true;
+      if (fishing) this.drawCast(actor, position, now);
       if (eating && Math.random() < delta * 12) this.burst(position, 0xe4bf7c, 2, 0.75, 1.27);
     } else if (actor.held) { this.scene.remove(actor.held); actor.held = null; actor.heldKind = null; }
+    if (!fishing && actor.cast) {
+      actor.cast.line.visible = false;
+      actor.cast.bobber.visible = false;
+    }
+    actor.fishLabel.hidden = !holdingFish || !fish;
+    if (holdingFish && fish && actor.held) {
+      this.catchPosition.set(0, -.13, .25).applyMatrix4(actor.held.matrix).project(this.camera);
+      actor.fishLabel.style.transform = `translate3d(${(this.catchPosition.x * .5 + .5) * this.width}px,${(-this.catchPosition.y * .5 + .5) * this.height}px,0) translate(-50%,0)`;
+    }
     visual.label(actor.head); actor.head.project(this.camera);
   }
 
@@ -456,6 +594,10 @@ export class LoungeScene implements LoungeSceneController {
     const self = this.actors.get(this.options.selfId);
     if (self && !this.options.preview) this.target.set(worldX(self.point.x), 0, worldZ(self.point.y));
     else this.target.set(0, 0, 0);
+    if (self?.player.pendingCatch && this.width < 700 && !this.options.preview) {
+      const offset = (this.camera.right - this.camera.left) / this.camera.zoom * .21;
+      this.target.addScaledVector(this.project.set(12, 0, -9).normalize(), offset);
+    }
     this.look.lerp(this.target, ease(5, delta));
     if (this.options.preview) { this.camera.position.set(2.6, 2.05, 4); this.camera.lookAt(0, 1.0, 0); }
     else { this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); }
@@ -551,6 +693,7 @@ export class LoungeScene implements LoungeSceneController {
       let object: THREE.Object3D | null = hit.object;
       while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; object = object.parent; }
     }
+    if (this.camp && this.raycaster.intersectObject(this.camp.lake).length) return { kind: "lake", id: "lake" };
     return null;
   }
   private pointerDown = (event: PointerEvent) => {
@@ -574,7 +717,10 @@ export class LoungeScene implements LoungeSceneController {
     if (this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 8) this.cancelHold();
     if (performance.now() - this.hoverAt < 70) return; this.hoverAt = performance.now();
     const target = this.pick(event);
-    const label = target?.kind === "player" ? this.actors.get(target.id)?.player.nickname ?? "" : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "") : "";
+    const person = target?.kind === "player" ? this.actors.get(target.id)?.player : null;
+    const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
+      : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
+      : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private contextMenu = (event: MouseEvent) => {
@@ -598,7 +744,10 @@ export class LoungeScene implements LoungeSceneController {
     this.host.removeEventListener("pointerdown", this.pointerDown); this.host.removeEventListener("pointerup", this.pointerUp); this.host.removeEventListener("pointermove", this.pointerMove);
     this.host.removeEventListener("pointercancel", this.cancelHold); this.host.removeEventListener("contextmenu", this.contextMenu); this.host.removeEventListener("wheel", this.wheel);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost); document.removeEventListener("visibilitychange", this.visibility);
-    for (const actor of this.actors.values()) actor.visual.dispose();
+    for (const actor of this.actors.values()) {
+      actor.visual.dispose();
+      this.disposeCast(actor);
+    }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
     this.camp?.dispose();

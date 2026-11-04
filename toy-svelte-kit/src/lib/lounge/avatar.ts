@@ -33,11 +33,16 @@ export class LoungeCharacter implements LoungeCharacterVisual {
   private hipsRest: THREE.Vector3;
   private head: THREE.Bone;
   private headBind: THREE.Matrix4;
+  private belly: THREE.Bone;
+  private bellyBind: THREE.Matrix4;
+  private poseSpace = new THREE.Matrix4();
   private legs: LoungeChibiLimb[];
   private arms: LoungeChibiLimb[];
   private wardrobe: ChibiWardrobe;
   private armPoles = [new THREE.Vector3(-.65, -1, -.2), new THREE.Vector3(.65, -1, -.2)];
   private pace = 0;
+  private fishHold = 0;
+  private otherPalm = new THREE.Vector3();
   private phase = 0;
   private lastAction: LoungeAction | null = null;
   private release = 0;
@@ -45,16 +50,19 @@ export class LoungeCharacter implements LoungeCharacterVisual {
   private parentRotation = new THREE.Quaternion();
   private turn = new THREE.Quaternion();
   private endRotation = new THREE.Quaternion();
+  private restingUpper = new THREE.Quaternion();
+  private restingLower = new THREE.Quaternion();
+  private restingHand = new THREE.Quaternion();
   private euler = new THREE.Euler();
   private aimFrom = new THREE.Vector3();
   private aimTo = new THREE.Vector3();
   private origin = new THREE.Vector3();
   private axis = new THREE.Vector3();
   private bend = new THREE.Vector3();
-  private elbow = new THREE.Vector3();
   private upperDirection = new THREE.Vector3();
   private lowerDirection = new THREE.Vector3();
   private palmDirection = new THREE.Vector3();
+  private gestureDirection = new THREE.Vector3();
   private target = new THREE.Vector3();
   private reach = new THREE.Vector3();
   private palm = new THREE.Vector3();
@@ -87,6 +95,8 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     this.hipsRest = this.hips.position.clone();
     this.head = this.bone("Head_06");
     this.headBind = this.head.matrixWorld.clone().invert().multiply(this.rig.matrixWorld);
+    this.belly = this.bone("Spine1_03");
+    this.bellyBind = this.belly.matrixWorld.clone().invert().multiply(this.rig.matrixWorld);
     this.arms = [
       this.limb("RightArm_09", "RightForeArm_010", "RightHand_011", -1),
       this.limb("Left_Arm_017", "Left_ForeArm_018", "Left_Hand_019", 1)
@@ -177,23 +187,31 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     limb.end.quaternion.copy(this.endRotation).premultiply(this.parentRotation);
   }
 
-  private arm(limb: LoungeChibiLimb, side: number, swing: number, weight: number, palm: THREE.Vector3 | null, roll = 0) {
-    this.target.set(side * 8.8, 11.1 + Math.abs(swing) * .45, .65 + swing).applyMatrix4(this.rig.matrixWorld);
-    if (palm && weight > 0) {
+  private arm(limb: LoungeChibiLimb, side: number, running: number, weight: number, palm: THREE.Vector3 | null, direction?: THREE.Vector3, roll = 0) {
+    this.rotate(limb.upper.name, .9 * running, 0, -side * 1.14);
+    this.rotate(limb.lower.name, 0, -side * THREE.MathUtils.lerp(.22, .06, running), 0);
+    if (!palm || weight <= 0) return;
+
+    this.restingUpper.copy(limb.upper.quaternion);
+    this.restingLower.copy(limb.lower.quaternion);
+    this.restingHand.copy(limb.end.quaternion);
+    if (direction) this.palmDirection.copy(direction);
+    else {
       limb.upper.getWorldPosition(this.origin);
       this.palmDirection.copy(palm).sub(this.origin).normalize();
-      this.reach.copy(palm).addScaledVector(this.palmDirection, -PALM_LENGTH * MODEL_SCALE);
-      this.target.lerp(this.reach, weight);
     }
-    this.solve(limb, this.target, this.armPoles[side < 0 ? 0 : 1]);
-    this.lowerDirection.normalize();
-    if (palm && weight > 0) this.lowerDirection.lerp(this.palmDirection, weight).normalize();
-    this.orientEnd(limb, this.lowerDirection, roll * weight);
+    this.reach.copy(palm).addScaledVector(this.palmDirection, -PALM_LENGTH * MODEL_SCALE);
+    this.solve(limb, this.reach, this.armPoles[side < 0 ? 0 : 1]);
+    this.orientEnd(limb, this.palmDirection, roll);
+    limb.upper.quaternion.slerp(this.restingUpper, 1 - weight);
+    limb.lower.quaternion.slerp(this.restingLower, 1 - weight);
+    limb.end.quaternion.slerp(this.restingHand, 1 - weight);
   }
 
   pose(state: LoungeCharacterPose) {
     for (const joint of this.joints.values()) joint.bone.quaternion.copy(joint.rotation);
     const { now, delta, reducedMotion, stunned, peer } = state;
+    this.fishHold = THREE.MathUtils.damp(this.fishHold, state.carryingFish && !state.action ? 1 : 0, 20, delta);
     if (state.action) {
       this.lastAction = state.action;
       this.release = 1;
@@ -217,18 +235,24 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     const beat = reducedMotion ? 0 : Math.sin(elapsed * TAU * 1.65);
     const breath = reducedMotion ? 0 : Math.sin(now / 640);
     const recoil = stunned ? (1 - smooth(progress, 0, .34)) * .34 + .12 : 0;
+    const dance = kind === "dance" ? weight : 0;
+    const laugh = kind === "laugh" ? weight : 0;
+    const chuckle = reducedMotion ? 0 : Math.sin(elapsed * TAU * 4);
     this.hips.position.copy(this.hipsRest);
+    this.hips.position.x += dance * beat * .52;
     this.hips.position.y += -.2 - moving * (.95 + .45 * running) - (stunned ? 1.7 : 0)
-      - (kind === "pickup" ? 1.3 * weight : 0) + (reducedMotion ? 0 : .16 * Math.cos(this.phase * 2) * moving);
-    this.rotate("Spine_02", .07 * moving + .12 * running + (paired ? .13 * weight : 0)
-      + (strike ? .23 * weight : 0) - recoil, 0, .035 * Math.sin(this.phase) * moving);
-    this.rotate("Spine2_04", (paired ? .33 * weight : 0) + (strike ? .45 * weight : 0) + (kind === "pickup" ? .46 * weight : 0) + breath * .024,
-      (strike ? .3 * weight : 0) + (kind === "dance" ? .28 * beat * weight : 0), 0);
+      - (kind === "pickup" ? 1.3 * weight : 0) + (reducedMotion ? 0 : .16 * Math.cos(this.phase * 2) * moving)
+      + .24 * Math.abs(beat) * dance + .14 * chuckle * laugh;
+    this.rotate("Spine_02", .035 * moving + .39 * running + (paired ? .13 * weight : 0)
+      + (strike ? .23 * weight : 0) + laugh * .13 - recoil, 0, -.12 * dance * beat);
+    this.rotate("Spine2_04", (paired ? .33 * weight : 0) + (strike ? .45 * weight : 0)
+      + (kind === "pickup" ? .46 * weight : 0) + breath * .024 + laugh * (.25 + .055 * chuckle),
+      (strike ? .3 * weight : 0) + .15 * dance * beat, 0);
     this.rotate("Neck_05", paired ? -.56 * weight : 0, 0, kind === "hug" ? .17 * weight : 0);
     const look = paired && (kind === "handshake" || kind === "give") ? -.6 : kind === "eat" ? -.24 : 0;
-    this.rotate("Head_06", (kind === "eat" ? .55 * weight : 0)
-      + (kind === "laugh" ? -.18 * weight : 0), look * weight,
-      (kind === "scratchHead" || kind === "tongueOut" ? .17 * weight : 0) + recoil * .4);
+    const headPitch = kind === "eat" ? .55 : kind === "tongueOut" ? .12 : 0;
+    const headTilt = kind === "scratchHead" ? .11 : kind === "tongueOut" ? .19 : 0;
+    this.rotate("Head_06", headPitch * weight - .21 * laugh - .18 * running - .16 * this.fishHold, look * weight, headTilt * weight + recoil * .4);
     this.group.updateMatrixWorld(true);
     this.rig.getWorldQuaternion(this.rigRotation);
     for (let i = 0; i < this.legs.length; i += 1) {
@@ -236,7 +260,8 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       const phase = ((this.phase + i * Math.PI) % TAU) / TAU;
       const swing = Math.max(0, (phase - stance) / (1 - stance));
       const sweep = phase < stance ? 1 - 2 * phase / stance : -1 + 2 * smooth(swing, 0, 1);
-      const lift = Math.sin(swing * Math.PI) * stride * (reducedMotion ? .3 : .65);
+      const lift = Math.sin(swing * Math.PI) * stride * (reducedMotion ? .3 : .65)
+        + Math.max(0, i === 0 ? beat : -beat) * dance * .65;
       this.target.copy(limb.restEnd);
       this.target.y += lift;
       this.target.z += sweep * stride;
@@ -256,7 +281,11 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       let armWeight = weight;
       let roll = 0;
       let worldPalm = false;
-      if (peer && paired && ((i === 0 && kind !== "hug") || kind === "hug")) {
+      let direction: THREE.Vector3 | undefined;
+      if (state.carryingFish && !state.action) {
+        this.palm.set(side * 4.7, 15, 10);
+        armWeight = this.fishHold;
+      } else if (peer && paired && ((i === 0 && kind !== "hug") || kind === "hug")) {
         this.palm.copy(this.midpoint);
         this.palm.y = this.group.position.y + (kind === "hug" ? .55 : .565);
         if (kind === "handshake") {
@@ -283,24 +312,36 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       } else if (i === 0 && kind === "pickup") {
         this.palm.set(-7, 6.9, 5.2);
       } else if (i === 1 && kind === "scratchHead") {
-        this.palm.set(10.1, 25.4 + beat * .55, 3);
+        this.poseSpace.multiplyMatrices(this.head.matrixWorld, this.headBind);
+        this.palm.set(14.8 + .23 * beat, 21.5 + .48 * beat, 2.6 + .32 * beat).applyMatrix4(this.poseSpace);
+        direction = this.gestureDirection.set(.73, .67, .06).transformDirection(this.poseSpace);
+        worldPalm = true;
       } else if (i === 0 && kind === "middleFinger") {
-        this.palm.set(-7, 25.5, 4.3);
-        roll = -.8;
+        this.palm.set(-12.8, 21.5, 4.9);
+        direction = this.gestureDirection.set(-.64, .72, .27).transformDirection(this.rig.matrixWorld);
+        roll = -.38;
       } else if (kind === "dance") {
-        this.palm.set(side * (11 + beat * side), 19.5 + beat * side * 5, 3.3);
-      } else if (kind === "laugh" || kind === "tongueOut" || stunned) {
+        const accent = reducedMotion ? .45 * side : beat * side;
+        this.palm.set(side * (12.9 + .65 * accent), 15.8 + 4.3 * accent, 3.8 - 1.2 * accent);
+      } else if (kind === "laugh") {
+        this.poseSpace.multiplyMatrices(this.belly.matrixWorld, this.bellyBind);
+        this.palm.set(side * 3.65, 12.25, 8.55).applyMatrix4(this.poseSpace);
+        direction = this.gestureDirection.set(-side * .65, -.35, .67).transformDirection(this.poseSpace);
+        worldPalm = true;
+      } else if (stunned) {
         this.palm.set(side * 7, 14.9, 5.5);
-        if (stunned) armWeight = Math.max(weight, .65);
-      } else if (state.carried && i === (paired ? 1 : 0)) {
+        armWeight = Math.max(weight, .65);
+      } else if (kind === "fish" && i === 0) {
+        this.palm.set(-5.5, 14.7, 7.9);
+        armWeight = this.release * smooth(elapsed, 0, .24);
+      } else if ((state.carried || state.carryingFish) && i === (paired ? 1 : 0)) {
         this.palm.set(side * 7, 14.4, 7.5);
-        armWeight = 1;
+        armWeight = 1 - running;
       } else {
         armWeight = 0;
       }
       if (armWeight > 0 && !worldPalm) this.palm.applyMatrix4(this.rig.matrixWorld);
-      const swing = -Math.cos(this.phase + i * Math.PI) * moving * (2 + running * 2);
-      this.arm(this.arms[i], side, swing, armWeight, armWeight > 0 ? this.palm : null, roll);
+      this.arm(this.arms[i], side, running, armWeight, armWeight > 0 ? this.palm : null, direction, roll);
     }
     const fist = strike || kind === "handshake";
     if (fist || kind === "middleFinger") {
@@ -314,9 +355,14 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     this.group.updateMatrixWorld(true);
   }
 
-  grip(matrix: THREE.Matrix4, left = false) {
+  grip(matrix: THREE.Matrix4, left = false, twoHanded = false) {
     const limb = this.arms[left ? 1 : 0];
     this.target.copy(limb.palmAxis).multiplyScalar(PALM_LENGTH).applyMatrix4(limb.end.matrixWorld);
+    if (twoHanded) {
+      const other = this.arms[left ? 0 : 1];
+      this.otherPalm.copy(other.palmAxis).multiplyScalar(PALM_LENGTH).applyMatrix4(other.end.matrixWorld);
+      this.target.lerp(this.otherPalm, .5);
+    }
     this.target.y += .045;
     matrix.makeRotationY(this.group.rotation.y).setPosition(this.target);
   }

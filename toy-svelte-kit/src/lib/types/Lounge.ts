@@ -14,7 +14,19 @@ export type LoungeGroundFood = LoungeFood & LoungePoint & { createdAt: number; d
 export type LoungeConsentKind = "handshake" | "hug" | "give";
 export type LoungeEmoteKind = "middleFinger" | "laugh" | "dance" | "scratchHead" | "tongueOut";
 export type LoungeEmoteDefinition = { kind: LoungeEmoteKind; name: string; durationMs: number };
-export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup";
+export type LoungeFishKind = "carp" | "flounder" | "snapper" | "eel" | "whale";
+export type LoungeFishGrade = "C" | "B" | "A" | "S" | "SS";
+export type LoungeFishSpecies = { kind: LoungeFishKind; name: string; grade: LoungeFishGrade; weight: number; minCm: number; maxCm: number; color: string };
+export type LoungeFishCatch = { id: string; kind: LoungeFishKind; sizeCm: number };
+export type LoungeFishingGauge = { center: number; width: number };
+export type LoungeFishingCommand =
+  | { type: "cast" }
+  | { type: "reel"; actionId: string; pressedAt: number }
+  | { type: "stopFishing"; actionId: string }
+  | { type: "storeFish"; catchId: string }
+  | { type: "releaseFish"; catchId: string }
+  | { type: "holdFish"; catchId: string; held: boolean };
+export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup" | "fish";
 export type LoungeAction = {
   id: string;
   kind: LoungeActionKind;
@@ -23,6 +35,7 @@ export type LoungeAction = {
   peerId?: string;
   foodKind?: LoungeFoodKind;
   giveRole?: "giver" | "receiver";
+  fishing?: LoungeFishingGauge;
 };
 export type LoungePlayer = {
   id: string;
@@ -32,6 +45,10 @@ export type LoungePlayer = {
   move: LoungeMove;
   inventory: LoungeFood[];
   heldFoodId?: string | null;
+  lastCatch?: LoungeFishCatch;
+  pendingCatch?: LoungeFishCatch | null;
+  catches?: LoungeFishCatch[];
+  fishHeld?: boolean;
   action: LoungeAction | null;
   pendingRequestId: string | null;
   stunnedUntil: number;
@@ -91,6 +108,7 @@ export type LoungeJoinInput = { channelId: string; nickname: string; color: stri
 export type LoungeJoinResult = { session: LoungeSession; snapshot: LoungeSnapshot };
 export type LoungeSyncResult = LoungeSnapshot | { unchanged: true; revision: number; serverNow: number; processingMs?: number };
 export type LoungeCommandInput =
+  | LoungeFishingCommand
   | { type: "move"; x: number; y: number }
   | { type: "chat"; text: string }
   | { type: "emote"; kind: LoungeEmoteKind }
@@ -107,16 +125,24 @@ export type LoungeCommand = LoungeCommandInput & { commandId: string };
 export type LoungeAvatarProps = { color: string; walking?: boolean; action?: LoungeActionKind | null; stunned?: boolean; size?: number };
 export type LoungeFoodIconProps = { kind: LoungeFoodKind; size?: number };
 export type LoungeRenderedPlayer = LoungePlayer & LoungePoint & { walking: boolean; stunned: boolean; busy: boolean };
-export type LoungeMenuTarget = { kind: "player" | "food"; id: string; x: number; y: number };
+export type LoungeMenuTarget = { kind: "player" | "food" | "lake"; id: string; x: number; y: number };
 export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number; zIndex: number };
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;
 export type LoungeRoomProps = { channel: LoungeChannel };
 export type LoungeApproach = {
-  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" }>;
+  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" | "cast" }>;
   target: LoungePoint;
   startedAt: number;
   lastSentAt: number;
+};
+export type LoungeFishingProps = {
+  action: LoungeAction;
+  now: number;
+  getNow: () => number;
+  disabled: boolean;
+  onReel: () => void;
+  onCancel: () => void;
 };
 export type LoungeRect = { x: number; y: number; width: number; height: number };
 export type LoungeNameLabel = LoungeRect & { playerId: string; nickname: string; color: string; anchorX: number; anchorY: number; self: boolean };

@@ -1,5 +1,5 @@
 export type LoungeHairStyle = "short" | "bob" | "long" | "ponytail" | "bun" | "twintails" | "spiky" | "buzz";
-export type LoungeTopStyle = "longSleeve" | "shortSleeve" | "sleeveless" | "hoodie" | "shirt";
+export type LoungeTopStyle = "longSleeve" | "shortSleeve" | "sleeveless" | "hoodie";
 export type LoungeBottomStyle = "longPants" | "shortPants" | "longSkirt" | "shortSkirt";
 export type LoungeAppearanceSection = "hair" | "top" | "bottom";
 export type LoungeAppearance = {

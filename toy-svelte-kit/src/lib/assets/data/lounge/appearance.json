@@ -8,7 +8,7 @@
   ],
   "topStyles": [
     {"id":"longSleeve","name":"긴팔"},{"id":"shortSleeve","name":"반팔"},
-    {"id":"sleeveless","name":"나시"},{"id":"hoodie","name":"후드티"},{"id":"shirt","name":"셔츠"}
+    {"id":"sleeveless","name":"나시"},{"id":"hoodie","name":"후드티"}
   ],
   "bottomStyles": [
     {"id":"longPants","name":"긴바지"},{"id":"shortPants","name":"반바지"},

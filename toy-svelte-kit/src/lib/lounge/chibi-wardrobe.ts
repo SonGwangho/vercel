@@ -72,7 +72,6 @@ function hairCap(body: THREE.BufferGeometry, style: LoungeHairStyle) {
 const tuft = new THREE.SphereGeometry(1, 12, 8);
 const skirtShort = new THREE.CylinderGeometry(8, 11, 4.6, 20);
 const skirtLong = new THREE.CylinderGeometry(8, 11.5, 7.1, 20);
-const collarShape = new THREE.TorusGeometry(2.8, .4, 6, 20);
 const mouthInk = new THREE.MeshBasicMaterial({ color: "#513230", side: THREE.DoubleSide });
 const tonguePink = new THREE.MeshBasicMaterial({ color: "#d77986", side: THREE.DoubleSide });
 const gestureSkin = new THREE.MeshStandardMaterial({ color: skin, roughness: .77 });
@@ -119,12 +118,10 @@ export class ChibiWardrobe {
   private bodyMaterial: THREE.MeshStandardMaterial;
   private hairMaterial = new THREE.MeshStandardMaterial({ roughness: .88, side: THREE.DoubleSide });
   private skirtMaterial = new THREE.MeshStandardMaterial({ roughness: .96 });
-  private trim = new THREE.MeshStandardMaterial({ color: "#f4ede1", roughness: .94 });
   private hoodMaterial = new THREE.MeshStandardMaterial({ roughness: .96 });
   private cap: THREE.Mesh;
   private tails: THREE.Mesh[];
   private skirt: THREE.Mesh;
-  private collar: THREE.Mesh;
   private hood: THREE.Mesh;
   private face: THREE.Mesh[];
   private finger: THREE.Group;
@@ -163,10 +160,6 @@ diffuseColor.rgb *= outfit;`);
     this.skirt = new THREE.Mesh(skirtShort, this.skirtMaterial);
     this.skirt.position.set(0, 6.8, .55);
     attach(this.skirt, hips);
-    this.collar = new THREE.Mesh(collarShape, this.trim);
-    this.collar.position.set(0, 19.1, 3.3);
-    this.collar.rotation.x = Math.PI / 2;
-    attach(this.collar, chest);
     this.hood = new THREE.Mesh(tuft, this.hoodMaterial);
     this.hood.position.set(0, 17.8, -3.9);
     this.hood.scale.set(4.5, 3.2, 3.1);
@@ -197,7 +190,6 @@ diffuseColor.rgb *= outfit;`);
     this.skirt.visible = skirt;
     this.skirt.geometry = value.bottomStyle === "longSkirt" ? skirtLong : skirtShort;
     this.skirtMaterial.color.set(value.skirtColor);
-    this.collar.visible = value.topStyle === "shirt";
     this.hood.visible = value.topStyle === "hoodie";
     this.hoodMaterial.color.copy(this.top.value).multiplyScalar(.86);
     this.hairMaterial.color.set(value.hairColor);
@@ -226,7 +218,7 @@ diffuseColor.rgb *= outfit;`);
   }
 
   dispose() {
-    for (const material of [this.bodyMaterial, this.hairMaterial, this.skirtMaterial, this.trim, this.hoodMaterial]) material.dispose();
+    for (const material of [this.bodyMaterial, this.hairMaterial, this.skirtMaterial, this.hoodMaterial]) material.dispose();
   }
 
   expression(open: boolean, tongue: boolean, finger: boolean) {

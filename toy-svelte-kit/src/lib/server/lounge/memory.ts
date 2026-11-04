@@ -1,4 +1,5 @@
 import { arrangeSocialPlayers } from "./interaction";
+import { applyFishing, isFishingCommand } from "./fishing";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { normalizeAppearance } from "../../lounge/appearance";
 import { planMove, walkablePoint } from "../../lounge/navigation";
@@ -111,6 +112,7 @@ function freeze(player: LoungeStoredPlayer, now: number) {
 
 function beginAction(player: LoungeStoredPlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
   freeze(player, now);
+  player.fishHeld = false;
   player.action = { id: randomUUID(), kind, startedAt: now, endsAt: now + duration, peerId };
 }
 
@@ -218,7 +220,11 @@ export class MemoryLounge {
       return true;
     }
     requireAwake(player, now);
-    if (command.type === "move") {
+    if (isFishingCommand(command)) {
+      const error = applyFishing(player, command, now);
+      if (error) throw new LoungeError(error);
+    } else if (command.type === "move") {
+      if (player.pendingCatch) throw new LoungeError("잡은 물고기를 가방에 넣거나 버려 주세요.");
       if (player.action && player.action.endsAt > now) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
       if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
       player.move = planMove(positionAt(player, now), command, now);
@@ -234,6 +240,7 @@ export class MemoryLounge {
       requireAvailable(player, now);
       if (!isLoungeEmote(command.kind)) throw new LoungeError("지원하지 않는 표현이에요.", 400);
       player.heldFoodId = null;
+      player.fishHeld = false;
       beginAction(player, command.kind, actionDuration(command.kind), now);
     } else if (command.type === "stopEmote") {
       if (player.action && !isLoungeEmote(player.action.kind)) throw new LoungeError("이 행동은 도중에 멈출 수 없어요.");
@@ -281,6 +288,7 @@ export class MemoryLounge {
       requireAvailable(player, now);
       if (!player.inventory.some((food) => food.id === command.foodId)) throw new LoungeError("가방에 없는 음식이에요.");
       player.heldFoodId = command.foodId;
+      player.fishHeld = false;
     } else if (command.type === "stow") {
       requireAvailable(player, now);
       player.heldFoodId = null;

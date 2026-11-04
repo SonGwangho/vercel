@@ -169,6 +169,10 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
 .scene-name.mine { color: var(--brand-strong); border-color: var(--brand); }
 .scene-name[hidden] { display: none; }
 .scene-name:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.scene-fish-label { position: absolute; left: 0; top: 0; z-index: 1; display: grid; justify-items: center; gap: 3px; min-width: 122px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--text-strong); pointer-events: none; white-space: nowrap; will-change: transform; }
+.scene-fish-label[hidden] { display: none; }
+.scene-fish-label strong { font-size: 12px; font-weight: 650; }
+.scene-fish-label span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .scene-speech {
   position: absolute; left: 0; top: 0; padding: 8px 13px 10px; border: 1px solid var(--line-strong); border-radius: 11px;
   background: var(--surface); color: var(--text-strong); box-shadow: 0 3px 12px rgb(20 36 29 / 9%); will-change: transform;
@@ -239,10 +243,10 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
 .lounge-context-menu header strong { display: block; color: var(--text-strong); font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .lounge-context-menu header span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
 .lounge-context-menu header .game-tool { flex: 0 0 auto; }
-.lounge-context-menu > button, .context-emotes > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.lounge-context-menu > button:not(:disabled):hover, .context-emotes > button:not(:disabled):hover { background: var(--surface-strong); }
-.lounge-context-menu > button small { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
-.lounge-context-menu > button:disabled, .context-emotes > button:disabled { color: var(--muted); cursor: not-allowed; }
+.lounge-context-menu > button, .context-emotes > button, .context-fish-row > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.lounge-context-menu > button:not(:disabled):hover, .context-emotes > button:not(:disabled):hover, .context-fish-row > button:not(:disabled):hover { background: var(--surface-strong); }
+.lounge-context-menu > button small, .context-fish-row > button small { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.lounge-context-menu > button:disabled, .context-emotes > button:disabled, .context-fish-row > button:disabled { color: var(--muted); cursor: not-allowed; }
 .lounge-context-menu > button:disabled > svg { opacity: 0.5; }
 .lounge-context-menu .punch-menu-item { margin-top: 6px; color: var(--danger); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
 .context-section-label { display: flex; justify-content: space-between; margin: 12px 10px 4px; color: var(--muted); font-size: 10px; line-height: 1.8; }
@@ -284,6 +288,39 @@ html[data-theme="dark"] .camp-emblem { color: #edbc77; }
 .game-held strong { font-size: 12px; font-weight: 600; }
 .game-held .lounge-button { min-height: 42px; padding: 9px 16px; font-size: 12px; }
 .game-held .game-tool { width: 36px; }
+.game-catch { align-self: center; max-width: 100%; }
+.fish-grade { display: inline-block; padding: 1px 5px; border-radius: 4px; background: var(--surface-strong); color: var(--text-strong); font-size: 11px; font-weight: 750; }
+.fishing-game { width: min(430px, 100%); padding: 14px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); pointer-events: auto; box-sizing: border-box; }
+.fishing-game > header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.fishing-game > header strong { flex: 1; font-size: 14px; }
+.fishing-game > header > span { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.fishing-game > header .game-tool { width: 32px; height: 32px; min-height: 32px; }
+.fishing-reel { display: grid; gap: 12px; width: 100%; padding: 12px 4px 4px; border: 0; color: inherit; font: inherit; font-size: 12px; background: transparent; cursor: pointer; touch-action: manipulation; }
+.fishing-reel:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 5px; border-radius: 4px; }
+.fishing-reel:disabled { cursor: wait; }
+.fishing-track { display: block; position: relative; height: 40px; width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-strong); box-sizing: border-box; }
+.fishing-zone { position: absolute; inset-block: 0; display: grid; place-content: center; border-inline: 2px solid #c6ead7; background: #3a775d; color: #fff; font-size: 11px; font-weight: 600; }
+.fishing-needle { position: absolute; top: -6px; left: 0; bottom: -6px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--text-strong); outline: 2px solid var(--surface); will-change: transform; }
+.fishing-reel > span:last-child { color: var(--muted); }
+.fishing-reel kbd { display: inline-block; margin-left: 5px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; font: inherit; color: var(--text-strong); }
+.context-fish-row { display: flex; gap: 3px; align-items: stretch; }
+.context-fish-row > button:first-child { flex: 1; min-width: 0; }
+.context-fish-row > .fish-release { flex: 0 0 auto; width: auto; padding-inline: 8px; font-size: 10px; color: var(--muted); }
+.catch-choice { position: absolute; z-index: 4; top: calc(var(--game-inset-top) + 92px); right: var(--game-inset-right); width: min(252px, calc(100% - 24px)); box-sizing: border-box; padding: 18px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); }
+.catch-choice-grade { display: inline-block; padding: 3px 7px; border-radius: 4px; background: var(--surface-strong); color: var(--brand-strong); font-size: 12px; font-weight: 650; }
+.catch-choice h2 { margin: 10px 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -.02em; }
+.catch-choice-size { margin: 0; font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.catch-choice-hint { margin: 16px 0 10px; color: var(--muted); font-size: 12px; }
+.catch-choice > div { display: grid; grid-template-columns: 1.35fr 1fr; gap: 7px; }
+.catch-choice .lounge-button { min-height: 44px; padding: 9px 7px; font-size: 12px; }
+@media (max-width: 480px) {
+  .game-tools { max-width: 148px; flex-wrap: wrap; justify-content: flex-end; }
+  .catch-choice { width: 188px; padding: 13px; }
+  .catch-choice h2 { font-size: 19px; }
+  .catch-choice-size { font-size: 23px; }
+  .catch-choice .lounge-button { font-size: 11px; padding-inline: 4px; }
+  .fishing-reel kbd { display: none; }
+}
 .game-chat-count { flex-shrink: 0; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .entrance-scene:has(.entrance-edit-button) .avatar-preview-name { left: 16px; right: 100px; justify-items: start; }
 .game-history-toggle { position: relative; }
