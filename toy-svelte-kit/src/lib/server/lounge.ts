@@ -112,6 +112,12 @@ function maintainRoom(state: LoungeRoomState, now: number) {
   }
   for (const player of state.players) {
     if (player.action && player.action.endsAt <= now) { player.action = null; changed = true; }
+    if (player.pendingCatch) {
+      player.lastCatch = player.pendingCatch;
+      player.pendingCatch = null;
+      player.fishHeld = true;
+      changed = true;
+    }
   }
   const messages = state.messages.filter((message) => now - message.createdAt < loungeRules.chatHistoryMs).slice(-loungeRules.chatHistoryLimit);
   if (messages.length !== state.messages.length) { state.messages = messages; changed = true; }
@@ -325,14 +331,12 @@ async function moveLounge(session: LoungeSession, command: Extract<LoungeCommand
         AND (player->>'lastSeenAt')::bigint > ${now - loungeRules.playerTimeoutMs}::bigint
         AND COALESCE((player->>'stunnedUntil')::bigint, 0) <= ${now}::bigint
         AND COALESCE((player->'action'->>'endsAt')::bigint, 0) <= ${now}::bigint
-        AND (player->>'pendingCatch') IS NULL
     ) RETURNING channel_id, revision, state` as LoungeRoomRow[];
   if (!rows[0]) {
     const current = await readLounge(session);
     const player = current.players.find((item) => item.id === session.playerId);
     if (!player) throw new LoungeError("다시 입장해 주세요.", 401);
     if (player.stunnedUntil > Date.now()) throw new LoungeError("기절 중에는 행동할 수 없어요.");
-    if (player.pendingCatch) throw new LoungeError("잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.");
     if (player.action && player.action.endsAt > Date.now()) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
     throw new LoungeError("이동 상태가 바뀌었어요. 다시 클릭해 주세요.");
   }

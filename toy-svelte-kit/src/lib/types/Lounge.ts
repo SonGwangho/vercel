@@ -27,11 +27,7 @@ export type LoungeFishingMotion = { windup: number; release: number; flight: num
 export type LoungeFishingCommand =
   | { type: "cast" }
   | { type: "reel"; actionId: string; pressedAt: number }
-  | { type: "stopFishing"; actionId: string }
-  | { type: "storeFish"; catchId: string }
-  | { type: "keepFish"; catchId: string }
-  | { type: "releaseFish"; catchId: string }
-  | { type: "holdFish"; catchId: string; held: boolean };
+  | { type: "stopFishing"; actionId: string };
 export type LoungeActionKind = LoungeConsentKind | LoungeEmoteKind | "punch" | "hit" | "eat" | "pickup" | "fish" | "fishCatch" | "collectInsect";
 export type LoungeAction = {
   id: string;

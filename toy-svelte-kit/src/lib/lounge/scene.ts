@@ -242,10 +242,10 @@ export class LoungeScene implements LoungeSceneController {
     this.rodTip.set(0, .39, 1.33).applyMatrix4(actor.held!.matrix);
     if (catching) {
       actor.visual.grip(this.catchGrip, false, true);
-      this.landingPoint.set(0, .005, fishDisplayOffset(actor.player.pendingCatch?.sizeCm ?? 100)).applyMatrix4(this.catchGrip);
+      this.landingPoint.set(0, .005, fishDisplayOffset(actor.player.lastCatch?.sizeCm ?? 100)).applyMatrix4(this.catchGrip);
       bobber.position.lerpVectors(this.waterPoint, this.landingPoint, motion.lift);
       if (!this.reducedMotion) bobber.position.y += Math.sin(motion.lift * Math.PI) * .65;
-      const catchFish = actor.player.pendingCatch;
+      const catchFish = actor.player.lastCatch;
       if (catchFish) {
         if (actor.cast.fishKind !== catchFish.kind) {
           actor.cast.fish?.removeFromParent();
@@ -332,7 +332,7 @@ export class LoungeScene implements LoungeSceneController {
         const point = positionAt(player, now);
         actor.correction.x = actor.point.x - point.x; actor.correction.y = actor.point.y - point.y;
       }
-      if (player.pendingCatch && player.pendingCatch.id !== actor.player.pendingCatch?.id && player.lastCatch) {
+      if (player.lastCatch && player.lastCatch.id !== actor.player.lastCatch?.id) {
         const fish = describeFish(player.lastCatch.kind);
         this.burst(positionAt(player, now), new THREE.Color(fish.color).getHex(), 12, .8, 1.05);
         if (player.id === this.options.selfId) {
@@ -635,10 +635,6 @@ export class LoungeScene implements LoungeSceneController {
     const self = this.actors.get(this.options.selfId);
     if (self && !this.options.preview) this.target.set(worldX(self.point.x), 0, worldZ(self.point.y));
     else this.target.set(0, 0, 0);
-    if (self?.player.pendingCatch && this.width < 700 && !this.options.preview) {
-      const offset = (this.camera.right - this.camera.left) / this.camera.zoom * .21;
-      this.target.addScaledVector(this.project.set(12, 0, -9).normalize(), offset);
-    }
     this.look.lerp(this.target, ease(5, delta));
     if (this.options.preview) { this.camera.position.set(2.6, 2.05, 4); this.camera.lookAt(0, 1.0, 0); }
     else { this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); }

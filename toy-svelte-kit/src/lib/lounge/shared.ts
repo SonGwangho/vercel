@@ -72,7 +72,6 @@ export function distance(a: LoungePoint, b: LoungePoint) {
 
 export function interactionBlock(player: LoungePlayer, now: number): string {
   if (player.stunnedUntil > now) return "기절이 풀릴 때까지 기다려 주세요.";
-  if (player.pendingCatch) return "잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.";
   if (player.action && player.action.endsAt > now) return "진행 중인 행동이 끝나면 할 수 있어요.";
   if (player.pendingRequestId) return "먼저 기다리는 상호작용을 마쳐 주세요.";
   return "";

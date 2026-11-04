@@ -315,19 +315,8 @@ html[data-theme="dark"] .camp-emblem { color: #edbc77; }
 .context-fish-row { display: flex; gap: 3px; align-items: stretch; }
 .context-fish-row > button:first-child { flex: 1; min-width: 0; }
 .context-fish-row > .fish-release { flex: 0 0 auto; width: auto; padding-inline: 8px; font-size: 10px; color: var(--muted); }
-.catch-choice { position: absolute; z-index: 4; top: calc(var(--game-inset-top) + 92px); right: var(--game-inset-right); width: min(252px, calc(100% - 24px)); box-sizing: border-box; padding: 18px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); }
-.catch-choice-grade { display: inline-block; padding: 3px 7px; border-radius: 4px; background: var(--surface-strong); color: var(--brand-strong); font-size: 12px; font-weight: 650; }
-.catch-choice h2 { margin: 10px 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -.02em; }
-.catch-choice-size { margin: 0; font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.catch-choice-hint { margin: 16px 0 10px; color: var(--muted); font-size: 12px; }
-.catch-choice > div { display: grid; grid-template-columns: 1.35fr 1fr; gap: 7px; }
-.catch-choice .lounge-button { min-height: 44px; padding: 9px 7px; font-size: 12px; }
 @media (max-width: 480px) {
   .game-tools { max-width: 148px; flex-wrap: wrap; justify-content: flex-end; }
-  .catch-choice { width: 188px; padding: 13px; }
-  .catch-choice h2 { font-size: 19px; }
-  .catch-choice-size { font-size: 23px; }
-  .catch-choice .lounge-button { font-size: 11px; padding-inline: 4px; }
   .fishing-reel kbd { display: none; }
 }
 .game-chat-count { flex-shrink: 0; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }

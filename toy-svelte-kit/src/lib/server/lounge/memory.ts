@@ -55,6 +55,12 @@ function maintainRoom(state: LoungeRoomState, now: number) {
   }
   for (const player of state.players) {
     if (player.action && player.action.endsAt <= now) { player.action = null; changed = true; }
+    if (player.pendingCatch) {
+      player.lastCatch = player.pendingCatch;
+      player.pendingCatch = null;
+      player.fishHeld = true;
+      changed = true;
+    }
   }
   const messages = state.messages.filter((message) => now - message.createdAt < loungeRules.chatHistoryMs).slice(-loungeRules.chatHistoryLimit);
   if (messages.length !== state.messages.length) { state.messages = messages; changed = true; }
@@ -252,7 +258,6 @@ export class MemoryLounge {
       const error = applyFishing(player, command, now, this.secret);
       if (error) throw new LoungeError(error);
     } else if (command.type === "move") {
-      if (player.pendingCatch) throw new LoungeError("잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.");
       if (player.action && player.action.endsAt > now) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
       if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
       player.move = planMove(positionAt(player, now), command, now);
