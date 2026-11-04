@@ -9,7 +9,7 @@ const snapshots = new Map<string, LoungeSnapshot>();
 const profileKey = "lounge.profile";
 const sessionKey = (channelId: string) => `lounge.session.${channelId}`;
 
-export async function loadLoungeChannels(_signal?: AbortSignal) { return loungeSocket.channels(); }
+export async function loadLoungeChannels(signal?: AbortSignal) { return loungeSocket.channels(signal); }
 
 export async function loadLoungeProfile() {
   try { return await Storage.get<LoungeProfile>(profileKey); } catch { return null; }
@@ -52,4 +52,4 @@ export async function forgetLoungeSession(session: LoungeSession) {
   } catch { /* Session cleanup is best effort after leaving the server. */ }
 }
 
-export async function postLoungeCommand(session: LoungeSession, command: LoungeCommand, _keepalive = false, _signal?: AbortSignal) { return loungeSocket.command(session, command); }
+export async function postLoungeCommand(session: LoungeSession, command: LoungeCommand, _keepalive = false, signal?: AbortSignal) { return loungeSocket.command(session, command, signal); }

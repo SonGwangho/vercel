@@ -71,7 +71,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
 }
 
 function snapshot(channelId: string, revision: number, state: LoungeRoomState, now: number): LoungeSnapshot {
-  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
+  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, lastMoveCommandId: _moveId, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
     players, foods: state.foods, requests: state.requests,
@@ -151,6 +151,7 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
 }
 
 export class MemoryLounge {
+  private maintenanceAt = 0;
   state: LoungeRoomState;
   revision = 0;
   epoch: string = randomUUID();
@@ -159,17 +160,31 @@ export class MemoryLounge {
     this.state = { players: [], foods: [], requests: [], messages: [], notices: [], lastFoodAt: Date.now(), appliedCommands: [] };
     if (replica) this.restore(replica);
   }
-  restore(replica: LoungeReplica) { this.state = structuredClone(replica.state); this.revision = replica.revision; this.epoch = replica.epoch; }
+  restore(replica: LoungeReplica) { this.state = structuredClone(replica.state); this.revision = replica.revision; this.epoch = replica.epoch; this.maintenanceAt = 0; }
   replica(): LoungeReplica { return { channelId: this.channelId, revision: this.revision, epoch: this.epoch, state: structuredClone(this.state) }; }
   snapshot(): LoungeSnapshot { return { ...snapshot(this.channelId, this.revision, this.state, Date.now()), epoch: this.epoch }; }
   read(session: LoungeSession) { return this.touch(session, false); }
   private mutate(mutation: LoungeRoomMutation) {
     const next = structuredClone(this.state); const now = Date.now();
     const maintained = maintainRoom(next, now); const changed = mutation(next, now);
-    if (maintained || changed) { this.state = next; this.revision += 1; }
+    if (maintained || changed) { this.state = next; this.revision += 1; this.maintenanceAt = 0; }
     return this.snapshot();
   }
-  tick() { return this.mutate(() => false); }
+  tick() {
+    if (Date.now() < this.maintenanceAt) return;
+    this.mutate(() => false);
+    // Rendering and interpolation run in the browser. Only timed game transitions need
+    // server maintenance; avoid cloning the room and chat history twice a second at rest.
+    this.maintenanceAt = Math.min(
+      Infinity,
+      ...(this.state.players.length ? [this.state.lastFoodAt + loungeRules.foodIntervalMs] : []),
+      ...this.state.players.flatMap((player) => [player.lastSeenAt + loungeRules.disconnectGraceMs, (player.lastActivityAt ?? player.joinedAt) + loungeRules.playerTimeoutMs, player.action?.endsAt ?? Infinity]),
+      ...this.state.requests.map((request) => request.expiresAt),
+      ...this.state.messages.map((message) => message.createdAt + loungeRules.chatHistoryMs),
+      ...this.state.notices.map((item) => item.createdAt + 20000),
+      ...this.state.foods.map((food) => food.createdAt + loungeRules.foodLifetimeMs)
+    );
+  }
   touch(session: LoungeSession, activity: boolean) {
     return this.mutate((state, now) => {
       const player = authorize(state, session);
@@ -177,14 +192,21 @@ export class MemoryLounge {
       player.lastSeenAt = now; if (activity) player.lastActivityAt = now; return true;
     });
   }
-  join(input: LoungeJoinInput): LoungeJoinResult {
+  join(input: LoungeJoinInput, joinToken?: string): LoungeJoinResult {
   if (!input || typeof input.channelId !== "string" || typeof input.nickname !== "string") throw new LoungeError("닉네임과 채널을 선택해 주세요.", 400);
+  if (joinToken !== undefined && !/^[a-f0-9]{64}$/.test(joinToken)) throw new LoungeError("올바르지 않은 입장 요청입니다.", 400);
   const channel = channelFor(input.channelId);
+  // A lost join response can be retried, including after reconnecting to another instance.
+  const existing = joinToken && this.state.players.find((player) => player.tokenHash === tokenHash(joinToken));
+  if (existing) {
+    const session = { channelId: channel.id, playerId: existing.id, token: joinToken! };
+    return { session, snapshot: this.read(session) };
+  }
   const nickname = input.nickname.normalize("NFKC").trim();
   if (!nickname || [...nickname].length > loungeRules.nicknameMaxLength || /[\p{C}]/u.test(nickname)) throw new LoungeError("닉네임은 보이지 않는 문자를 제외한 1~6자로 입력해 주세요.", 400);
   const appearance = normalizeAppearance(input.appearance, input.color);
   const color = appearance.topColor;
-  const token = randomBytes(32).toString("hex");
+  const token = joinToken ?? randomBytes(32).toString("hex");
   const session = { channelId: channel.id, playerId: randomUUID(), token };
     const result = this.mutate((state, now) => {
     if (state.players.length >= channel.capacity) throw new LoungeError("채널이 가득 찼어요. 다른 채널을 선택해 주세요.");
@@ -212,6 +234,7 @@ export class MemoryLounge {
     if (!command || typeof command.commandId !== "string" || !/^[\w-]{16,64}$/.test(command.commandId)) throw new LoungeError("올바르지 않은 행동입니다.", 400);
     return this.mutate((state, now) => {
     const player = authorize(state, session);
+    if (command.type === "move" && player.lastMoveCommandId === command.commandId) return false;
     if (state.appliedCommands.some((item) => item.id === command.commandId && item.playerId === player.id)) return false;
     if (command.type === "leave") {
       state.players = state.players.filter((item) => item.id !== player.id);
@@ -306,7 +329,8 @@ export class MemoryLounge {
     player.lastCommandAt = now;
     player.lastSeenAt = now;
     player.lastActivityAt = now;
-    if (command.type !== "move") state.appliedCommands.push({ id: command.commandId, playerId: player.id });
+    if (command.type === "move") player.lastMoveCommandId = command.commandId;
+    else state.appliedCommands.push({ id: command.commandId, playerId: player.id });
     state.appliedCommands = state.appliedCommands.slice(-128);
     return true;
     });

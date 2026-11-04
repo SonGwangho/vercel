@@ -64,6 +64,7 @@ export type LoungeStoredPlayer = LoungePlayer & {
   lastCommandAt: number;
   lastChatAt: number;
   lastActivityAt?: number;
+  lastMoveCommandId?: string;
 };
 export type LoungeRequest = {
   id: string;

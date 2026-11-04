@@ -4,7 +4,7 @@
   import { onMount, tick } from "svelte";
   import AvatarEditor from "$lib/components/Lounge/AvatarEditor.svelte";
   import AvatarPreview from "$lib/components/Lounge/AvatarPreview.svelte";
-  import { joinLoungeChannel, loadLoungeChannels, loadLoungeProfile } from "$lib/client/lounge";
+  import { joinLoungeChannel, loadLoungeChannels, loadLoungeProfile, loungeSocket } from "$lib/client/lounge";
   import { loungeChannels, loungeRules } from "$lib/lounge/shared";
   import { normalizeAppearance } from "$lib/lounge/appearance";
   import type { LoungeAppearance } from "$lib/types/LoungeAppearance";
@@ -49,12 +49,12 @@
     channelAbort = controller;
     const timeout = setTimeout(() => controller.abort(), 12000);
     try { const result = await loadLoungeChannels(controller.signal); if (mounted && channelAbort === controller) channels = result; }
-    catch { if (mounted && channelAbort === controller) channelError = "채널 현황을 가져오지 못했어요."; }
+    catch { if (mounted && channelAbort === controller && !controller.signal.aborted) channelError = "채널 현황을 가져오지 못했어요."; }
     finally {
       clearTimeout(timeout);
       if (mounted && channelAbort === controller) {
         loading = false;
-        refreshTimer = setTimeout(() => { if (!document.hidden) void refreshChannels(); else refreshTimer = setTimeout(() => void refreshChannels(), 10000); }, 10000);
+        if (!document.hidden && !joining) refreshTimer = setTimeout(() => void refreshChannels(), 10000);
       }
     }
   }
@@ -64,6 +64,7 @@
     if (customizing) { await finishCustomizer(); return; }
     if (joining || !nickname.trim() || full) return;
     joining = true;
+    channelAbort?.abort(); if (refreshTimer) clearTimeout(refreshTimer);
     error = "";
     try {
       await joinLoungeChannel({ channelId, nickname: nickname.trim(), color: appearance.topColor, appearance });
@@ -84,7 +85,13 @@
       if (loungeChannels.some((channel) => channel.id === profile.channelId)) channelId = profile.channelId;
     });
     void refreshChannels();
-    return () => { mounted = false; channelAbort?.abort(); if (refreshTimer) clearTimeout(refreshTimer); };
+    const visibility = () => {
+      if (joining) return;
+      channelAbort?.abort(); if (refreshTimer) clearTimeout(refreshTimer);
+      if (document.hidden) loungeSocket.disconnectIdle(); else void refreshChannels();
+    };
+    document.addEventListener("visibilitychange", visibility);
+    return () => { mounted = false; channelAbort?.abort(); if (refreshTimer) clearTimeout(refreshTimer); document.removeEventListener("visibilitychange", visibility); loungeSocket.disconnectIdle(); };
   });
 </script>
 

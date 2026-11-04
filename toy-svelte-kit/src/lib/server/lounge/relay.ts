@@ -13,6 +13,8 @@ export class LoungeRelay {
   private publishedAt = new Map<string, number>();
   private checkpointAt = new Map<string, number>();
   private claiming = new Map<string, Promise<boolean>>();
+  private releasing = new Map<string, Promise<void>>();
+  private replies = new Map<string, { at: number; envelope: LoungeRelayEnvelope }>();
   private client: Client | null = null;
   private opening: Promise<void> | null = null;
   private pending = new Map<string, LoungeRelayPending>();
@@ -36,7 +38,7 @@ export class LoungeRelay {
       const url = new URL(this.databaseUrl);
       // Session locks and LISTEN need a direct, session-bound connection rather than PgBouncer.
       url.hostname = url.hostname.replace(/-pooler(?=\.)/, "");
-      const client = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 8000 });
+      const client = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 8000, query_timeout: 8000, statement_timeout: 5000 });
       client.neonConfig.webSocketConstructor = WebSocket;
       client.on("error", () => this.connectionLost());
       client.on("end", () => { if (!this.stopped) this.connectionLost(); });
@@ -61,6 +63,7 @@ export class LoungeRelay {
   }
 
   private async claim(channelId: string): Promise<boolean> {
+    await this.releasing.get(channelId);
     if (this.leaders.has(channelId)) return true;
     const existing = this.claiming.get(channelId); if (existing) return existing;
     const promise = (async () => {
@@ -91,20 +94,39 @@ export class LoungeRelay {
     const channelId = this.channelId(operation);
     if (!loungeChannels.some((room) => room.id === channelId)) throw new LoungeError("없는 캠핑장이에요.", 404);
     await this.ready();
+    await this.releasing.get(channelId);
     if (this.leaders.has(channelId) || (Date.now() - (this.replicaAt.get(channelId) ?? 0) > 6000 && await this.claim(channelId))) return this.execute(operation);
     const id = randomUUID();
-    return new Promise<LoungeSocketResult>((resolve, reject) => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const result = new Promise<LoungeSocketResult>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new LoungeError("실시간 응답이 늦어지고 있어요. 다시 시도해 주세요.", 503)); }, 9000);
       this.pending.set(id, { resolve, reject, timer });
-      this.publish({ kind: "request", source: this.id, id, operation });
+      const attempt = async () => {
+        if (!this.pending.has(id) || this.stopped) return;
+        try {
+          // NOTIFY is transient; retry the same request through a leader handoff.
+          if (Date.now() - (this.replicaAt.get(channelId) ?? 0) > 2500 && await this.claim(channelId)) {
+            if (!this.pending.has(id)) return;
+            const value = this.execute(operation);
+            clearTimeout(timer); this.pending.delete(id); resolve(value); return;
+          }
+          this.publish({ kind: "request", source: this.id, id, operation });
+        } catch (error) {
+          clearTimeout(timer); this.pending.delete(id); reject(error); return;
+        }
+        if (this.pending.has(id)) retry = setTimeout(() => void attempt(), 750);
+      };
+      void attempt();
     });
+    try { return await result; }
+    finally { if (retry) clearTimeout(retry); }
   }
 
   private execute(operation: LoungeSocketOperation): LoungeSocketResult {
     const room = this.rooms.get(this.channelId(operation))!;
     const revision = room.revision;
     let result: LoungeSocketResult;
-    if (operation.op === "join") result = room.join(operation.input);
+    if (operation.op === "join") result = room.join(operation.input, operation.token);
     else if (operation.op === "resume") result = room.read(operation.session);
     else if (operation.op === "touch") result = room.touch(operation.session, operation.activity);
     else result = room.command(operation.session, operation.command);
@@ -114,6 +136,7 @@ export class LoungeRelay {
 
   tick() {
     for (const id of this.leaders) {
+      if (this.releasing.has(id)) continue;
       const room = this.rooms.get(id)!; const revision = room.revision;
       room.tick(); if (room.revision !== revision) { this.changed(room); this.replicate(room); }
       else if (Date.now() - (this.publishedAt.get(id) ?? 0) > 4000) this.replicate(room);
@@ -121,17 +144,25 @@ export class LoungeRelay {
     }
     const now = Date.now();
     for (const [id, entry] of this.parts) if (now - entry.createdAt > 15000) this.parts.delete(id);
+    for (const [id, reply] of this.replies) if (now - reply.at > 15000) this.replies.delete(id);
   }
 
   async release(channelId: string) {
+    const pending = this.releasing.get(channelId); if (pending) return pending;
     if (!this.leaders.has(channelId) || !this.client) return;
+    const release = this.releaseRoom(channelId).catch((error) => { this.connectionLost(); throw error; });
+    this.releasing.set(channelId, release);
+    try { await release; } finally { this.releasing.delete(channelId); }
+  }
+
+  private async releaseRoom(channelId: string) {
     const room = this.rooms.get(channelId)!;
     await this.checkpoint(room);
     this.publish({ kind: "release", source: this.id, channelId, replica: room.replica() });
     while (!this.stopped && (this.flushing || this.queue.length || this.states.size)) { await this.flush(); if (this.flushing) await new Promise((resolve) => setTimeout(resolve, 10)); }
     this.leaders.delete(channelId);
     const key = createHash("sha256").update(`${this.scope}:${channelId}`).digest().readInt32BE(0);
-    await this.client.query("SELECT pg_advisory_unlock($1::int, $2::int)", [15325477, key]);
+    await this.client?.query("SELECT pg_advisory_unlock($1::int, $2::int)", [15325477, key]);
   }
 
   async takeOver(channelId: string) { if (!this.leaders.has(channelId) && Date.now() - (this.replicaAt.get(channelId) ?? 0) > 6000 && await this.claim(channelId)) this.changed(this.rooms.get(channelId)!); }
@@ -194,12 +225,19 @@ export class LoungeRelay {
       const pending = this.pending.get(message.id); if (!pending) return;
       clearTimeout(pending.timer); this.pending.delete(message.id);
       if (message.error) pending.reject(new LoungeError(message.error.message, message.error.status)); else if (message.result) pending.resolve(message.result);
-    } else if (message.kind === "request" && this.leaders.has(this.channelId(message.operation))) {
+    } else if (message.kind === "request" && this.leaders.has(this.channelId(message.operation)) && !this.releasing.has(this.channelId(message.operation))) {
+      const key = `${message.source}:${message.id}`;
+      const previous = this.replies.get(key);
+      if (previous) { this.publish(previous.envelope); return; }
+      let envelope: LoungeRelayEnvelope;
       try {
         const result = this.execute(message.operation);
-        this.publish({ kind: "result", target: message.source, id: message.id, result: "players" in result && message.operation.op !== "resume" ? { applied: true, channelId: result.channel.id, epoch: result.epoch, revision: result.revision } : result });
+        envelope = { kind: "result", target: message.source, id: message.id, result: "players" in result && message.operation.op !== "resume" ? { applied: true, channelId: result.channel.id, epoch: result.epoch, revision: result.revision } : result };
       }
-      catch (error) { this.publish({ kind: "result", target: message.source, id: message.id, error: { status: error instanceof LoungeError ? error.status : 503, message: error instanceof LoungeError ? error.message : "행동을 처리하지 못했어요." } }); }
+      catch (error) { envelope = { kind: "result", target: message.source, id: message.id, error: { status: error instanceof LoungeError ? error.status : 503, message: error instanceof LoungeError ? error.message : "행동을 처리하지 못했어요." } }; }
+      if (this.replies.size >= 512) this.replies.delete(this.replies.keys().next().value!);
+      this.replies.set(key, { at: Date.now(), envelope });
+      this.publish(envelope);
     }
   }
 

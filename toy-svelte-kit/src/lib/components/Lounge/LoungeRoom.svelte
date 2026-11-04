@@ -48,6 +48,7 @@
   let moveVersion = 0;
   let queuedMove: LoungePoint | null = null;
   let lastMoveAt = 0;
+  let moveSending = false;
   let moveTimer: ReturnType<typeof setTimeout> | null = null;
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -68,8 +69,8 @@
   const outgoing = $derived(room?.requests.find((request) => request.fromId === session?.playerId && request.expiresAt > now) ?? null);
   const requester = $derived(room?.players.find((player) => player.id === incoming?.fromId));
   const receiver = $derived(room?.players.find((player) => player.id === outgoing?.toId));
-  const menuPlayer = $derived(menu?.kind === "player" ? room?.players.find((player) => player.id === menu.id) : null);
-  const menuFood = $derived(menu?.kind === "food" ? room?.foods.find((food) => food.id === menu.id) : null);
+  const menuPlayer = $derived(menu?.kind === "player" ? room?.players.find((player) => player.id === menu?.id) : null);
+  const menuFood = $derived(menu?.kind === "food" ? room?.foods.find((food) => food.id === menu?.id) : null);
   const selfMenu = $derived(menuPlayer?.id === session?.playerId);
   const lastNotice = $derived(room?.notices.at(-1));
   const requestSeconds = $derived(Math.max(0, Math.ceil(((incoming ?? outgoing)?.expiresAt ?? now) / 1000 - now / 1000)));
@@ -127,7 +128,7 @@
   function queueMove(point: LoungePoint) {
     engine?.move(point); queuedMove = clampPosition(point); moveVersion += 1;
     if (moveTimer) clearTimeout(moveTimer);
-    moveTimer = setTimeout(() => void flushMove(), Math.max(0, 40 - (Date.now() - lastMoveAt)));
+    moveTimer = setTimeout(() => void flushMove(), Math.max(0, 80 - (Date.now() - lastMoveAt)));
   }
 
   function moveTo(point: LoungePoint) {
@@ -139,11 +140,15 @@
 
   async function flushMove() {
     moveTimer = null;
-    if (!queuedMove || !canMove()) return;
+    if (!queuedMove || !canMove() || moveSending) return;
     const point = queuedMove; queuedMove = null;
-    const version = moveVersion; lastMoveAt = Date.now();
+    const version = moveVersion; lastMoveAt = Date.now(); moveSending = true;
     try { await request({ type: "move", ...point }, crypto.randomUUID()); }
     catch (error) { if (version === moveVersion) { engine?.rejectMove(); plan = null; commandError(error); } }
+    finally {
+      moveSending = false;
+      if (mounted && queuedMove && canMove()) moveTimer = setTimeout(() => void flushMove(), Math.max(0, 80 - (Date.now() - lastMoveAt)));
+    }
   }
 
   function nearby(point: LoungePoint, range = loungeRules.interactionRange) {
@@ -336,7 +341,7 @@
   function toggleSound() { muted = !muted; engine?.setMuted(muted); if (!muted) engine?.unlockAudio(); void Storage.set("lounge.muted", muted).catch(() => {}); }
   function visibilityChanged() {
     if (document.hidden) { plan = null; queuedMove = null; }
-    else { bestRtt = Infinity; }
+    else { bestRtt = Infinity; loungeSocket.wake(); }
   }
   function activity() { loungeSocket.activity(); }
 
@@ -354,7 +359,7 @@
   onMount(() => {
     mounted = true;
     const sceneAbort = new AbortController();
-    const timer = setInterval(() => { now = Date.now() + clockOffset; advancePlan(); if (stunned) { menu = null; chatOpen = false; queuedMove = null; } }, 100);
+    const timer = setInterval(() => { if (document.hidden) return; now = Date.now() + clockOffset; advancePlan(); if (stunned) { menu = null; chatOpen = false; queuedMove = null; } }, 100);
     void (async () => {
       const [loaded, savedMute] = await Promise.all([loadLoungeSession(channel.id), Storage.get<boolean>("lounge.muted").catch(() => null)]);
       if (!mounted) return;
@@ -362,6 +367,12 @@
       session = loaded; muted = savedMute === true;
       const initial = takeInitialLoungeSnapshot(channel.id);
       if (initial) { room = initial; clockOffset = initial.serverNow - Date.now(); connection = "connected"; }
+      // Resume immediately; large 3D assets must not delay presence or network recovery.
+      const resumed = loungeSocket.resume(loaded).then(applySnapshot).catch(commandError);
+      unsubscribe = loungeSocket.subscribe({
+        onState: applySnapshot, onClock: syncClock, onExpired: expire,
+        onStatus: (status) => { if (!mounted || leaving || connection === "expired") return; connection = status; if (status === "reconnecting") { queuedMove = null; plan = null; engine?.rejectMove(); } }
+      });
       try {
         const { createLoungeScene } = await import("$lib/lounge/scene");
         if (!mounted || !host) return;
@@ -370,13 +381,7 @@
         if (!mounted) { engine.dispose(); engine = null; return; }
         engine.setMuted(muted); if (room) engine.update(room); ready = true;
       } catch { if (mounted) sceneError = "캐릭터와 3D 화면을 불러오지 못했어요. 새로고침해 주세요."; }
-      if (!mounted) return;
-      unsubscribe = loungeSocket.subscribe({
-        onState: applySnapshot, onClock: syncClock, onExpired: expire,
-        onStatus: (status) => { if (!mounted || leaving || connection === "expired") return; connection = status; if (status === "reconnecting") { queuedMove = null; plan = null; engine?.rejectMove(); } }
-      });
-      try { applySnapshot(await loungeSocket.resume(loaded)); }
-      catch (error) { commandError(error); }
+      await resumed;
     })();
     document.addEventListener("visibilitychange", visibilityChanged);
     window.addEventListener("pointerdown", outsideMenu); window.addEventListener("keydown", keyDown);

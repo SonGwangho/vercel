@@ -12,6 +12,8 @@
 		"version:major": "node scripts/version.mjs major",
 		"validate:data": "node scripts/validate-data.mjs",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test:lounge": "node --test tests/lounge.test.mjs",
+		"test:lounge:browser": "node tests/lounge-browser.mjs",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {

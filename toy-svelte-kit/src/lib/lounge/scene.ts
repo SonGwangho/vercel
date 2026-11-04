@@ -72,6 +72,7 @@ export class LoungeScene implements LoungeSceneController {
   private lastOverlay = 0;
   private elapsed = 0;
   private disposed = false;
+  private lostContext = false;
   private muted = false;
   private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private audio: AudioContext | null = null;
@@ -133,6 +134,7 @@ export class LoungeScene implements LoungeSceneController {
     this.host.addEventListener("contextmenu", this.contextMenu);
     this.host.addEventListener("wheel", this.wheel, { passive: false });
     this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
+    this.renderer.domElement.addEventListener("webglcontextrestored", this.contextRestored);
     document.addEventListener("visibilitychange", this.visibility);
     this.renderer.setAnimationLoop(this.frame);
   }
@@ -597,7 +599,7 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   private frame = (at: number) => {
-    if (this.disposed || document.hidden || !this.inViewport || !this.state) return;
+    if (this.disposed || this.lostContext || document.hidden || !this.inViewport || !this.state) return;
     const now = this.options.getNow();
     const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
@@ -797,8 +799,13 @@ export class LoungeScene implements LoungeSceneController {
     if (event.target instanceof Element && event.target.closest(".scene-speech")) return;
     event.preventDefault(); this.zoom(event.deltaY > 0 ? -0.07 : 0.07);
   };
-  private visibility = () => { this.renderer.setAnimationLoop(document.hidden || !this.inViewport ? null : this.frame); this.lastFrame = 0; };
-  private contextLost = (event: Event) => { event.preventDefault(); this.renderer.setAnimationLoop(null); this.options.onError("3D 화면 연결이 끊겼어요. 화면을 다시 불러와 주세요."); };
+  private visibility = () => { this.renderer.setAnimationLoop(this.disposed || this.lostContext || document.hidden || !this.inViewport ? null : this.frame); this.lastFrame = 0; };
+  private contextLost = (event: Event) => { event.preventDefault(); this.lostContext = true; this.renderer.setAnimationLoop(null); this.options.onError("3D 화면을 복구하고 있어요. 잠시만 기다려 주세요."); };
+  private contextRestored = () => {
+    if (this.disposed) return;
+    this.lostContext = false; this.lastOverlay = 0;
+    this.options.onError(""); this.visibility();
+  };
 
   dispose() {
     if (this.disposed) return; this.disposed = true;
@@ -807,6 +814,7 @@ export class LoungeScene implements LoungeSceneController {
     this.host.removeEventListener("pointerleave", this.pointerLeave);
     this.host.removeEventListener("pointercancel", this.cancelHold); this.host.removeEventListener("contextmenu", this.contextMenu); this.host.removeEventListener("wheel", this.wheel);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost); document.removeEventListener("visibilitychange", this.visibility);
+    this.renderer.domElement.removeEventListener("webglcontextrestored", this.contextRestored);
     for (const actor of this.actors.values()) {
       actor.visual.dispose();
       this.disposeCast(actor);
