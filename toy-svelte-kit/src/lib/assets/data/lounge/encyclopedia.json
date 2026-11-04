@@ -2,5 +2,5 @@
   "fishKinds": ["carp", "flounder", "snapper", "eel", "whale", "shark"],
   "insectKinds": ["caterpillar", "mantis", "grasshopper", "bee", "butterfly", "rhinoBeetle"],
   "retentionMs": 604800000,
-  "categories": [{ "id": "fish", "name": "물고기" }, { "id": "insects", "name": "곤충" }]
+  "categories": [{ "id": "fish", "name": "물고기" }, { "id": "insects", "name": "곤충" }, { "id": "monsters", "name": "몬스터" }]
 }

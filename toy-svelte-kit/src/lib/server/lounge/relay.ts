@@ -3,6 +3,7 @@ import { Client } from "@neondatabase/serverless";
 import WebSocket from "ws";
 import { MemoryLounge, LoungeError } from "./memory";
 import { loungeChannels } from "../../lounge/shared";
+import { recordMonsterRewards } from "./monster-records";
 import type { LoungeSocketOperation, LoungeSocketResult, LoungeRelayEnvelope, LoungeRelayPart, LoungeRelayAssembly, LoungeRelayPending, LoungeReplica } from "../../types/LoungeSocket";
 
 export class LoungeRelay {
@@ -12,6 +13,8 @@ export class LoungeRelay {
   private replicaAt = new Map<string, number>();
   private publishedAt = new Map<string, number>();
   private checkpointAt = new Map<string, number>();
+  private rewardWrites = new Map<string, Promise<void>>();
+  private rewardRetryAt = new Map<string, number>();
   private claiming = new Map<string, Promise<boolean>>();
   private releasing = new Map<string, Promise<void>>();
   private replies = new Map<string, { at: number; envelope: LoungeRelayEnvelope }>();
@@ -72,11 +75,11 @@ export class LoungeRelay {
       const result = await this.client!.query("SELECT pg_try_advisory_lock($1::int, $2::int) AS acquired", [15325477, key]);
       if (result.rows[0]?.acquired) {
         let saved;
-        try { saved = await this.client!.query("SELECT replica FROM lounge_realtime_checkpoints WHERE scope = $1 AND channel_id = $2 AND updated_at > now() - interval '5 minutes'", [this.scope, channelId]); }
+        try { saved = await this.client!.query("SELECT replica FROM lounge_realtime_checkpoints WHERE scope = $1 AND channel_id = $2", [this.scope, channelId]); }
         catch (error) { await this.client?.query("SELECT pg_advisory_unlock($1::int, $2::int)", [15325477, key]).catch(() => {}); throw error; }
         const replica = saved.rows[0]?.replica as LoungeReplica | undefined;
         const current = this.rooms.get(channelId);
-        if (replica && (!current || (current.epoch === replica.epoch && current.revision < replica.revision))) this.rooms.set(channelId, new MemoryLounge(channelId, replica, this.secret));
+        if (replica && (!current || current.epoch !== replica.epoch || current.revision < replica.revision)) this.rooms.set(channelId, new MemoryLounge(channelId, replica, this.secret));
         this.leaders.add(channelId);
         if (!this.rooms.has(channelId)) this.rooms.set(channelId, new MemoryLounge(channelId, undefined, this.secret));
         this.replicate(this.rooms.get(channelId)!);
@@ -131,6 +134,7 @@ export class LoungeRelay {
     else if (operation.op === "touch") result = room.touch(operation.session, operation.activity);
     else result = room.command(operation.session, operation.command);
     if (revision !== room.revision) { this.changed(room); this.replicate(room); }
+    if (room.state.monsterRewards?.length && Date.now() >= (this.rewardRetryAt.get(room.channelId) ?? 0)) void this.persistRewards(room).catch(() => {});
     return result;
   }
 
@@ -141,6 +145,7 @@ export class LoungeRelay {
       room.tick(); if (room.revision !== revision) { this.changed(room); this.replicate(room); }
       else if (Date.now() - (this.publishedAt.get(id) ?? 0) > 4000) this.replicate(room);
       if (Date.now() - (this.checkpointAt.get(id) ?? 0) > 10000) { this.checkpointAt.set(id, Date.now()); void this.checkpoint(room).catch(() => {}); }
+      if (room.state.monsterRewards?.length && Date.now() >= (this.rewardRetryAt.get(id) ?? 0)) void this.persistRewards(room).catch(() => {});
     }
     const now = Date.now();
     for (const [id, entry] of this.parts) if (now - entry.createdAt > 15000) this.parts.delete(id);
@@ -157,6 +162,8 @@ export class LoungeRelay {
 
   private async releaseRoom(channelId: string) {
     const room = this.rooms.get(channelId)!;
+    room.hibernate();
+    if (room.state.monsterRewards?.length) await this.persistRewards(room).catch(() => {});
     await this.checkpoint(room);
     this.publish({ kind: "release", source: this.id, channelId, replica: room.replica() });
     while (!this.stopped && (this.flushing || this.queue.length || this.states.size)) { await this.flush(); if (this.flushing) await new Promise((resolve) => setTimeout(resolve, 10)); }
@@ -169,6 +176,21 @@ export class LoungeRelay {
   private async checkpoint(room: MemoryLounge) {
     if (!this.client || this.stopped) return;
     await this.client.query("INSERT INTO lounge_realtime_checkpoints (scope, channel_id, replica) VALUES ($1, $2, $3::jsonb) ON CONFLICT (scope, channel_id) DO UPDATE SET replica = EXCLUDED.replica, updated_at = now() WHERE (lounge_realtime_checkpoints.replica->>'epoch') IS DISTINCT FROM (EXCLUDED.replica->>'epoch') OR (lounge_realtime_checkpoints.replica->>'revision')::bigint <= (EXCLUDED.replica->>'revision')::bigint", [this.scope, room.channelId, JSON.stringify(room.replica())]);
+  }
+  private persistRewards(room: MemoryLounge): Promise<void> {
+    const existing = this.rewardWrites.get(room.channelId); if (existing) return existing;
+    const write = (async () => {
+      while (room.state.monsterRewards?.length) {
+        const rewards = [...room.state.monsterRewards];
+        await this.checkpoint(room);
+        await recordMonsterRewards(this.databaseUrl, rewards);
+        room.acknowledgeMonsterRewards(rewards);
+        if (this.leaders.has(room.channelId)) { this.changed(room); this.replicate(room); }
+        await this.checkpoint(room);
+      }
+    })().finally(() => { this.rewardWrites.delete(room.channelId); this.rewardRetryAt.set(room.channelId, Date.now() + 5000); });
+    this.rewardWrites.set(room.channelId, write);
+    return write;
   }
   private replicate(room: MemoryLounge) { this.publishedAt.set(room.channelId, Date.now()); this.publish({ kind: "state", source: this.id, replica: room.replica() }); }
   private publish(envelope: LoungeRelayEnvelope) {
@@ -242,6 +264,7 @@ export class LoungeRelay {
   }
 
   async close() {
+    await Promise.allSettled([...this.rewardWrites.values()]);
     this.stopped = true;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new LoungeError("연결이 닫혔어요.", 503)); }

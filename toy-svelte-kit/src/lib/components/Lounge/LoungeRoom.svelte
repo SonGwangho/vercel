@@ -4,12 +4,13 @@
   import FoodIcon from "./FoodIcon.svelte";
   import FishIcon from "./FishIcon.svelte";
   import InsectIcon from "./InsectIcon.svelte";
+  import { describeMonster, monsterPositionAt, monsterPunchRange } from "$lib/lounge/monsters";
   import { describeInsect, insectPositionAt, insectRules } from "$lib/lounge/insects";
   import AppVersion from "$lib/components/UI/AppVersion.svelte";
   import ChatHistory from "./ChatHistory.svelte";
   import FishingGauge from "./FishingGauge.svelte";
   import Encyclopedia from "./Encyclopedia.svelte";
-  import { encyclopedia, encyclopediaFish, encyclopediaInsects, rememberCatch, startEncyclopedia } from "$lib/client/encyclopedia.svelte.js";
+  import { encyclopedia, encyclopediaFish, encyclopediaInsects, encyclopediaMonsters, encyclopediaIdentity, refreshEncyclopedia, rememberCatch, startEncyclopedia } from "$lib/client/encyclopedia.svelte.js";
   import { canFishFrom, describeFish, fishLength, fishingRules, fishingSpot } from "$lib/lounge/fishing";
   import { loungeSocket, forgetLoungeSession, loadLoungeSession, LoungeClientError, postLoungeCommand, takeInitialLoungeSnapshot } from "$lib/client/lounge";
   import { actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, interactionSpacingFor, isLoungeEmote, loungeEmotes, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
@@ -35,6 +36,7 @@
   let encyclopediaButton = $state<HTMLButtonElement | null>(null);
   const discoveredInsects = $derived(encyclopediaInsects.filter((kind) => encyclopedia.insects[kind]).length);
   const discoveredFish = $derived(encyclopediaFish.filter((kind) => encyclopedia.fish[kind]).length);
+  const discoveredMonsters = $derived(encyclopediaMonsters.filter((kind) => encyclopedia.monsters[kind]).length);
   let unreadChat = $state(0);
   let historyButton = $state<HTMLButtonElement | null>(null);
   let chatDraft = $state("");
@@ -53,6 +55,7 @@
   let clockOffset = 0;
   let clockReady = false;
   let bestRtt = Infinity;
+  let lastMonsterBookAt = 0;
   let moveVersion = 0;
   let queuedMove: LoungePoint | null = null;
   let lastMoveAt = 0;
@@ -78,6 +81,7 @@
   const receiver = $derived(room?.players.find((player) => player.id === outgoing?.toId));
   const menuPlayer = $derived(menu?.kind === "player" ? room?.players.find((player) => player.id === menu?.id) : null);
   const menuFood = $derived(menu?.kind === "food" ? room?.foods.find((food) => food.id === menu?.id) : null);
+  const menuMonster = $derived(menu?.kind === "monster" ? room?.monsters?.find((monster) => monster.id === menu?.id) : null);
   const selfMenu = $derived(menuPlayer?.id === session?.playerId);
   const lastNotice = $derived(room?.notices.at(-1));
   const requestSeconds = $derived(Math.max(0, Math.ceil(((incoming ?? outgoing)?.expiresAt ?? now) / 1000 - now / 1000)));
@@ -110,6 +114,8 @@
     if (session && catchFish) void rememberCatch(session, catchFish);
     const caughtBug = snapshot.players.find((player) => player.id === session?.playerId)?.lastInsect;
     if (session && caughtBug) void rememberCatch(session, caughtBug, "insects");
+    const bookAt = snapshot.players.find((player) => player.id === session?.playerId)?.monsterBookUpdatedAt ?? 0;
+    if (bookAt > lastMonsterBookAt) { const fresh = lastMonsterBookAt > 0 || now - bookAt < 10000; lastMonsterBookAt = bookAt; void refreshEncyclopedia(); if (fresh) inform("몬스터 도감에 등록했어요."); }
     if (session && !snapshot.players.some((player) => player.id === session!.playerId)) expire();
   }
 
@@ -181,6 +187,10 @@
   }
 
   function approachTarget(input: LoungeApproach["input"]) {
+    if (input.type === "punchMonster") {
+      const monster = room?.monsters?.find((monster) => monster.id === input.monsterId);
+      return monster ? monsterPositionAt(monster, gameNow()) : undefined;
+    }
     if (input.type === "cast") return fishingSpot;
     if (input.type === "pickup") return room?.foods.find((food) => food.id === input.foodId);
     if (input.type === "collectInsect") {
@@ -191,6 +201,10 @@
   }
 
   function readyFor(input: LoungeApproach["input"], point: LoungePoint) {
+    if (input.type === "punchMonster") {
+      const monster = room?.monsters?.find((monster) => monster.id === input.monsterId);
+      return Boolean(monster && nearby(point, monsterPunchRange(monster)));
+    }
     if (input.type === "collectInsect") return nearby(point, insectRules.captureRange);
     if (input.type === "cast") return Boolean(me && canFishFrom(positionAt(me, now)) && canFishFrom(engine?.position() ?? positionAt(me, now)));
     const kind = input.type === "pickup" ? "pickup" : input.kind;
@@ -202,6 +216,14 @@
     return inPosition(server) && inPosition(engine?.position() ?? server);
   }
 
+  function approachSpacing(input: LoungeApproach["input"]) {
+    if (input.type === "punchMonster") {
+      const monster = room?.monsters?.find((monster) => monster.id === input.monsterId);
+      return monster ? monsterPunchRange(monster) - 28 : 58;
+    }
+    return interactionSpacingFor(input.type === "interact" ? input.kind : "pickup");
+  }
+
   function choose(input: LoungeApproach["input"]) {
     closeMenu(false);
     if (input.type === "cast") { chatOpen = false; historyOpen = false; showHelp = false; }
@@ -211,7 +233,7 @@
     const point = "move" in target ? positionAt(target, now) : target;
     if (readyFor(input, point)) { void perform(input); return; }
     plan = { input, target: point, startedAt: now, lastSentAt: now };
-    queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" || input.type === "collectInsect" ? "pickup" : input.kind)));
+    queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, approachSpacing(input)));
   }
 
   function advancePlan() {
@@ -225,7 +247,7 @@
     if (readyFor(input, point) && !queuedMove) { plan = null; void perform(input); }
     else if (distance(point, plan.target) > (input.type === "collectInsect" ? 20 : 38) && now - plan.lastSentAt > (input.type === "collectInsect" ? 180 : 600)) {
       plan = { ...plan, target: point, lastSentAt: now };
-      queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" || input.type === "collectInsect" ? "pickup" : input.kind)));
+      queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, approachSpacing(input)));
     }
   }
 
@@ -250,6 +272,7 @@
       engine?.carry(null, id);
       engine?.predict(input.kind, id);
     } else if (input.type === "interact" && input.kind === "punch") engine?.predict("punch", id, undefined, undefined, input.targetId);
+    else if (input.type === "punchMonster") engine?.predict("punch", id, undefined, undefined, input.monsterId);
     try {
       const result = await request(input, id); engine?.settle(id, true);
       if (input.type === "reel") {
@@ -403,7 +426,11 @@
       const initial = takeInitialLoungeSnapshot(channel.id);
       if (initial) { room = initial; clockOffset = initial.serverNow - Date.now(); connection = "connected"; }
       // Resume immediately; large 3D assets must not delay presence or network recovery.
-      const resumed = loungeSocket.resume(loaded).then(applySnapshot).catch(commandError);
+      const resumed = loungeSocket.resume(loaded).then(async (snapshot) => {
+        applySnapshot(snapshot);
+        const token = await encyclopediaIdentity();
+        if (mounted && !leaving) await request({ type: "bindEncyclopedia", token }, crypto.randomUUID());
+      }).catch(commandError);
       unsubscribe = loungeSocket.subscribe({
         onState: applySnapshot, onClock: syncClock, onExpired: expire,
         onStatus: (status) => { if (!mounted || leaving || connection === "expired") return; connection = status; if (status === "reconnecting") { queuedMove = null; plan = null; engine?.rejectMove(); } }
@@ -439,7 +466,7 @@
   <div class="lounge-scene-host" bind:this={host} tabindex="0" role="application" aria-label="3D 게임 공간. 좌클릭 이동, 우클릭 또는 스페이스 행동. Enter 대화, Escape 닫기." aria-keyshortcuts="Space Enter ContextMenu Escape"></div>
   <header class="game-hud">
     <div class="game-hud-start">
-      <button type="button" class="game-encyclopedia-button" bind:this={encyclopediaButton} aria-haspopup="dialog" aria-expanded={encyclopediaOpen} aria-controls="lounge-encyclopedia" onclick={openEncyclopedia}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Zm0 0v15" /></svg><span>도감<small>{discoveredFish + discoveredInsects}/12</small></span></button>
+      <button type="button" class="game-encyclopedia-button" bind:this={encyclopediaButton} aria-haspopup="dialog" aria-expanded={encyclopediaOpen} aria-controls="lounge-encyclopedia" onclick={openEncyclopedia}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Zm0 0v15" /></svg><span>도감<small>{discoveredFish + discoveredInsects + discoveredMonsters}/18</small></span></button>
     <div class="game-channel"><svg class="camp-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13 2c1 5-4 5-2 9 2-1 3-3 3-5 5 5 7 8 4 12-3 4-10 4-13 0-3-5 2-8 2-11 1 3 2 3 3 4-1-5 3-6 3-9Z"/><path d="m5 23 14-3M5 20l14 3"/></svg><span class="game-live-dot" class:offline={connection !== "connected"}></span><div><h1>{channel.name} <AppVersion /></h1><span>{room?.players.length ?? 0} / {channel.capacity}명{#if connection === "reconnecting"} · 연결 중{/if}</span></div></div>
     </div>
     <nav class="game-tools" aria-label="라운지 설정">
@@ -475,7 +502,7 @@
           <button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "releaseFish", catchId: caughtFish!.id })}>놓아주기</button>
         </div>
       {/if}
-      {#if toast}<div class="game-toast" role="status">{toast}</div>{:else if connection === "reconnecting"}<div class="game-toast" role="status">연결을 다시 확인하고 있어요.</div>{:else if lastNotice && now - lastNotice.createdAt < 6000}<div class="game-notice" aria-live="polite">{lastNotice.text}</div>{/if}
+      {#if toast}<div class="game-toast" role="status">{toast}</div>{:else if connection === "reconnecting"}<div class="game-toast" role="status">연결을 다시 확인하고 있어요.</div>{:else if me.monsterBookPending}<div class="game-notice" role="status">몬스터 도감을 저장하고 있어요…</div>{:else if lastNotice && now - lastNotice.createdAt < 6000}<div class="game-notice" aria-live="polite">{lastNotice.text}</div>{/if}
       {#if caughtInsect && me.insectHeld && !chatOpen && currentAction?.kind !== "collectInsect"}
         <div class="game-held game-catch"><InsectIcon kind={caughtInsect.kind} /><div><small>손에 든 곤충</small><strong><span class="fish-grade">{describeInsect(caughtInsect.kind).grade}</span> {describeInsect(caughtInsect.kind).name} · {caughtInsect.sizeCm} cm</strong></div><button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "releaseInsect" })}>놓아주기</button></div>
       {/if}
@@ -486,9 +513,12 @@
     <div class="sr-only" role="log" aria-label="라운지 대화" aria-live="polite" aria-relevant="additions">{#each room.messages.slice(-4) as message (message.id)}<p>{message.nickname}: {message.text}</p>{/each}</div>
   {/if}
   {#if menu && me && room}
-    <div class="lounge-context-menu" bind:this={menuElement} role="menu" tabindex="-1" aria-label={menuPlayer ? `${menuPlayer.nickname} 행동` : menu.kind === "lake" ? "호수 행동" : menu.kind === "insect" ? "곤충 행동" : "음식 행동"} style={`left:${menu.x}px;top:${menu.y}px;`} onkeydown={menuKeys}>
-      <header><div><strong>{menuPlayer?.nickname ?? (menuInsect ? describeInsect(menuInsect.kind).name : menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{selfMenu ? "내 캐릭터" : menu?.kind === "insect" ? "야생 곤충" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
-      {#if menuInsect}
+    <div class="lounge-context-menu" bind:this={menuElement} role="menu" tabindex="-1" aria-label={menuMonster ? `${describeMonster(menuMonster.kind).name} 행동` : menuPlayer ? `${menuPlayer.nickname} 행동` : menu.kind === "lake" ? "호수 행동" : menu.kind === "insect" ? "곤충 행동" : "음식 행동"} style={`left:${menu.x}px;top:${menu.y}px;`} onkeydown={menuKeys}>
+      <header><div><strong>{menuMonster ? describeMonster(menuMonster.kind).name : menuPlayer?.nickname ?? (menuInsect ? describeInsect(menuInsect.kind).name : menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{menuMonster ? `${describeMonster(menuMonster.kind).grade} · 체력 ${menuMonster.hp} / ${menuMonster.maxHp}` : selfMenu ? "내 캐릭터" : menu?.kind === "insect" ? "야생 곤충" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
+      {#if menuMonster}
+        <button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(block) || !usable} onclick={() => choose({ type: "punchMonster", monsterId: menuMonster!.id })}><span>{nearby(monsterPositionAt(menuMonster, now), monsterPunchRange(menuMonster)) ? "펀치하기" : "다가가서 펀치하기"}</span><small>피해 1</small></button>
+        {#if block}<p class="context-hint">{block}</p>{/if}
+      {:else if menuInsect}
         <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => choose({ type: "collectInsect", insectId: menuInsect!.id })}><InsectIcon kind={menuInsect.kind} /><span>{nearby(insectPositionAt(menuInsect, now), insectRules.captureRange) ? "채집하기" : "다가가서 채집하기"}</span></button>
         {#if block}<p class="context-hint">{block}</p>{/if}
       {:else if menu?.kind === "lake"}

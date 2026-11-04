@@ -4,9 +4,9 @@ import { describeFish } from "../../lounge/fishing";
 import { describeInsect } from "../../lounge/insects";
 import type { LoungeFishCatch, LoungeFishKind } from "../../types/Lounge";
 import type { LoungeInsectCatch, LoungeInsectKind } from "../../types/LoungeInsect";
-import type { LoungeCatchReceipt, LoungeCollectionCategory } from "../../types/LoungeEncyclopedia";
+import type { LoungeCatchReceipt, LoungeCatchCategory } from "../../types/LoungeEncyclopedia";
 
-export function signCatch(fish: LoungeFishCatch | LoungeInsectCatch, ownerHash: string, now: number, secret: string, category: LoungeCollectionCategory = "fish") {
+export function signCatch(fish: LoungeFishCatch | LoungeInsectCatch, ownerHash: string, now: number, secret: string, category: LoungeCatchCategory = "fish") {
   if (!secret || !ownerHash) return undefined;
   const claim: LoungeCatchReceipt = { id: fish.id, category, kind: fish.kind, sizeCm: fish.sizeCm, ownerHash, caughtAt: now, expiresAt: now + settings.retentionMs };
   const payload = Buffer.from(JSON.stringify(claim)).toString("base64url");

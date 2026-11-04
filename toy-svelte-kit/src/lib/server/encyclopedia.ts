@@ -17,6 +17,7 @@ async function ensureTable() {
     )`;
     await sql`CREATE INDEX IF NOT EXISTS lounge_encyclopedias_updated ON lounge_encyclopedias (updated_at)`;
     await sql`ALTER TABLE lounge_encyclopedias ADD COLUMN IF NOT EXISTS insects jsonb NOT NULL DEFAULT '{}'::jsonb`;
+    await sql`ALTER TABLE lounge_encyclopedias ADD COLUMN IF NOT EXISTS monsters jsonb NOT NULL DEFAULT '{}'::jsonb`;
   })().catch((cause) => { ready = null; throw cause; });
   await ready;
 }
@@ -28,7 +29,7 @@ function tokenHash(authorization: string | null) {
 }
 
 function profile(row?: LoungeEncyclopediaRow): LoungeEncyclopediaProfile {
-  return { fish: row?.fish ?? {}, insects: row?.insects ?? {}, updatedAt: row ? new Date(row.updated_at).getTime() : null };
+  return { fish: row?.fish ?? {}, insects: row?.insects ?? {}, monsters: row?.monsters ?? {}, updatedAt: row ? new Date(row.updated_at).getTime() : null };
 }
 
 export async function cleanupEncyclopedias() {
@@ -41,7 +42,7 @@ export async function readEncyclopedia(authorization: string | null) {
   const hash = tokenHash(authorization);
   await ensureTable();
   if (Date.now() - lastCleanup > 3600000) await cleanupEncyclopedias();
-  const rows = await getNeonSql()`SELECT fish, insects, updated_at::text FROM lounge_encyclopedias
+  const rows = await getNeonSql()`SELECT fish, insects, monsters, updated_at::text FROM lounge_encyclopedias
     WHERE token_hash = ${hash} AND updated_at > NOW() - INTERVAL '7 days'` as LoungeEncyclopediaRow[];
   return profile(rows[0]);
 }
@@ -68,7 +69,8 @@ export async function recordEncyclopedia(authorization: string | null, input: un
         WHEN ${category}::text = 'insects' AND COALESCE((lounge_encyclopedias.insects -> ${claim.kind}::text ->> 'sizeCm')::int, 0) < ${claim.sizeCm}
           THEN lounge_encyclopedias.insects || EXCLUDED.insects
         ELSE lounge_encyclopedias.insects END,
+      monsters = CASE WHEN lounge_encyclopedias.updated_at <= NOW() - INTERVAL '7 days' THEN '{}'::jsonb ELSE lounge_encyclopedias.monsters END,
       updated_at = GREATEST(lounge_encyclopedias.updated_at, EXCLUDED.updated_at)
-    RETURNING fish, insects, updated_at::text` as LoungeEncyclopediaRow[];
+    RETURNING fish, insects, monsters, updated_at::text` as LoungeEncyclopediaRow[];
   return profile(rows[0]);
 }

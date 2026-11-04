@@ -1,5 +1,6 @@
 import type { LoungeAppearance } from "./LoungeAppearance";
 import type { LoungeFieldInsect, LoungeInsectCatch } from "./LoungeInsect";
+import type { LoungeMonster, LoungeMonsterReward, LoungeStoredMonster } from "./LoungeMonster";
 
 export type LoungePoint = { x: number; y: number };
 export type LoungePairPositions = { first: LoungePoint; second: LoungePoint };
@@ -57,6 +58,9 @@ export type LoungePlayer = {
   action: LoungeAction | null;
   pendingRequestId: string | null;
   stunnedUntil: number;
+  stunImmuneUntil?: number;
+  monsterBookUpdatedAt?: number;
+  monsterBookPending?: boolean;
   joinedAt: number;
 };
 export type LoungeStoredPlayer = LoungePlayer & {
@@ -66,6 +70,8 @@ export type LoungeStoredPlayer = LoungePlayer & {
   lastChatAt: number;
   lastActivityAt?: number;
   lastMoveCommandId?: string;
+  encyclopediaHash?: string;
+  lastMonsterPunchAt?: number;
 };
 export type LoungeRequest = {
   id: string;
@@ -96,6 +102,10 @@ export type LoungeRoomState = {
   lastFoodAt: number;
   insects?: LoungeFieldInsect[];
   lastInsectAt?: number;
+  monsters?: LoungeStoredMonster[];
+  lastMonsterSpawnAt?: number;
+  monstersDormantAt?: number;
+  monsterRewards?: LoungeMonsterReward[];
   appliedCommands: { id: string; playerId: string }[];
 };
 export type LoungeRoomRow = { channel_id: string; revision: number | string; state: LoungeRoomState };
@@ -109,15 +119,18 @@ export type LoungeSnapshot = {
   players: LoungePlayer[];
   foods: LoungeGroundFood[];
   insects?: LoungeFieldInsect[];
+  monsters?: LoungeMonster[];
   requests: LoungeRequest[];
   messages: LoungeMessage[];
   notices: LoungeNotice[];
 };
-export type LoungeJoinInput = { channelId: string; nickname: string; color: string; appearance?: LoungeAppearance };
+export type LoungeJoinInput = { channelId: string; nickname: string; color: string; appearance?: LoungeAppearance; encyclopediaToken?: string };
 export type LoungeJoinResult = { session: LoungeSession; snapshot: LoungeSnapshot };
 export type LoungeSyncResult = LoungeSnapshot | { unchanged: true; revision: number; serverNow: number; processingMs?: number };
 export type LoungeCommandInput =
   | LoungeFishingCommand
+  | { type: "punchMonster"; monsterId: string }
+  | { type: "bindEncyclopedia"; token: string }
   | { type: "collectInsect"; insectId: string }
   | { type: "releaseInsect" }
   | { type: "move"; x: number; y: number }
@@ -136,13 +149,13 @@ export type LoungeCommand = LoungeCommandInput & { commandId: string };
 export type LoungeAvatarProps = { color: string; walking?: boolean; action?: LoungeActionKind | null; stunned?: boolean; size?: number };
 export type LoungeFoodIconProps = { kind: LoungeFoodKind; size?: number };
 export type LoungeRenderedPlayer = LoungePlayer & LoungePoint & { walking: boolean; stunned: boolean; busy: boolean };
-export type LoungeMenuTarget = { kind: "player" | "food" | "lake" | "insect"; id: string; x: number; y: number };
+export type LoungeMenuTarget = { kind: "player" | "food" | "lake" | "insect" | "monster"; id: string; x: number; y: number };
 export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number; zIndex: number };
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;
 export type LoungeRoomProps = { channel: LoungeChannel };
 export type LoungeApproach = {
-  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" | "cast" | "collectInsect" }>;
+  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" | "cast" | "collectInsect" | "punchMonster" }>;
   target: LoungePoint;
   startedAt: number;
   lastSentAt: number;

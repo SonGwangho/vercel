@@ -33,3 +33,4 @@ export * from "./types/LoungeSocket.ts";
 export * from "./types/LoungeServer.ts";
 export * from "./types/LoungeEncyclopedia.ts";
 export * from "./types/LoungeInsect.ts";
+export * from "./types/LoungeMonster.ts";

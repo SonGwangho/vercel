@@ -1,23 +1,26 @@
 <script lang="ts">
   import FishIcon from "./FishIcon.svelte";
   import InsectIcon from "./InsectIcon.svelte";
+  import MonsterIcon from "./MonsterIcon.svelte";
   import settings from "$lib/assets/data/lounge/encyclopedia.json";
   import { describeFish, fishLength } from "$lib/lounge/fishing";
   import { describeInsect } from "$lib/lounge/insects";
-  import { encyclopedia, encyclopediaFish, encyclopediaInsects, encyclopediaRecords, refreshEncyclopedia, retryEncyclopedia } from "$lib/client/encyclopedia.svelte.js";
-  import type { LoungeEncyclopediaProps, LoungeCollectionCategory, LoungeCollectibleKind } from "$lib/types/LoungeEncyclopedia";
+  import { describeMonster } from "$lib/lounge/monsters";
+  import { encyclopedia, encyclopediaFish, encyclopediaInsects, encyclopediaMonsters, refreshEncyclopedia, retryEncyclopedia } from "$lib/client/encyclopedia.svelte.js";
+  import type { LoungeEncyclopediaProps, LoungeCollectionCategory, LoungeEncyclopediaKind, LoungeEncyclopediaDisplayRecord } from "$lib/types/LoungeEncyclopedia";
+  import type { LoungeMonsterKind } from "$lib/types/LoungeMonster";
   import type { LoungeFishKind } from "$lib/types/Lounge";
   import type { LoungeInsectKind } from "$lib/types/LoungeInsect";
 
   let { open, onClose }: LoungeEncyclopediaProps = $props();
   let dialog = $state<HTMLDialogElement | null>(null);
   let category = $state<LoungeCollectionCategory>("fish");
-  let selected = $state<LoungeCollectibleKind>("carp");
-  const kinds = $derived(category === "fish" ? encyclopediaFish : encyclopediaInsects);
-  const records = $derived(encyclopediaRecords(category));
+  let selected = $state<LoungeEncyclopediaKind>("carp");
+  const kinds = $derived(category === "monsters" ? encyclopediaMonsters : category === "fish" ? encyclopediaFish : encyclopediaInsects);
+  const records = $derived(encyclopedia[category] as Partial<Record<LoungeEncyclopediaKind, LoungeEncyclopediaDisplayRecord>>);
   const count = $derived(kinds.filter((kind) => records[kind]).length);
-  const label = $derived(category === "fish" ? "물고기" : "곤충");
-  const species = $derived(category === "fish" ? describeFish(selected as LoungeFishKind) : describeInsect(selected as LoungeInsectKind));
+  const label = $derived(category === "monsters" ? "몬스터" : category === "fish" ? "물고기" : "곤충");
+  const species = $derived(describe(selected));
   const record = $derived(records[selected]);
 
   $effect(() => {
@@ -26,13 +29,18 @@
     else if (!open && dialog.open) dialog.close();
   });
   function chooseCategory(value: string) {
-    category = value === "insects" ? "insects" : "fish";
-    selected = category === "fish" ? "carp" : "caterpillar";
+    category = value === "monsters" ? "monsters" : value === "insects" ? "insects" : "fish";
+    selected = category === "monsters" ? "hornRabbit" : category === "fish" ? "carp" : "caterpillar";
   }
+  function describe(kind: LoungeEncyclopediaKind) { return category === "monsters" ? describeMonster(kind as LoungeMonsterKind) : category === "fish" ? describeFish(kind as LoungeFishKind) : describeInsect(kind as LoungeInsectKind); }
+  function summary(found?: LoungeEncyclopediaDisplayRecord) { return !found ? "미발견" : "defeatedAt" in found ? "처치 완료" : fishLength(found.sizeCm); }
+  function discovered(value: string) { return Object.keys(encyclopedia[value as LoungeCollectionCategory]).length; }
   function tabs(event: KeyboardEvent) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    chooseCategory(event.key === "Home" ? "fish" : event.key === "End" ? "insects" : category === "fish" ? "insects" : "fish");
+    const index = settings.categories.findIndex((tab) => tab.id === category);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? settings.categories.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + settings.categories.length) % settings.categories.length;
+    chooseCategory(settings.categories[next].id);
     dialog?.querySelector<HTMLButtonElement>(`#encyclopedia-tab-${category}`)?.focus();
   }
 </script>
@@ -42,7 +50,7 @@
   <header class="encyclopedia-header"><div><h2 id="encyclopedia-title">도감</h2><p>{count === 6 ? `${label} 도감을 완성했어요.` : `${label} ${count} / 6종`}</p></div><button type="button" class="game-tool" aria-label="도감 닫기" onclick={onClose}>×</button></header>
   <div class="encyclopedia-tabs" role="tablist" aria-label="도감 종류">
     {#each settings.categories as tab}
-      <button type="button" role="tab" id={`encyclopedia-tab-${tab.id}`} aria-controls="encyclopedia-panel" aria-selected={category === tab.id} tabindex={category === tab.id ? 0 : -1} onkeydown={tabs} onclick={() => chooseCategory(tab.id)}>{tab.name}<span>{tab.id === "fish" ? encyclopediaFish.filter((kind) => encyclopedia.fish[kind]).length : encyclopediaInsects.filter((kind) => encyclopedia.insects[kind]).length}/6</span></button>
+      <button type="button" role="tab" id={`encyclopedia-tab-${tab.id}`} aria-controls="encyclopedia-panel" aria-selected={category === tab.id} tabindex={category === tab.id ? 0 : -1} onkeydown={tabs} onclick={() => chooseCategory(tab.id)}>{tab.name}<span>{discovered(tab.id)}/6</span></button>
     {/each}
   </div>
   <section role="tabpanel" id="encyclopedia-panel" aria-labelledby={`encyclopedia-tab-${category}`} tabindex="0" class="encyclopedia-panel">
@@ -53,25 +61,26 @@
       <div class="encyclopedia-content">
         <div class="encyclopedia-grid" aria-label={`${label} 6종`}>
           {#each kinds as kind}
-            {@const item = category === "fish" ? describeFish(kind as LoungeFishKind) : describeInsect(kind as LoungeInsectKind)}
+            {@const item = describe(kind)}
             {@const found = records[kind]}
             <button type="button" class="encyclopedia-entry" class:undiscovered={!found} class:selected={selected === kind} aria-pressed={selected === kind}
-              aria-label={`${item.name}, ${found ? `최대 ${fishLength(found.sizeCm)}` : "미발견"}`} aria-describedby={selected === kind ? "encyclopedia-detail" : undefined}
+              aria-label={`${item.name}, ${summary(found)}`} aria-describedby={selected === kind ? "encyclopedia-detail" : undefined}
               onpointerenter={(event) => { if (event.pointerType !== "touch") selected = kind; }} onfocus={() => selected = kind} onclick={() => selected = kind}>
-              <span class="encyclopedia-icon">{#if category === "fish"}<FishIcon kind={kind as LoungeFishKind} />{:else}<InsectIcon kind={kind as LoungeInsectKind} />{/if}</span><strong>{item.name}</strong><small>{found ? fishLength(found.sizeCm) : "미발견"}</small>
+              <span class="encyclopedia-icon">{#if category === "monsters"}<MonsterIcon kind={kind as LoungeMonsterKind} />{:else if category === "fish"}<FishIcon kind={kind as LoungeFishKind} />{:else}<InsectIcon kind={kind as LoungeInsectKind} />{/if}</span><strong>{item.name}</strong><small>{summary(found)}</small>
             </button>
           {/each}
         </div>
         <aside id="encyclopedia-detail" class="encyclopedia-detail" class:undiscovered={!record} aria-live="polite">
-          <div class="encyclopedia-portrait">{#if category === "fish"}<FishIcon kind={selected as LoungeFishKind} />{:else}<InsectIcon kind={selected as LoungeInsectKind} />{/if}</div>
+          <div class="encyclopedia-portrait">{#if category === "monsters"}<MonsterIcon kind={selected as LoungeMonsterKind} />{:else if category === "fish"}<FishIcon kind={selected as LoungeFishKind} />{:else}<InsectIcon kind={selected as LoungeInsectKind} />{/if}</div>
           <span class="encyclopedia-grade">{species.grade}등급</span><h3>{species.name}</h3>
-          {#if record}<dl><dt>최대 기록</dt><dd>{fishLength(record.sizeCm)}</dd></dl><time datetime={new Date(record.caughtAt).toISOString()}>{new Date(record.caughtAt).toLocaleDateString("ko-KR")} 포획</time>
+          {#if record && "defeatedAt" in record}<dl><dt>체력</dt><dd>{describeMonster(selected as LoungeMonsterKind).hp}</dd></dl><time datetime={new Date(record.defeatedAt).toISOString()}>{new Date(record.defeatedAt).toLocaleDateString("ko-KR")} 처치</time>
+          {:else if record && "sizeCm" in record}<dl><dt>최대 기록</dt><dd>{fishLength(record.sizeCm)}</dd></dl><time datetime={new Date(record.caughtAt).toISOString()}>{new Date(record.caughtAt).toLocaleDateString("ko-KR")} 포획</time>
           {:else}<p>아직 만나지 못했어요.</p>{/if}
         </aside>
       </div>
     {/if}
   </section>
-  <footer class="encyclopedia-footer"><div role="status">{#if encyclopedia.error}<span>{encyclopedia.error}</span><button type="button" onclick={retryEncyclopedia}>다시 시도</button>{:else if encyclopedia.saving}기록을 저장하는 중…{:else if encyclopedia.updatedAt}기록이 저장됐어요.{/if}</div><p>7일 동안 새로 잡은 기록이 없으면 도감이 초기화돼요.</p></footer>
+  <footer class="encyclopedia-footer"><div role="status">{#if encyclopedia.error}<span>{encyclopedia.error}</span><button type="button" onclick={retryEncyclopedia}>다시 시도</button>{:else if encyclopedia.saving}기록을 저장하는 중…{:else if encyclopedia.updatedAt}기록이 저장됐어요.{/if}</div><p>7일 동안 새 기록이 없으면 도감이 초기화돼요.</p></footer>
 </dialog>
 
 <style>

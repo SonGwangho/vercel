@@ -1,4 +1,8 @@
 import { LoungeInsectModels } from "./insect-models";
+import { LoungeMonsterModels } from "./monster-models";
+import characterModel from "../assets/data/lounge/character-model.json";
+import { describeMonster, monsterPositionAt, monsterPunchRange, monsterRules } from "./monsters";
+import type { LoungeMonsterVisual } from "$lib/types/LoungeMonster";
 import { describeInsect, insectHeight, insectHeldScale, insectPositionAt, insectRules } from "./insects";
 import type { LoungeInsectVisual } from "$lib/types/LoungeInsect";
 import * as THREE from "three";
@@ -49,6 +53,8 @@ export class LoungeScene implements LoungeSceneController {
   private fishModels = new LoungeFishModels();
   private insectModels = new LoungeInsectModels();
   private insects = new Map<string, LoungeInsectVisual>();
+  private monsterModels: LoungeMonsterModels;
+  private monsters = new Map<string, LoungeMonsterVisual>();
   private actors = new Map<string, LoungeSceneActor>();
   private actorIds: string[] = [];
   private foods = new Map<string, LoungeSceneFood>();
@@ -91,6 +97,8 @@ export class LoungeScene implements LoungeSceneController {
   private suppressClick = false;
 
   constructor(private host: HTMLDivElement, private options: LoungeSceneOptions, private characterAsset: GLTF) {
+    const characterHeight = new THREE.Box3().setFromObject(characterAsset.scene).getSize(new THREE.Vector3()).y * characterModel.scale;
+    this.monsterModels = new LoungeMonsterModels(Number.isFinite(characterHeight) && characterHeight > 0 ? characterHeight : 1.5);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance", stencil: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -387,6 +395,36 @@ export class LoungeScene implements LoungeSceneController {
       group.scale.setScalar(species.fieldScale * (.85 + .3 * (insect.sizeCm - species.minCm) / Math.max(1, species.maxCm - species.minCm))); this.scene.add(group);
       this.insects.set(insect.id, { group, insect, point: insectPositionAt(insect, now), facing: insect.seed });
     }
+    const monsterIds = new Set((snapshot.monsters ?? []).map((monster) => monster.id));
+    for (const [id, visual] of this.monsters) if (!monsterIds.has(id)) {
+      this.burst(visual.point, 0xe7c98c, 24, 1.2);
+      visual.label.remove(); this.monsterModels.release(visual.group); this.monsters.delete(id);
+    }
+    for (const monster of snapshot.monsters ?? []) {
+      let visual = this.monsters.get(monster.id);
+      if (!visual) {
+        const group = this.monsterModels.create(monster.kind); group.userData.monsterId = monster.id; this.scene.add(group);
+        const label = document.createElement("button"); label.type = "button"; label.className = "scene-monster-label"; label.dataset.sceneMonster = monster.id;
+        const name = document.createElement("strong"), health = document.createElement("span"), track = document.createElement("span"), bar = document.createElement("i");
+        name.textContent = `${describeMonster(monster.kind).grade} · ${describeMonster(monster.kind).name}`;
+        health.className = "scene-monster-health"; track.className = "scene-monster-track"; track.setAttribute("aria-hidden", "true"); track.appendChild(bar);
+        label.append(name, health, track); this.overlay.appendChild(label);
+        label.addEventListener("keydown", (event) => {
+          if (!["Enter", " ", "ContextMenu"].includes(event.key) || event.repeat || event.isComposing) return;
+          event.preventDefault(); event.stopPropagation(); const rect = label.getBoundingClientRect();
+          this.options.onContext({ kind: "monster", id: monster.id, x: rect.right, y: rect.bottom });
+        });
+        const materials = new Set<THREE.MeshStandardMaterial>();
+        group.traverse((object) => { if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) materials.add(object.material); });
+        visual = { monster, group, point: monsterPositionAt(monster, now), facing: .6, label, health, bar, materials: [...materials] };
+        this.monsters.set(monster.id, visual);
+      } else {
+        if (monster.hp < visual.monster.hp) this.burst(monsterPositionAt(monster, now), 0xffdba8, 7, .5, describeMonster(monster.kind).scale * .45);
+        visual.monster = monster;
+      }
+      visual.bar.style.transform = `scaleX(${monster.hp / monster.maxHp})`;
+      visual.label.setAttribute("aria-label", `${describeMonster(monster.kind).name}, ${describeMonster(monster.kind).grade}등급, 체력 ${monster.hp}/${monster.maxHp}. 우클릭 또는 Space로 펀치`);
+    }
     this.lastOverlay = 0;
   }
 
@@ -444,7 +482,8 @@ export class LoungeScene implements LoungeSceneController {
     const social = action?.kind === "handshake" || action?.kind === "hug" || action?.kind === "give";
     const paired = Boolean(social && action && peerAction?.kind === action.kind && peerAction.peerId === player.id
       && peerAction.startedAt === action.startedAt && peerAction.endsAt > now);
-    const peerPosition = peer ? positionAt(peer, now) : null;
+    const monsterPeer = action?.peerId ? this.monsters.get(action.peerId)?.monster : undefined;
+    const peerPosition = peer ? positionAt(peer, now) : monsterPeer ? monsterPositionAt(monsterPeer, now) : null;
     if (self && this.localMove && (stunned || serverBusy)) this.localMove = null;
     const motion = self && this.localMove ? this.localMove : player.move;
     const position = predicted && !serverBusy && !stunned ? this.prediction!.point : positionAt({ move: motion }, now);
@@ -628,7 +667,7 @@ export class LoungeScene implements LoungeSceneController {
     const now = this.options.getNow();
     const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
-    const active = [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    const active = [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now || monster.attack || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
     if (at - this.lastFrame < 1000 / (active ? 60 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
@@ -680,6 +719,32 @@ export class LoungeScene implements LoungeSceneController {
       }
       visual.point = point; group.position.set(worldX(point.x), insectHeight(insect, now, this.reducedMotion), worldZ(point.y)); group.rotation.y = visual.facing;
       this.insectModels.animate(group, insect.kind, now + insect.seed * 100, this.reducedMotion, moving);
+    }
+    for (const visual of this.monsters.values()) {
+      const { monster, group } = visual;
+      const point = monsterPositionAt(monster, now);
+      const moving = monster.move.endsAt > now && monster.move.startedAt <= now;
+      const attack = monster.attack;
+      const winding = attack ? Math.max(0, Math.min(1, (now - attack.startedAt) / monsterRules.windupMs)) * Number(now < attack.startedAt + monsterRules.windupMs) : 0;
+      const dx = attack ? attack.to.x - attack.from.x : monster.move.to.x - monster.move.from.x, dy = attack ? attack.to.y - attack.from.y : monster.move.to.y - monster.move.from.y;
+      if (Math.hypot(dx, dy) > 1) {
+        const desired = Math.atan2(dx, dy);
+        visual.facing += Math.atan2(Math.sin(desired - visual.facing), Math.cos(desired - visual.facing)) * ease(attack ? 24 : 12, delta);
+      }
+      visual.point = point;
+      const floating = monster.kind === "easternDragon" && !this.reducedMotion ? Math.sin(now / 600) * .055 : 0;
+      group.position.set(worldX(point.x), .025 + floating, worldZ(point.y)); group.rotation.y = visual.facing;
+      if (!this.reducedMotion && winding) { group.position.x -= Math.sin(visual.facing) * winding * .12; group.position.z -= Math.cos(visual.facing) * winding * .12; }
+      this.monsterModels.animate(group, monster.kind, now, moving, winding, this.reducedMotion);
+      const flash = Math.max(0, 1 - (now - monster.lastHitAt) / 160);
+      for (const material of visual.materials) { material.emissive.setHex(0xffa95c); material.emissiveIntensity = flash * .65; }
+      visual.label.classList.toggle("winding", winding > 0);
+      const status = `${monster.hp} / ${monster.maxHp}${winding ? " · 돌진 준비" : ""}`;
+      if (visual.health.textContent !== status) visual.health.textContent = status;
+      this.project.set(group.position.x, group.position.y + Number(group.userData.height) + .15, group.position.z).project(this.camera);
+      const x = (this.project.x * .5 + .5) * this.width, y = (-this.project.y * .5 + .5) * this.height;
+      visual.label.hidden = this.project.z < -1 || this.project.z > 1 || x < -80 || x > this.width + 80 || y < -60 || y > this.height + 60;
+      visual.label.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-100%)`;
     }
     if (this.marker.visible) {
       const life = (now - this.markerAt) / 850;
@@ -750,6 +815,12 @@ export class LoungeScene implements LoungeSceneController {
       if (gap <= insectRules.captureRange && gap < nearest) { nearest = gap; chosen = { kind: "insect", id: visual.insect.id }; point = visual.point; }
     }
     const shoreGap = distance(self.point, lakeCenter) - lake.radius * 100;
+    for (const visual of this.monsters.values()) {
+      const gap = distance(self.point, visual.point);
+      if (gap <= monsterPunchRange(visual.monster) && gap - describeMonster(visual.monster.kind).radius < nearest) {
+        nearest = Math.max(0, gap - describeMonster(visual.monster.kind).radius); chosen = { kind: "monster", id: visual.monster.id }; point = visual.point;
+      }
+    }
     if (canFishFrom(self.point) && shoreGap < nearest) {
       chosen = { kind: "lake", id: "lake" };
       const radius = lake.radius * 100 / distance(self.point, lakeCenter);
@@ -782,14 +853,16 @@ export class LoungeScene implements LoungeSceneController {
   private pick(event: { clientX: number; clientY: number; target: EventTarget | null }): LoungeScenePick | null {
     const label = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-player]") : null;
     if (label?.dataset.scenePlayer) return { kind: "player", id: label.dataset.scenePlayer };
+    const monsterLabel = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-monster]") : null;
+    if (monsterLabel?.dataset.sceneMonster) return { kind: "monster", id: monsterLabel.dataset.sceneMonster };
     this.ray(event);
     const foodObjects = [...this.foods.values()].filter((food) => food.group.visible).map((food) => food.group);
     const insectObjects = [...this.insects.values()].filter((visual) => visual.group.visible && visual.insect.expiresAt > this.options.getNow()).map((visual) => visual.group);
-    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects], true);
+    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects, ...[...this.monsters.values()].map((visual) => visual.group)], true);
     for (const hit of hits) {
       if (!hit.object.visible) continue;
       let object: THREE.Object3D | null = hit.object;
-      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; object = object.parent; }
+      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId }; object = object.parent; }
     }
     if (this.camp && this.raycaster.intersectObject(this.camp.lake).length) return { kind: "lake", id: "lake" };
     return null;
@@ -820,7 +893,7 @@ export class LoungeScene implements LoungeSceneController {
     const person = target?.kind === "player" ? this.actors.get(target.id)?.player : null;
     const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
-      : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "lake" ? "호수" : "";
+      : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private pointerLeave = () => {
@@ -861,6 +934,8 @@ export class LoungeScene implements LoungeSceneController {
     }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
+    for (const visual of this.monsters.values()) this.monsterModels.release(visual.group);
+    this.monsterModels.dispose(); this.monsters.clear();
     this.fishModels.dispose(); this.insectModels.dispose();
     this.camp?.dispose();
     this.renderer.renderLists.dispose(); this.renderer.dispose(); this.renderer.domElement.remove(); this.overlay.remove();

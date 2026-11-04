@@ -1,4 +1,6 @@
 import { applyInsectCommand, maintainInsects, nextInsectEvent } from "./insects";
+import { hibernateMonsters, maintainMonsters, nextMonsterEvent, punchMonster } from "./monsters";
+import { monsterRules } from "../../lounge/monsters";
 import { arrangeSocialPlayers } from "./interaction";
 import { applyFishing, isFishingCommand } from "./fishing";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -8,6 +10,7 @@ import { ambientFoodCount, dropHeldFood, groundFoodsAt } from "./food";
 import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "../../lounge/shared";
 import type { LoungeActionKind, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer } from "../../types/Lounge";
 import type { LoungeReplica } from "../../types/LoungeSocket";
+import type { LoungeMonsterReward } from "../../types/LoungeMonster";
 
 export class LoungeError extends Error {
   constructor(message: string, public status = 409) { super(message); }
@@ -75,14 +78,15 @@ function maintainRoom(state: LoungeRoomState, now: number) {
     changed = true;
   }
   changed = maintainInsects(state, now) || changed;
+  changed = maintainMonsters(state, now) || changed;
   return changed;
 }
 
 function snapshot(channelId: string, revision: number, state: LoungeRoomState, now: number): LoungeSnapshot {
-  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, lastMoveCommandId: _moveId, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
+  const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, encyclopediaHash: _book, lastMonsterPunchAt: _punch, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, lastMoveCommandId: _moveId, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
-    players, foods: state.foods, insects: state.insects ?? [], requests: state.requests,
+    players, foods: state.foods, insects: state.insects ?? [], monsters: (state.monsters ?? []).map(({ contributors: _contributors, ...monster }) => monster), requests: state.requests,
     messages: state.messages, notices: state.notices
   };
 }
@@ -171,6 +175,19 @@ export class MemoryLounge {
   restore(replica: LoungeReplica) { this.state = structuredClone(replica.state); this.revision = replica.revision; this.epoch = replica.epoch; this.maintenanceAt = 0; }
   replica(): LoungeReplica { return { channelId: this.channelId, revision: this.revision, epoch: this.epoch, state: structuredClone(this.state) }; }
   snapshot(): LoungeSnapshot { return { ...snapshot(this.channelId, this.revision, this.state, Date.now()), epoch: this.epoch }; }
+  hibernate() {
+    if (hibernateMonsters(this.state, Date.now())) { this.revision += 1; this.maintenanceAt = 0; }
+  }
+  acknowledgeMonsterRewards(rewards: LoungeMonsterReward[]) {
+    const completed = new Set(rewards.map((reward) => `${reward.id}:${reward.tokenHash}`));
+    this.state.monsterRewards = (this.state.monsterRewards ?? []).filter((reward) => !completed.has(`${reward.id}:${reward.tokenHash}`));
+    for (const player of this.state.players) {
+      const times = rewards.filter((reward) => reward.tokenHash === player.encyclopediaHash).map((reward) => reward.defeatedAt);
+      if (times.length) player.monsterBookUpdatedAt = Math.max((player.monsterBookUpdatedAt ?? 0) + 1, ...times);
+      player.monsterBookPending = this.state.monsterRewards.some((reward) => reward.tokenHash === player.encyclopediaHash);
+    }
+    this.revision += 1; this.maintenanceAt = 0;
+  }
   read(session: LoungeSession) { return this.touch(session, false); }
   private mutate(mutation: LoungeRoomMutation) {
     const next = structuredClone(this.state); const now = Date.now();
@@ -184,7 +201,7 @@ export class MemoryLounge {
     // Rendering and interpolation run in the browser. Only timed game transitions need
     // server maintenance; avoid cloning the room and chat history twice a second at rest.
     this.maintenanceAt = Math.min(
-      Infinity, nextInsectEvent(this.state, Date.now()),
+      Infinity, nextInsectEvent(this.state, Date.now()), nextMonsterEvent(this.state, Date.now()),
       ...(this.state.players.length ? [this.state.lastFoodAt + loungeRules.foodIntervalMs] : []),
       ...this.state.players.flatMap((player) => [player.lastSeenAt + loungeRules.disconnectGraceMs, (player.lastActivityAt ?? player.joinedAt) + loungeRules.playerTimeoutMs, player.action?.endsAt ?? Infinity]),
       ...this.state.requests.map((request) => request.expiresAt),
@@ -203,6 +220,7 @@ export class MemoryLounge {
   join(input: LoungeJoinInput, joinToken?: string): LoungeJoinResult {
   if (!input || typeof input.channelId !== "string" || typeof input.nickname !== "string") throw new LoungeError("닉네임과 채널을 선택해 주세요.", 400);
   if (joinToken !== undefined && !/^[a-f0-9]{64}$/.test(joinToken)) throw new LoungeError("올바르지 않은 입장 요청입니다.", 400);
+  if (input.encyclopediaToken !== undefined && (typeof input.encyclopediaToken !== "string" || !/^[a-f0-9]{64}$/.test(input.encyclopediaToken))) throw new LoungeError("도감 정보를 다시 불러와 주세요.", 400);
   const channel = channelFor(input.channelId);
   // A lost join response can be retried, including after reconnecting to another instance.
   const existing = joinToken && this.state.players.find((player) => player.tokenHash === tokenHash(joinToken));
@@ -222,13 +240,12 @@ export class MemoryLounge {
       throw new LoungeError("이 채널에서 사용 중인 닉네임입니다. 다른 이름을 입력해 주세요.");
     }
     if (!state.players.length) {
-      state.messages = []; state.requests = []; state.notices = []; state.appliedCommands = [];
-      state.foods = [];
       state.lastFoodAt = now;
+      state.lastMonsterSpawnAt = now;
     }
     const point = { x: loungeWorld.width / 2 + (Math.random() - 0.5) * 300, y: loungeWorld.height / 2 + 240 + Math.random() * 160 };
     state.players.push({
-      id: session.playerId, nickname, color, appearance, tokenHash: tokenHash(token),
+      id: session.playerId, nickname, color, appearance, tokenHash: tokenHash(token), encyclopediaHash: input.encyclopediaToken ? tokenHash(input.encyclopediaToken) : undefined,
       move: { from: point, to: point, startedAt: now, endsAt: now },
       inventory: [], heldFoodId: null, action: null, pendingRequestId: null, stunnedUntil: 0,
       joinedAt: now, lastSeenAt: now, lastActivityAt: now, lastCommandAt: 0, lastChatAt: 0
@@ -244,14 +261,24 @@ export class MemoryLounge {
     const player = authorize(state, session);
     if (command.type === "move" && player.lastMoveCommandId === command.commandId) return false;
     if (state.appliedCommands.some((item) => item.id === command.commandId && item.playerId === player.id)) return false;
+    if (command.type === "bindEncyclopedia") {
+      if (typeof command.token !== "string" || !/^[a-f0-9]{64}$/.test(command.token)) throw new LoungeError("도감 정보를 다시 불러와 주세요.", 400);
+      const hash = tokenHash(command.token);
+      if (player.encyclopediaHash === hash) return false;
+      player.encyclopediaHash = hash; return true;
+    }
     if (command.type === "leave") {
       state.players = state.players.filter((item) => item.id !== player.id);
       for (const request of [...state.requests]) if (request.fromId === player.id || request.toId === player.id) releaseRequest(state, request);
       notice(state, `${player.nickname} 님이 나갔어요.`, now);
+      maintainMonsters(state, now);
       return true;
     }
     requireAwake(player, now);
-    if (command.type === "collectInsect" || command.type === "releaseInsect") {
+    if (command.type === "punchMonster") {
+      const reason = punchMonster(state, player, command.monsterId, now);
+      if (reason) throw new LoungeError(reason);
+    } else if (command.type === "collectInsect" || command.type === "releaseInsect") {
       const reason = applyInsectCommand(state, player, command, now, this.secret);
       if (reason) throw new LoungeError(reason);
     } else if (isFishingCommand(command)) {
@@ -286,10 +313,12 @@ export class MemoryLounge {
       requireAvailable(target, now);
       requireNear(player, positionAt(target, now), now, interactionRangeFor(command.kind));
       if (command.kind === "punch") {
+        if ((target.stunImmuneUntil ?? 0) > now) throw new LoungeError("상대가 방금 기절에서 회복했어요. 잠시 후 다시 시도해 주세요.");
         const dropped = dropHeldFood(state, target, player, now);
         beginAction(player, "punch", 650, now, target.id);
         beginAction(target, "hit", loungeRules.stunMs, now, player.id);
         target.stunnedUntil = now + loungeRules.stunMs;
+        target.stunImmuneUntil = target.stunnedUntil + monsterRules.stunImmunityMs;
         notice(state, dropped ? `${player.nickname} 님의 펀치! ${target.nickname} 님이 ${foodName(dropped.kind)} 떨어뜨렸어요.` : `${player.nickname} 님의 펀치! ${target.nickname} 님이 잠깐 기절했어요.`, now);
       } else {
         const food = command.kind === "give" ? player.inventory.find((item) => item.id === command.foodId) : undefined;

@@ -1,6 +1,7 @@
 import { Storage } from "$lib/utils/Storage";
 import type { LoungeCommand, LoungeJoinInput, LoungeProfile, LoungeSession, LoungeSnapshot } from "$lib/types/Lounge";
 import { loungeSocket } from "./loungeSocket";
+import { encyclopediaIdentity } from "./encyclopedia.svelte.js";
 export { LoungeClientError } from "./loungeError";
 export { loungeSocket } from "./loungeSocket";
 
@@ -16,7 +17,8 @@ export async function loadLoungeProfile() {
 }
 
 export async function joinLoungeChannel(input: LoungeJoinInput) {
-  const result = await loungeSocket.join(input);
+  const encyclopediaToken = await encyclopediaIdentity().catch(() => undefined);
+  const result = await loungeSocket.join({ ...input, encyclopediaToken });
   sessions.set(input.channelId, result.session);
   snapshots.set(input.channelId, result.snapshot);
   // An unavailable browser database must not strand a successfully joined player.

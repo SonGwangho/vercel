@@ -1,13 +1,15 @@
 import { Storage } from "$lib/utils/Storage";
 import settings from "$lib/assets/data/lounge/encyclopedia.json";
+import { monsterKinds } from "$lib/lounge/monsters";
 import type { LoungeInsectCatch, LoungeInsectKind } from "$lib/types/LoungeInsect";
 import type { LoungeFishCatch, LoungeFishKind, LoungeSession } from "$lib/types/Lounge";
-import type { LoungeEncyclopediaPending, LoungeEncyclopediaProfile, LoungeEncyclopediaState, LoungeCollectionCategory, LoungeEncyclopediaEntries } from "$lib/types/LoungeEncyclopedia";
+import type { LoungeEncyclopediaPending, LoungeEncyclopediaProfile, LoungeEncyclopediaState, LoungeCatchCategory, LoungeEncyclopediaEntries } from "$lib/types/LoungeEncyclopedia";
 
 export const encyclopediaFish = settings.fishKinds as LoungeFishKind[];
 export const encyclopediaInsects = settings.insectKinds as LoungeInsectKind[];
-export function encyclopediaRecords(category: LoungeCollectionCategory): LoungeEncyclopediaEntries { return encyclopedia[category]; }
-export const encyclopedia = $state<LoungeEncyclopediaState>({ fish: {}, insects: {}, updatedAt: null, loading: false, loaded: false, saving: false, error: "" });
+export const encyclopediaMonsters = monsterKinds;
+export function encyclopediaRecords(category: LoungeCatchCategory): LoungeEncyclopediaEntries { return encyclopedia[category]; }
+export const encyclopedia = $state<LoungeEncyclopediaState>({ fish: {}, insects: {}, monsters: {}, updatedAt: null, loading: false, loaded: false, saving: false, error: "" });
 const tokenKey = "lounge.encyclopedia.token";
 const queueKey = "lounge.encyclopedia.pending.";
 let token = "";
@@ -44,8 +46,10 @@ function showPending() {
 }
 
 function apply(profile: LoungeEncyclopediaProfile) {
+  if (profile.updatedAt && encyclopedia.updatedAt && profile.updatedAt < encyclopedia.updatedAt) { showPending(); return; }
   encyclopedia.fish = profile.fish ?? {};
   encyclopedia.insects = profile.insects ?? {};
+  encyclopedia.monsters = profile.monsters ?? {};
   encyclopedia.updatedAt = profile.updatedAt;
   encyclopedia.loaded = true;
   showPending();
@@ -101,7 +105,9 @@ export async function saveEncyclopedia() {
   }
 }
 
-export async function rememberCatch(session: LoungeSession, fish: LoungeFishCatch | LoungeInsectCatch, category: LoungeCollectionCategory = "fish") {
+export async function encyclopediaIdentity() { await initialize(); return token; }
+
+export async function rememberCatch(session: LoungeSession, fish: LoungeFishCatch | LoungeInsectCatch, category: LoungeCatchCategory = "fish") {
   if (!fish.receipt || !fish.caughtAt || seen.has(fish.id) || !(category === "insects" ? settings.insectKinds : settings.fishKinds).includes(fish.kind)) return;
   try {
     await initialize();
@@ -121,7 +127,7 @@ export function startEncyclopedia() {
   const storage = (event: StorageEvent) => {
     if (event.key !== tokenKey || event.newValue === token) return;
     token = ""; opening = null; mutation += 1;
-    encyclopedia.fish = {}; encyclopedia.insects = {}; encyclopedia.updatedAt = null; encyclopedia.loaded = false;
+    encyclopedia.fish = {}; encyclopedia.insects = {}; encyclopedia.monsters = {}; encyclopedia.updatedAt = null; encyclopedia.loaded = false;
     sync();
   };
   sync(); window.addEventListener("online", sync); window.addEventListener("storage", storage);

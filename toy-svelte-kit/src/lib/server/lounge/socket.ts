@@ -44,7 +44,7 @@ export function attachLoungeSockets(server: Server, options: LoungeSocketServerO
       const active = new Set([...members].map((member) => member.session?.channelId).filter((id): id is string => Boolean(id)));
       getRelay().tick();
       for (const id of active) void getRelay().takeOver(id).catch(() => {});
-    }, 500);
+    }, 100);
     if (!heartbeat) heartbeat = setInterval(() => {
       for (const member of members) {
         if (!member.alive) { member.socket.terminate(); continue; }
