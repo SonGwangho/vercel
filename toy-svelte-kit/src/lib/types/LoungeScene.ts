@@ -52,6 +52,7 @@ export type LoungeSceneController = {
   rotate: (delta: number) => void;
   setVisible: (visible: boolean) => void;
   selfScreen: () => LoungePoint;
+  interact: () => void;
   unlockAudio: () => void;
   dispose: () => void;
 };

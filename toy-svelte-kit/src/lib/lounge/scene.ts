@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { actionDuration, clampPosition, foodName, isLoungeEmote, loungeRules, loungeWorld, positionAt } from "./shared";
+import { actionDuration, clampPosition, distance, foodName, isLoungeEmote, loungeRules, loungeWorld, positionAt } from "./shared";
 import { nameLabels, speechBubbles } from "./layout";
 import { normalizeAppearance } from "./appearance";
 import { Campground } from "./campground";
 import { planMove } from "./navigation";
-import { catchLabel, describeFish, fishDisplayLength, fishDisplayOffset, fishLength, fishingMotion, lake, lakeCenter } from "./fishing";
+import { canFishFrom, catchLabel, describeFish, fishDisplayLength, fishDisplayOffset, fishLength, fishingMotion, lake, lakeCenter } from "./fishing";
 import { LoungeFishModels } from "./fish-models";
 import { LoungeCharacter, loadLoungeCharacters } from "./avatar";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
@@ -26,6 +26,7 @@ export class LoungeScene implements LoungeSceneController {
   private camera = new THREE.OrthographicCamera(-8, 8, 5, -5, 0.1, 100);
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
+  private contextPointer: LoungePoint | null = null;
   private dummy = new THREE.Object3D();
   private root = new THREE.Matrix4();
   private grip = new THREE.Matrix4();
@@ -127,6 +128,7 @@ export class LoungeScene implements LoungeSceneController {
     this.host.addEventListener("pointerdown", this.pointerDown);
     this.host.addEventListener("pointerup", this.pointerUp);
     this.host.addEventListener("pointermove", this.pointerMove);
+    this.host.addEventListener("pointerleave", this.pointerLeave);
     this.host.addEventListener("pointercancel", this.cancelHold);
     this.host.addEventListener("contextmenu", this.contextMenu);
     this.host.addEventListener("wheel", this.wheel, { passive: false });
@@ -298,10 +300,12 @@ export class LoungeScene implements LoungeSceneController {
       if (!actor) {
         const label = document.createElement("button"); label.type = "button"; label.className = "scene-name";
         label.dataset.scenePlayer = player.id; label.textContent = player.nickname + (player.id === this.options.selfId ? " · 나" : "");
-        label.title = `${player.nickname} · 우클릭으로 행동`;
+        label.title = `${player.nickname} · 우클릭 / Space로 행동`;
         label.addEventListener("keydown", (event) => {
           if (!["Enter", " ", "ContextMenu"].includes(event.key)) return;
+          if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
           event.preventDefault(); event.stopPropagation();
+          if (event.repeat) return;
           const rect = label.getBoundingClientRect();
           this.options.onContext({ kind: "player", id: player.id, x: rect.right, y: rect.bottom });
         });
@@ -331,7 +335,7 @@ export class LoungeScene implements LoungeSceneController {
       }
       actor.player = player;
       actor.label.title = player.fishHeld && player.lastCatch
-        ? `${player.nickname} · ${catchLabel(player.lastCatch)}` : `${player.nickname} · 우클릭으로 행동`;
+        ? `${player.nickname} · ${catchLabel(player.lastCatch)}` : `${player.nickname} · 우클릭 / Space로 행동`;
       if (player.fishHeld && player.lastCatch) {
         const fish = describeFish(player.lastCatch.kind);
         actor.fishLabel.children[0].textContent = `${fish.grade}등급 · ${fish.name}`;
@@ -675,6 +679,48 @@ export class LoungeScene implements LoungeSceneController {
     return actor ? { x: rect.left + (actor.head.x * 0.5 + 0.5) * this.width, y: rect.top + (-actor.head.y * 0.5 + 0.5) * this.height } : { x: rect.left + this.width / 2, y: rect.top + this.height / 2 };
   }
 
+  interact() {
+    if (this.disposed || this.options.preview || !this.inViewport) return;
+    const self = this.actors.get(this.options.selfId);
+    if (!self) return;
+    this.unlockAudio(); this.cancelHold();
+    if (this.contextPointer) {
+      const { x, y } = this.contextPointer;
+      const element = document.elementFromPoint(x, y);
+      if (element && this.host.contains(element)) {
+        if (element.closest(".scene-speech")) return;
+        const picked = this.pick({ clientX: x, clientY: y, target: element });
+        if (picked) { this.options.onContext({ ...picked, x, y }); return; }
+      }
+    }
+    let chosen: LoungeScenePick = { kind: "player", id: self.player.id };
+    let point = self.point;
+    let nearest = loungeRules.socialRange;
+    for (const actor of this.actors.values()) {
+      if (actor === self) continue;
+      const gap = distance(self.point, actor.point);
+      if (gap <= nearest) { nearest = gap; chosen = { kind: "player", id: actor.player.id }; point = actor.point; }
+    }
+    for (const food of this.foods.values()) {
+      if (!food.group.visible) continue;
+      const gap = distance(self.point, food.point);
+      if (gap <= loungeRules.interactionRange && gap < nearest) {
+        nearest = gap; chosen = { kind: "food", id: food.point.id }; point = food.point;
+      }
+    }
+    const shoreGap = distance(self.point, lakeCenter) - lake.radius * 100;
+    if (canFishFrom(self.point) && shoreGap < nearest) {
+      chosen = { kind: "lake", id: "lake" };
+      const radius = lake.radius * 100 / distance(self.point, lakeCenter);
+      point = { x: lakeCenter.x + (self.point.x - lakeCenter.x) * radius, y: lakeCenter.y + (self.point.y - lakeCenter.y) * radius };
+    }
+    const head = chosen.kind === "player" ? this.actors.get(chosen.id)?.head : null;
+    if (head) this.project.copy(head);
+    else this.project.set(worldX(point.x), .2, worldZ(point.y)).project(this.camera);
+    const rect = this.host.getBoundingClientRect();
+    this.options.onContext({ ...chosen, x: rect.left + (this.project.x * .5 + .5) * this.width, y: rect.top + (-this.project.y * .5 + .5) * this.height });
+  }
+
   setTheme(dark: boolean) {
     if (!this.options.preview) {
       const color = dark ? "#253c3c" : "#566e69";
@@ -708,6 +754,7 @@ export class LoungeScene implements LoungeSceneController {
   }
   private pointerDown = (event: PointerEvent) => {
     if (this.options.preview) return;
+    this.contextPointer = { x: event.clientX, y: event.clientY };
     if (event.target instanceof Element && event.target.closest(".scene-speech")) { this.down = null; return; }
     if (event.button !== 0) return;
     this.unlockAudio(); this.down = { x: event.clientX, y: event.clientY, at: performance.now() }; this.suppressClick = false;
@@ -724,6 +771,7 @@ export class LoungeScene implements LoungeSceneController {
   };
   private pointerMove = (event: PointerEvent) => {
     if (this.options.preview) return;
+    this.contextPointer = { x: event.clientX, y: event.clientY };
     if (this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 8) this.cancelHold();
     if (performance.now() - this.hoverAt < 70) return; this.hoverAt = performance.now();
     const target = this.pick(event);
@@ -732,6 +780,10 @@ export class LoungeScene implements LoungeSceneController {
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
       : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
+  };
+  private pointerLeave = () => {
+    this.contextPointer = null;
+    if (this.hover) { this.hover = ""; this.host.style.cursor = "crosshair"; this.options.onHover(""); }
   };
   private contextMenu = (event: MouseEvent) => {
     if (this.options.preview) { event.preventDefault(); return; }
@@ -752,6 +804,7 @@ export class LoungeScene implements LoungeSceneController {
     if (this.disposed) return; this.disposed = true;
     this.renderer.setAnimationLoop(null); this.observer.disconnect(); this.themeObserver.disconnect(); this.cancelHold();
     this.host.removeEventListener("pointerdown", this.pointerDown); this.host.removeEventListener("pointerup", this.pointerUp); this.host.removeEventListener("pointermove", this.pointerMove);
+    this.host.removeEventListener("pointerleave", this.pointerLeave);
     this.host.removeEventListener("pointercancel", this.cancelHold); this.host.removeEventListener("contextmenu", this.contextMenu); this.host.removeEventListener("wheel", this.wheel);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost); document.removeEventListener("visibilitychange", this.visibility);
     for (const actor of this.actors.values()) {
