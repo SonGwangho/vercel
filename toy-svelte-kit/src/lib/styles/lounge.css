@@ -168,6 +168,8 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
 .scene-name::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--person-color); vertical-align: 1px; }
 .scene-name.mine { color: var(--brand-strong); border-color: var(--brand); }
 .scene-name[hidden] { display: none; }
+.scene-npc-label { position: absolute; left: 0; top: 0; z-index: 1; padding: 3px 10px; border-radius: 5px; background: #eaddb7; color: #343f32; font: 700 12px/18px "Pretendard", "Noto Sans KR", sans-serif; white-space: nowrap; pointer-events: none; }
+.scene-npc-label[hidden] { display: none; }
 .scene-name:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .scene-fish-label { position: absolute; left: 0; top: 0; z-index: 1; display: grid; justify-items: center; gap: 3px; min-width: 122px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--text-strong); pointer-events: none; white-space: nowrap; will-change: transform; }
 .scene-fish-label[hidden] { display: none; }

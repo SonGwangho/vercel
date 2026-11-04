@@ -1,6 +1,7 @@
 import type { LoungeAppearance } from "./LoungeAppearance";
 import type { LoungeFieldInsect, LoungeInsectCatch } from "./LoungeInsect";
 import type { LoungeMonster, LoungeMonsterReward, LoungeStoredMonster } from "./LoungeMonster";
+import type { LoungeNpc } from "./LoungeNpc";
 
 export type LoungePoint = { x: number; y: number };
 export type LoungePairPositions = { first: LoungePoint; second: LoungePoint };
@@ -105,6 +106,7 @@ export type LoungeRoomState = {
   monsters?: LoungeStoredMonster[];
   lastMonsterSpawnAt?: number;
   monstersDormantAt?: number;
+  npc?: LoungeNpc;
   monsterRewards?: LoungeMonsterReward[];
   appliedCommands: { id: string; playerId: string }[];
 };
@@ -120,6 +122,7 @@ export type LoungeSnapshot = {
   foods: LoungeGroundFood[];
   insects?: LoungeFieldInsect[];
   monsters?: LoungeMonster[];
+  npc?: LoungeNpc | null;
   requests: LoungeRequest[];
   messages: LoungeMessage[];
   notices: LoungeNotice[];

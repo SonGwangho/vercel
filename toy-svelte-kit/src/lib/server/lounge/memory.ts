@@ -1,5 +1,6 @@
 import { applyInsectCommand, maintainInsects, nextInsectEvent } from "./insects";
 import { hibernateMonsters, maintainMonsters, nextMonsterEvent, punchMonster } from "./monsters";
+import { hibernateNpc, maintainNpc, nextNpcEvent } from "./npc";
 import { monsterRules } from "../../lounge/monsters";
 import { arrangeSocialPlayers } from "./interaction";
 import { applyFishing, isFishingCommand } from "./fishing";
@@ -79,6 +80,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
   }
   changed = maintainInsects(state, now) || changed;
   changed = maintainMonsters(state, now) || changed;
+  changed = maintainNpc(state, now) || changed;
   return changed;
 }
 
@@ -86,8 +88,8 @@ function snapshot(channelId: string, revision: number, state: LoungeRoomState, n
   const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, encyclopediaHash: _book, lastMonsterPunchAt: _punch, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, lastMoveCommandId: _moveId, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
-    players, foods: state.foods, insects: state.insects ?? [], monsters: (state.monsters ?? []).map(({ contributors: _contributors, ...monster }) => monster), requests: state.requests,
-    messages: state.messages, notices: state.notices
+    players, foods: state.foods, insects: state.insects ?? [], monsters: (state.monsters ?? []).map(({ contributors: _contributors, nextRoamAt: _roam, returning: _returning, ...monster }) => monster), requests: state.requests,
+    messages: state.messages, notices: state.notices, npc: state.npc ? { ...state.npc } : null
   };
 }
 
@@ -176,7 +178,10 @@ export class MemoryLounge {
   replica(): LoungeReplica { return { channelId: this.channelId, revision: this.revision, epoch: this.epoch, state: structuredClone(this.state) }; }
   snapshot(): LoungeSnapshot { return { ...snapshot(this.channelId, this.revision, this.state, Date.now()), epoch: this.epoch }; }
   hibernate() {
-    if (hibernateMonsters(this.state, Date.now())) { this.revision += 1; this.maintenanceAt = 0; }
+    const now = Date.now();
+    const monstersChanged = hibernateMonsters(this.state, now);
+    const npcChanged = hibernateNpc(this.state, now);
+    if (monstersChanged || npcChanged) { this.revision += 1; this.maintenanceAt = 0; }
   }
   acknowledgeMonsterRewards(rewards: LoungeMonsterReward[]) {
     const completed = new Set(rewards.map((reward) => `${reward.id}:${reward.tokenHash}`));
@@ -201,7 +206,7 @@ export class MemoryLounge {
     // Rendering and interpolation run in the browser. Only timed game transitions need
     // server maintenance; avoid cloning the room and chat history twice a second at rest.
     this.maintenanceAt = Math.min(
-      Infinity, nextInsectEvent(this.state, Date.now()), nextMonsterEvent(this.state, Date.now()),
+      Infinity, nextInsectEvent(this.state, Date.now()), nextMonsterEvent(this.state, Date.now()), nextNpcEvent(this.state),
       ...(this.state.players.length ? [this.state.lastFoodAt + loungeRules.foodIntervalMs] : []),
       ...this.state.players.flatMap((player) => [player.lastSeenAt + loungeRules.disconnectGraceMs, (player.lastActivityAt ?? player.joinedAt) + loungeRules.playerTimeoutMs, player.action?.endsAt ?? Infinity]),
       ...this.state.requests.map((request) => request.expiresAt),
@@ -272,6 +277,7 @@ export class MemoryLounge {
       for (const request of [...state.requests]) if (request.fromId === player.id || request.toId === player.id) releaseRequest(state, request);
       notice(state, `${player.nickname} 님이 나갔어요.`, now);
       maintainMonsters(state, now);
+      maintainNpc(state, now);
       return true;
     }
     requireAwake(player, now);

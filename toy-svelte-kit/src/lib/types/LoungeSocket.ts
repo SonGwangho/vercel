@@ -8,6 +8,7 @@ export type LoungeSocketPatch = Pick<LoungeSnapshot, "revision" | "serverNow" | 
   foods?: LoungeSnapshot["foods"]; requests?: LoungeSnapshot["requests"];
   insects?: LoungeSnapshot["insects"];
   monsters?: LoungeSnapshot["monsters"];
+  npc?: LoungeSnapshot["npc"];
   messages?: LoungeSnapshot["messages"]; notices?: LoungeSnapshot["notices"];
   messageChanges?: { added: LoungeSnapshot["messages"]; removed: string[] };
 };

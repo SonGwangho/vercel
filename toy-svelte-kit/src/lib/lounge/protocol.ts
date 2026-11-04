@@ -9,7 +9,7 @@ export function diffLounge(before: LoungeSnapshot | null, next: LoungeSnapshot):
     players: next.players.filter((player) => old.get(player.id) !== JSON.stringify(player)),
     removed: before?.players.filter((player) => !next.players.some((current) => current.id === player.id)).map((player) => player.id) ?? []
   };
-  for (const key of ["foods", "insects", "monsters", "requests", "notices"] as const) if (!before || JSON.stringify(before[key]) !== JSON.stringify(next[key])) Object.assign(patch, { [key]: next[key] });
+  for (const key of ["foods", "insects", "monsters", "npc", "requests", "notices"] as const) if (!before || JSON.stringify(before[key]) !== JSON.stringify(next[key])) Object.assign(patch, { [key]: next[key] });
   if (!before) patch.messages = next.messages;
   else {
     const previous = new Map(before.messages.map((message) => [message.id, message]));

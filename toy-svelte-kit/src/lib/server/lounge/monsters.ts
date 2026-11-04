@@ -15,7 +15,7 @@ export function hibernateMonsters(state: LoungeRoomState, now: number): boolean 
   if (state.monstersDormantAt) return false;
   state.monstersDormantAt = now;
   state.lastMonsterSpawnAt = now;
-  for (const monster of state.monsters ?? []) { stop(monster, now); monster.attack = undefined; monster.targetId = undefined; }
+  for (const monster of state.monsters ?? []) { stop(monster, now); monster.attack = undefined; monster.targetId = undefined; monster.returning = false; }
   return true;
 }
 
@@ -27,18 +27,38 @@ function spawn(state: LoungeRoomState, species: LoungeMonsterSpecies, now: numbe
     if (!clear(point, point) || footprint.some((edge) => !clear(edge, edge)) || state.players.some((player) => distance(positionAt(player, now), point) < species.radius + 160)
       || state.monsters?.some((monster) => distance(monsterPositionAt(monster, now), point) < species.radius + describeMonster(monster.kind).radius + 80)) continue;
     return { id: randomUUID(), kind: species.kind, hp: species.hp, maxHp: species.hp, home: point,
-      move: { from: point, to: point, startedAt: now, endsAt: now }, contributors: [], lastHitAt: 0, nextThinkAt: now, nextAttackAt: now + 1200 };
+      move: { from: point, to: point, startedAt: now, endsAt: now }, contributors: [], lastHitAt: 0, nextThinkAt: now, nextAttackAt: now + 1200, nextRoamAt: now + 1800 };
   }
   return null;
 }
 
-function seek(monster: LoungeStoredMonster, destination: LoungePoint, now: number) {
+function seek(monster: LoungeStoredMonster, destination: LoungePoint, now: number, speedRatio = 1) {
   const species = describeMonster(monster.kind);
   const move = planMove(monsterPositionAt(monster, now), destination, now);
   let length = 0; let point = move.from;
   for (const next of move.path ?? [move.to]) { length += distance(point, next); point = next; }
-  move.endsAt = now + length / species.speed * 1000;
+  move.endsAt = now + length / (species.speed * speedRatio) * 1000;
   monster.move = move;
+}
+
+const roamPause = () => monsterRules.roamPauseMinMs + Math.random() * (monsterRules.roamPauseMaxMs - monsterRules.roamPauseMinMs);
+
+function wander(state: LoungeRoomState, monster: LoungeStoredMonster, now: number) {
+  const from = monsterPositionAt(monster, now), species = describeMonster(monster.kind);
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const margin = loungeWorld.padding + species.radius;
+    const goal = { x: margin + Math.random() * (loungeWorld.width - margin * 2), y: margin + Math.random() * (loungeWorld.height - margin * 2) };
+    const gap = distance(from, goal);
+    if (gap < monsterRules.roamMinDistance || gap > monsterRules.roamMaxDistance || !clear(goal, goal)) continue;
+    const edges = Array.from({ length: 8 }, (_, i) => ({ x: goal.x + Math.cos(i * Math.PI / 4) * species.radius, y: goal.y + Math.sin(i * Math.PI / 4) * species.radius }));
+    if (edges.some((point) => !clear(point, point)) || state.monsters?.some((other) => other.id !== monster.id && distance(monsterPositionAt(other, now), goal) < species.radius + describeMonster(other.kind).radius + 40)) continue;
+    seek(monster, goal, now, monsterRules.roamSpeedRatio);
+    if (distance(monster.move.from, monster.move.to) < 8) continue;
+    monster.home = from;
+    monster.nextRoamAt = monster.move.endsAt + roamPause();
+    return;
+  }
+  monster.nextRoamAt = now + roamPause();
 }
 
 function impact(state: LoungeRoomState, monster: LoungeStoredMonster, now: number) {
@@ -79,7 +99,7 @@ export function maintainMonsters(state: LoungeRoomState, now: number): boolean {
   }
   if (state.monstersDormantAt) {
     state.monstersDormantAt = undefined; state.lastMonsterSpawnAt = now;
-    for (const monster of state.monsters) { monster.nextThinkAt = now; monster.nextAttackAt = now + 1200; }
+    for (const monster of state.monsters) { monster.nextThinkAt = now; monster.nextAttackAt = now + 1200; monster.nextRoamAt = now + roamPause(); monster.returning = false; }
     changed = true;
   }
   if (now - state.lastMonsterSpawnAt >= monsterRules.spawnIntervalMs) {
@@ -104,14 +124,21 @@ export function maintainMonsters(state: LoungeRoomState, now: number): boolean {
     if (now < monster.nextThinkAt) continue;
     monster.nextThinkAt = now + monsterRules.thinkIntervalMs;
     const point = monsterPositionAt(monster, now);
+    if (monster.returning) {
+      if (monster.move.endsAt > now) continue;
+      monster.returning = false; monster.nextRoamAt = now + roamPause(); changed = true;
+    }
     let target = state.players.find((player) => player.id === monster.targetId);
-    if (target && (distance(monster.home, positionAt(target, now)) > monsterRules.leashRange || (species.passive && !monster.lastHitAt))) target = undefined;
-    if (!target && !species.passive) target = state.players.filter((player) => distance(monster.home, positionAt(player, now)) <= monsterRules.leashRange)
-      .sort((a, b) => distance(point, positionAt(a, now)) - distance(point, positionAt(b, now)))
+    if (monster.targetId && (!target || distance(monster.home, positionAt(target, now)) > monsterRules.leashRange || (species.passive && !monster.lastHitAt))) {
+      monster.targetId = undefined; monster.returning = true;
+      seek(monster, monster.home, now); monster.nextRoamAt = monster.move.endsAt + roamPause(); changed = true;
+      continue;
+    }
+    if (!target && !species.passive) target = [...state.players].sort((a, b) => distance(point, positionAt(a, now)) - distance(point, positionAt(b, now)))
       .find((player) => distance(point, positionAt(player, now)) <= monsterRules.aggroRange + species.radius);
-    if (monster.targetId !== target?.id) { monster.targetId = target?.id; changed = true; }
+    if (monster.targetId !== target?.id) { monster.targetId = target?.id; if (target) monster.home = point; changed = true; }
     if (!target) {
-      if (distance(point, monster.home) > 8 && monster.move.endsAt <= now) { seek(monster, monster.home, now); changed = true; }
+      if (now >= (monster.nextRoamAt ?? 0)) { wander(state, monster, now); changed = true; }
       continue;
     }
     const destination = positionAt(target, now);
@@ -151,7 +178,8 @@ export function punchMonster(state: LoungeRoomState, player: LoungeStoredPlayer,
   player.move = { from: point, to: point, startedAt: now, endsAt: now };
   player.action = { id: randomUUID(), kind: "punch", startedAt: now, endsAt: now + monsterRules.punchCooldownMs, peerId: monster.id };
   player.heldFoodId = null; player.fishHeld = false; player.insectHeld = false; player.lastMonsterPunchAt = now;
-  monster.hp = Math.max(0, monster.hp - monsterRules.punchDamage); monster.lastHitAt = now; monster.targetId = player.id;
+  if (!monster.targetId) monster.home = target;
+  monster.hp = Math.max(0, monster.hp - monsterRules.punchDamage); monster.lastHitAt = now; monster.targetId = player.id; monster.returning = false;
   if (!monster.contributors.includes(player.encyclopediaHash)) monster.contributors.push(player.encyclopediaHash);
   if (monster.hp > 0) return null;
   state.monsterRewards ??= [];

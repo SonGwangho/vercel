@@ -1,6 +1,8 @@
 import { LoungeInsectModels } from "./insect-models";
 import { LoungeMonsterModels } from "./monster-models";
 import characterModel from "../assets/data/lounge/character-model.json";
+import npcSettings from "../assets/data/lounge/npc.json";
+import type { LoungeSceneNpc } from "$lib/types/LoungeNpc";
 import { describeMonster, monsterPositionAt, monsterPunchRange, monsterRules } from "./monsters";
 import type { LoungeMonsterVisual } from "$lib/types/LoungeMonster";
 import { describeInsect, insectHeight, insectHeldScale, insectPositionAt, insectRules } from "./insects";
@@ -55,6 +57,7 @@ export class LoungeScene implements LoungeSceneController {
   private insects = new Map<string, LoungeInsectVisual>();
   private monsterModels: LoungeMonsterModels;
   private monsters = new Map<string, LoungeMonsterVisual>();
+  private npc: LoungeSceneNpc | null = null;
   private actors = new Map<string, LoungeSceneActor>();
   private actorIds: string[] = [];
   private foods = new Map<string, LoungeSceneFood>();
@@ -188,7 +191,7 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   private makeShadow() {
-    const shadow = new THREE.InstancedMesh(this.geometry("shadow", () => new THREE.CircleGeometry(1, 20)), this.material("shadow", () => new THREE.MeshBasicMaterial({ color: 0x27392f, transparent: true, opacity: .22, depthWrite: false })), CAPACITY);
+    const shadow = new THREE.InstancedMesh(this.geometry("shadow", () => new THREE.CircleGeometry(1, 20)), this.material("shadow", () => new THREE.MeshBasicMaterial({ color: 0x27392f, transparent: true, opacity: .22, depthWrite: false })), CAPACITY + 1);
     shadow.count = 0; shadow.frustumCulled = false; shadow.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(shadow);
     return shadow;
   }
@@ -395,6 +398,15 @@ export class LoungeScene implements LoungeSceneController {
       group.scale.setScalar(species.fieldScale * (.85 + .3 * (insect.sizeCm - species.minCm) / Math.max(1, species.maxCm - species.minCm))); this.scene.add(group);
       this.insects.set(insect.id, { group, insect, point: insectPositionAt(insect, now), facing: insect.seed });
     }
+    if (!this.options.preview && snapshot.npc) {
+      if (!this.npc) {
+        const visual = new LoungeCharacter(this.characterAsset, normalizeAppearance(npcSettings.appearance));
+        this.scene.add(visual.group);
+        const label = document.createElement("div"); label.className = "scene-npc-label"; label.textContent = npcSettings.label;
+        this.overlay.appendChild(label);
+        this.npc = { npc: snapshot.npc, visual, label, head: new THREE.Vector3(), point: positionAt(snapshot.npc, now), facing: 0 };
+      } else this.npc.npc = snapshot.npc;
+    } else if (this.npc) { this.npc.visual.dispose(); this.npc.label.remove(); this.npc = null; }
     const monsterIds = new Set((snapshot.monsters ?? []).map((monster) => monster.id));
     for (const [id, visual] of this.monsters) if (!monsterIds.has(id)) {
       this.burst(visual.point, 0xe7c98c, 24, 1.2);
@@ -662,13 +674,34 @@ export class LoungeScene implements LoungeSceneController {
     if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
   }
 
+  private drawNpc(now: number, delta: number) {
+    if (!this.npc) return;
+    const npc = this.npc;
+    const point = positionAt(npc.npc, now);
+    const walking = !npc.npc.paused && npc.npc.move.endsAt > now && npc.npc.move.startedAt <= now;
+    const dx = point.x - npc.point.x, dy = point.y - npc.point.y;
+    const desired = walking ? Math.hypot(dx, dy) > .001 ? Math.atan2(dx, dy) : npc.facing : Math.atan2(loungeWorld.width / 2 - point.x, loungeWorld.height / 2 - point.y);
+    npc.facing += Math.atan2(Math.sin(desired - npc.facing), Math.cos(desired - npc.facing)) * ease(12, delta);
+    npc.point = point;
+    npc.visual.group.position.set(worldX(point.x), .025, worldZ(point.y)); npc.visual.group.rotation.y = npc.facing;
+    npc.visual.pose({ now, delta, speed: walking ? npcSettings.speed * SCALE : 0, stunned: false, reducedMotion: this.reducedMotion, action: null, peer: null, carried: null, carryingFish: false });
+    npc.visual.group.updateMatrixWorld(true);
+    npc.visual.label(npc.head); npc.head.project(this.camera);
+    const x = (npc.head.x * .5 + .5) * this.width, y = (-npc.head.y * .5 + .5) * this.height;
+    npc.label.hidden = npc.head.z < -1 || npc.head.z > 1 || x < -40 || x > this.width + 40 || y < -30 || y > this.height + 30;
+    npc.label.style.transform = `translate3d(${x}px,${y - 8}px,0) translate(-50%,-100%)`;
+    this.dummy.position.set(worldX(point.x), .008, worldZ(point.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.35, .27, 1); this.dummy.updateMatrix();
+    this.shadows.setMatrixAt(this.actorIds.length, this.dummy.matrix);
+  }
+
   private frame = (at: number) => {
     if (this.disposed || this.lostContext || document.hidden || !this.inViewport || !this.state) return;
     const now = this.options.getNow();
     const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
-    const active = [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now || monster.attack || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
-    if (at - this.lastFrame < 1000 / (active ? 60 : 24) - 1) return;
+    const ambientMoving = Boolean(this.npc && !this.npc.npc.paused && this.npc.npc.move.endsAt > now) || [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now);
+    const active = [...this.monsters.values()].some(({ monster }) => monster.attack || monster.targetId || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    if (at - this.lastFrame < 1000 / (active ? 60 : ambientMoving ? 30 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
     const self = this.actors.get(this.options.selfId);
@@ -679,7 +712,7 @@ export class LoungeScene implements LoungeSceneController {
     else { this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); }
     this.camera.updateMatrixWorld();
     let stars = 0;
-    this.shadows.count = this.actorIds.length;
+    this.shadows.count = this.actorIds.length + Number(Boolean(this.npc));
     for (let index = 0; index < this.actorIds.length; index += 1) {
       const actor = this.actors.get(this.actorIds[index])!;
       if (this.options.preview) actor.facing += (this.previewFacing - actor.facing) * (this.reducedMotion ? 1 : ease(16, delta));
@@ -690,6 +723,7 @@ export class LoungeScene implements LoungeSceneController {
         this.dummy.rotation.set(0, angle, Math.PI / 4); this.dummy.scale.set(1, 1, 0.4); this.dummy.updateMatrix(); this.stars.setMatrixAt(stars++, this.dummy.matrix);
       }
     }
+    this.drawNpc(now, delta);
     this.stars.count = stars; this.stars.instanceMatrix.needsUpdate = true;
     this.shadows.instanceMatrix.needsUpdate = true;
     for (const [id, food] of this.foods) {
@@ -932,6 +966,7 @@ export class LoungeScene implements LoungeSceneController {
       actor.visual.dispose();
       this.disposeCast(actor);
     }
+    if (this.npc) { this.npc.visual.dispose(); this.npc.label.remove(); this.npc = null; }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
     for (const visual of this.monsters.values()) this.monsterModels.release(visual.group);

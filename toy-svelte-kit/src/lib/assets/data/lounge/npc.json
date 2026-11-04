@@ -1,0 +1,18 @@
+{
+  "id": "campkeeper",
+  "label": "NPC",
+  "speed": 90,
+  "pauseMinMs": 1200,
+  "pauseMaxMs": 3000,
+  "waypoints": [
+    { "x": 0, "y": 310 }, { "x": 230, "y": 230 },
+    { "x": 320, "y": 0 }, { "x": 230, "y": -230 },
+    { "x": 0, "y": -320 }, { "x": -230, "y": -230 },
+    { "x": -320, "y": 0 }, { "x": -230, "y": 230 }
+  ],
+  "appearance": {
+    "hairStyle": "short", "hairColor": "#614638",
+    "topStyle": "longSleeve", "topColor": "#37977b",
+    "bottomStyle": "longPants", "pantsColor": "#c3ae89", "skirtColor": "#c3ae89"
+  }
+}
