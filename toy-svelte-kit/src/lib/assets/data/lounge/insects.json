@@ -1,0 +1,19 @@
+{
+  "spawnIntervalMs": 8000,
+  "lifetimeMs": 30000,
+  "maxFieldInsects": 4,
+  "captureRange": 120,
+  "collectMs": 700,
+  "jumpRange": 150,
+  "jumpDistance": 180,
+  "jumpMs": 420,
+  "jumpCooldownMs": 5000,
+  "species": [
+    { "kind": "caterpillar", "name": "애벌레", "grade": "C", "minCm": 2, "maxCm": 5, "color": "#99b45e", "fieldScale": 0.14 },
+    { "kind": "mantis", "name": "사마귀", "grade": "B", "minCm": 4, "maxCm": 10, "color": "#81a558", "fieldScale": 0.26 },
+    { "kind": "grasshopper", "name": "메뚜기", "grade": "A", "minCm": 3, "maxCm": 7, "color": "#98a84e", "fieldScale": 0.23 },
+    { "kind": "bee", "name": "벌", "grade": "S", "minCm": 1, "maxCm": 3, "color": "#dfb74d", "fieldScale": 0.14 },
+    { "kind": "butterfly", "name": "나비", "grade": "SS", "minCm": 4, "maxCm": 12, "color": "#d79358", "fieldScale": 0.28 },
+    { "kind": "rhinoBeetle", "name": "장수풍뎅이", "grade": "SSS", "minCm": 5, "maxCm": 12, "color": "#775844", "fieldScale": 0.28 }
+  ]
+}

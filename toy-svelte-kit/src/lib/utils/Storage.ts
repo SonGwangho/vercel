@@ -138,6 +138,21 @@ class StorageDB {
         })
     }
 
+    async getByPrefix<T = unknown>(prefix: string): Promise<T[]> {
+        const index = await this.index('readonly')
+        return new Promise((resolve, reject) => {
+            const values: T[] = []
+            const request = index.openCursor(IDBKeyRange.bound(prefix, prefix + '\uffff'))
+            request.onsuccess = () => {
+                const cursor = request.result
+                if (!cursor) { resolve(values); return }
+                values.push((cursor.value as StoredItem).value as T)
+                cursor.continue()
+            }
+            request.onerror = () => reject(request.error)
+        })
+    }
+
     async remove(key: string) {
         await this.deleteByKey(key)
     }

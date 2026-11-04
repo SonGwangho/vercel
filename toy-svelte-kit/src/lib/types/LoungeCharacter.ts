@@ -12,6 +12,7 @@ export type LoungeCharacterPose = {
   peer: Vector3 | null;
   carried: LoungeFoodKind | null | undefined;
   carryingFish: boolean;
+  carryingInsect?: boolean;
 };
 export type LoungeCharacterVisual = {
   group: Group;

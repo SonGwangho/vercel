@@ -224,7 +224,8 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
     const elapsed = action ? Math.max(0, now - action.startedAt) / 1000 : 0;
     const rod = fishingMotion(action, now);
-    const fishPose = state.carryingFish && !state.action ? 1 : state.action?.kind === "fishCatch" ? rod.recovery : 0;
+    const carryingSpecimen = state.carryingFish || state.carryingInsect;
+    const fishPose = carryingSpecimen && !state.action ? 1 : state.action?.kind === "collectInsect" ? smooth(progress, .4, .95) : state.action?.kind === "fishCatch" ? rod.recovery : 0;
     this.fishHold = THREE.MathUtils.damp(this.fishHold, fishPose, 20, delta);
     const windup = rod.windup * (reducedMotion ? .3 : 1);
     const castRelease = rod.release * (reducedMotion ? .35 : 1);
@@ -289,7 +290,7 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       let roll = 0;
       let worldPalm = false;
       let direction: THREE.Vector3 | undefined;
-      if (state.carryingFish && !state.action) {
+      if (carryingSpecimen && !state.action) {
         this.palm.set(side * 4.7, 15, 10);
         armWeight = this.fishHold;
       } else if (peer && paired && ((i === 0 && kind !== "hug") || kind === "hug")) {
@@ -343,6 +344,11 @@ export class LoungeCharacter implements LoungeCharacterVisual {
         this.palm.lerp(this.reach.set(-12.2, 20, -2.9), windup);
         this.palm.lerp(this.reach.set(-6, 16.4, 10), castRelease);
         armWeight = this.release * smooth(elapsed, 0, .24);
+      } else if (kind === "collectInsect") {
+        const lift = smooth(progress, .35, .95);
+        this.palm.set(side * 6.5, i === 0 ? 6.9 : 12, 6.5);
+        this.palm.lerp(this.reach.set(side * 4.7, 15, 10), lift);
+        armWeight = this.release * smooth(progress, 0, .2);
       } else if (kind === "fishCatch") {
         if (i === 0) {
           this.palm.set(-5.5, 14.7, 7.9).lerp(this.reach.set(-12, 19.4, 3.7), pull);

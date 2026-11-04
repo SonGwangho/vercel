@@ -231,6 +231,14 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
 .game-chat-open svg { width: 18px; height: 18px; }
 .game-chat-open kbd { margin-left: 12px; padding: 2px 5px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--muted); font-family: inherit; font-size: 9px; font-weight: 400; }
 .game-self-button i { width: 8px; height: 8px; border-radius: 50%; }
+.game-hud-start { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.game-hud-start .game-channel { min-width: 0; }
+.game-hud-start .game-encyclopedia-button { flex-shrink: 0; }
+.game-encyclopedia-button { display: flex; align-items: center; gap: 8px; min-height: 54px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text-strong); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; pointer-events: auto; }
+.game-encyclopedia-button svg { width: 21px; height: 21px; }
+.game-encyclopedia-button small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.game-encyclopedia-button:hover { border-color: var(--brand); }
+.game-encyclopedia-button:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 .game-hint { padding: 8px 12px; border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; white-space: nowrap; }
 .game-zoom { gap: 1px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .game-chat { display: flex; align-items: center; gap: 12px; width: min(640px, 100%); padding: 8px 10px 8px 18px; border: 1px solid var(--brand); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-float); pointer-events: auto; }
@@ -271,6 +279,7 @@ html[data-theme="dark"] .lounge-game { background: #222b30; }
   .game-consent { max-width: calc(100% - 20px); bottom: calc(var(--game-inset-bottom) + 120px); padding: 14px 16px; gap: 12px; }.game-consent strong { font-size: 13px; }.game-toast { font-size: 11px; }
   .game-help { right: 10px; top: 76px; }.game-stun, .game-action, .game-approach { top: 88px; font-size: 12px; }
 }
+@media (max-width: 760px) { .game-hud { flex-wrap: wrap; }.game-hud-start { width: 100%; justify-content: space-between; }.game-tools { margin-left: auto; }.game-stun, .game-action, .game-approach, .game-help { top: 150px; } }
 @media (max-width: 390px) { .scene-caption { right: 130px; }.scene-caption h2 { font-size: 16px; }.scene-caption p { font-size: 11px; }.scene-bench { width: 90px; }.channel-options label { gap: 8px; padding-inline: 12px; }.channel-count { font-size: 10px; }.color-options { gap: 8px; }.color-options label { width: 40px; height: 40px; }.game-channel { padding-inline: 9px; }.game-live-dot { display: none; } }
 @media (prefers-reduced-motion: reduce) { .game-loading { animation: none; } }
 

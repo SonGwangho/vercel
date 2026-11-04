@@ -1,6 +1,7 @@
 import config from "../assets/data/lounge/config.json";
 import emotes from "../assets/data/lounge/emotes.json";
 import fishingConfig from "../assets/data/lounge/fishing.json";
+import insectConfig from "../assets/data/lounge/insects.json";
 import type { LoungeActionKind, LoungeChannel, LoungeEmoteDefinition, LoungeEmoteKind, LoungeFoodDefinition, LoungePlayer, LoungePoint } from "$lib/types/Lounge";
 
 export const loungeWorld = config.world;
@@ -10,6 +11,7 @@ export const loungeChannels: LoungeChannel[] = config.channels;
 export const loungeFoods = config.foods as LoungeFoodDefinition[];
 export const loungeEmotes = emotes as LoungeEmoteDefinition[];
 export const actionNames: Record<LoungeActionKind, string> = {
+  collectInsect: "채집",
   handshake: "악수", hug: "포옹", give: "음식 건네기", punch: "펀치", hit: "기절", eat: "먹기", pickup: "줍기", fish: "낚시", fishCatch: "물고기 끌어올리기",
   ...(Object.fromEntries(loungeEmotes.map((emote) => [emote.kind, emote.name])) as Record<LoungeEmoteKind, string>)
 };
@@ -19,6 +21,7 @@ export function isLoungeEmote(kind: unknown): kind is LoungeEmoteKind {
 }
 
 export function actionDuration(kind: LoungeActionKind): number {
+  if (kind === "collectInsect") return insectConfig.collectMs;
   if (kind === "fish") return fishingConfig.castMs + fishingConfig.durationMs;
   if (kind === "fishCatch") return fishingConfig.catchMs;
   return loungeEmotes.find((emote) => emote.kind === kind)?.durationMs
@@ -69,7 +72,7 @@ export function distance(a: LoungePoint, b: LoungePoint) {
 
 export function interactionBlock(player: LoungePlayer, now: number): string {
   if (player.stunnedUntil > now) return "기절이 풀릴 때까지 기다려 주세요.";
-  if (player.pendingCatch) return "잡은 물고기를 가방에 넣거나 버려 주세요.";
+  if (player.pendingCatch) return "잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.";
   if (player.action && player.action.endsAt > now) return "진행 중인 행동이 끝나면 할 수 있어요.";
   if (player.pendingRequestId) return "먼저 기다리는 상호작용을 마쳐 주세요.";
   return "";

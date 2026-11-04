@@ -36,7 +36,7 @@ export function attachLoungeSockets(server: Server, options: LoungeSocketServerO
   function getRelay() {
     if (!relay) relay = new LoungeRelay(options.databaseUrl, options.scope, broadcast, () => {
       for (const member of members) member.socket.close(1012, "reconnect");
-    });
+    }, options.secret);
     return relay;
   }
   function start() {

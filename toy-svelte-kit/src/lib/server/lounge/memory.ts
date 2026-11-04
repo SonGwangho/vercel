@@ -1,3 +1,4 @@
+import { applyInsectCommand, maintainInsects, nextInsectEvent } from "./insects";
 import { arrangeSocialPlayers } from "./interaction";
 import { applyFishing, isFishingCommand } from "./fishing";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -67,6 +68,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
     state.lastFoodAt = now;
     changed = true;
   }
+  changed = maintainInsects(state, now) || changed;
   return changed;
 }
 
@@ -74,7 +76,7 @@ function snapshot(channelId: string, revision: number, state: LoungeRoomState, n
   const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, lastMoveCommandId: _moveId, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
-    players, foods: state.foods, requests: state.requests,
+    players, foods: state.foods, insects: state.insects ?? [], requests: state.requests,
     messages: state.messages, notices: state.notices
   };
 }
@@ -112,7 +114,7 @@ function freeze(player: LoungeStoredPlayer, now: number) {
 
 function beginAction(player: LoungeStoredPlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
   freeze(player, now);
-  player.fishHeld = false;
+  player.fishHeld = false; player.insectHeld = false;
   player.action = { id: randomUUID(), kind, startedAt: now, endsAt: now + duration, peerId };
 }
 
@@ -155,7 +157,7 @@ export class MemoryLounge {
   state: LoungeRoomState;
   revision = 0;
   epoch: string = randomUUID();
-  constructor(public channelId: string, replica?: LoungeReplica) {
+  constructor(public channelId: string, replica?: LoungeReplica, private secret = process.env.LOUNGE_SOCKET_SECRET || process.env.DATABASE_URL || "") {
     channelFor(channelId);
     this.state = { players: [], foods: [], requests: [], messages: [], notices: [], lastFoodAt: Date.now(), appliedCommands: [] };
     if (replica) this.restore(replica);
@@ -176,7 +178,7 @@ export class MemoryLounge {
     // Rendering and interpolation run in the browser. Only timed game transitions need
     // server maintenance; avoid cloning the room and chat history twice a second at rest.
     this.maintenanceAt = Math.min(
-      Infinity,
+      Infinity, nextInsectEvent(this.state, Date.now()),
       ...(this.state.players.length ? [this.state.lastFoodAt + loungeRules.foodIntervalMs] : []),
       ...this.state.players.flatMap((player) => [player.lastSeenAt + loungeRules.disconnectGraceMs, (player.lastActivityAt ?? player.joinedAt) + loungeRules.playerTimeoutMs, player.action?.endsAt ?? Infinity]),
       ...this.state.requests.map((request) => request.expiresAt),
@@ -243,11 +245,14 @@ export class MemoryLounge {
       return true;
     }
     requireAwake(player, now);
-    if (isFishingCommand(command)) {
-      const error = applyFishing(player, command, now);
+    if (command.type === "collectInsect" || command.type === "releaseInsect") {
+      const reason = applyInsectCommand(state, player, command, now, this.secret);
+      if (reason) throw new LoungeError(reason);
+    } else if (isFishingCommand(command)) {
+      const error = applyFishing(player, command, now, this.secret);
       if (error) throw new LoungeError(error);
     } else if (command.type === "move") {
-      if (player.pendingCatch) throw new LoungeError("잡은 물고기를 가방에 넣거나 버려 주세요.");
+      if (player.pendingCatch) throw new LoungeError("잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.");
       if (player.action && player.action.endsAt > now) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
       if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
       player.move = planMove(positionAt(player, now), command, now);
@@ -263,7 +268,7 @@ export class MemoryLounge {
       requireAvailable(player, now);
       if (!isLoungeEmote(command.kind)) throw new LoungeError("지원하지 않는 표현이에요.", 400);
       player.heldFoodId = null;
-      player.fishHeld = false;
+      player.fishHeld = false; player.insectHeld = false;
       beginAction(player, command.kind, actionDuration(command.kind), now);
     } else if (command.type === "stopEmote") {
       if (player.action && !isLoungeEmote(player.action.kind)) throw new LoungeError("이 행동은 도중에 멈출 수 없어요.");
@@ -311,7 +316,7 @@ export class MemoryLounge {
       requireAvailable(player, now);
       if (!player.inventory.some((food) => food.id === command.foodId)) throw new LoungeError("가방에 없는 음식이에요.");
       player.heldFoodId = command.foodId;
-      player.fishHeld = false;
+      player.fishHeld = false; player.insectHeld = false;
     } else if (command.type === "stow") {
       requireAvailable(player, now);
       player.heldFoodId = null;

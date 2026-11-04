@@ -1,3 +1,6 @@
+import { LoungeInsectModels } from "./insect-models";
+import { describeInsect, insectHeight, insectHeldScale, insectPositionAt, insectRules } from "./insects";
+import type { LoungeInsectVisual } from "$lib/types/LoungeInsect";
 import * as THREE from "three";
 import { actionDuration, clampPosition, distance, foodName, isLoungeEmote, loungeRules, loungeWorld, positionAt } from "./shared";
 import { nameLabels, speechBubbles } from "./layout";
@@ -44,6 +47,8 @@ export class LoungeScene implements LoungeSceneController {
   private geometries = new Map<string, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.Material>();
   private fishModels = new LoungeFishModels();
+  private insectModels = new LoungeInsectModels();
+  private insects = new Map<string, LoungeInsectVisual>();
   private actors = new Map<string, LoungeSceneActor>();
   private actorIds: string[] = [];
   private foods = new Map<string, LoungeSceneFood>();
@@ -343,6 +348,11 @@ export class LoungeScene implements LoungeSceneController {
         actor.fishLabel.children[0].textContent = `${fish.grade}등급 · ${fish.name}`;
         actor.fishLabel.children[1].textContent = fishLength(player.lastCatch.sizeCm);
       }
+      if (player.insectHeld && player.lastInsect) {
+        const insect = describeInsect(player.lastInsect.kind);
+        actor.fishLabel.children[0].textContent = `${insect.grade}등급 · ${insect.name}`;
+        actor.fishLabel.children[1].textContent = `${player.lastInsect.sizeCm} cm`;
+      }
       actor.appearance = normalizeAppearance(player.appearance, player.color);
       const appearanceKey = JSON.stringify(actor.appearance);
       if (actor.appearanceKey !== appearanceKey) { actor.visual.appearance(actor.appearance); actor.appearanceKey = appearanceKey; }
@@ -364,6 +374,18 @@ export class LoungeScene implements LoungeSceneController {
         this.foods.set(food.id, { group, point: food, createdAt: food.createdAt, phase: Math.random() * TAU });
       }
       if (fresh && now - food.createdAt < 2000) this.burst(food, 0xdab66b, food.droppedFrom ? 8 : 16, 0.8, food.droppedFrom ? 0.75 : 0.15);
+    }
+    const insectIds = new Set((snapshot.insects ?? []).map((insect) => insect.id));
+    for (const [id, visual] of this.insects) if (!insectIds.has(id)) { visual.group.removeFromParent(); this.insects.delete(id); }
+    for (const insect of snapshot.insects ?? []) {
+      const existing = this.insects.get(insect.id);
+      if (existing) { existing.insect = insect; continue; }
+      const group = this.insectModels.create(insect.kind); group.userData.insectId = insect.id;
+      const pick = new THREE.Mesh(this.geometry("insect-hit", () => new THREE.SphereGeometry(1, 8, 6)), this.material("insect-hit", () => new THREE.MeshBasicMaterial({ visible: false })));
+      pick.position.y = .25; group.add(pick);
+      const species = describeInsect(insect.kind);
+      group.scale.setScalar(species.fieldScale * (.85 + .3 * (insect.sizeCm - species.minCm) / Math.max(1, species.maxCm - species.minCm))); this.scene.add(group);
+      this.insects.set(insect.id, { group, insect, point: insectPositionAt(insect, now), facing: insect.seed });
     }
     this.lastOverlay = 0;
   }
@@ -439,7 +461,8 @@ export class LoungeScene implements LoungeSceneController {
     const walking = motion.endsAt > now && !action && !stunned;
     const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
     const holdingFish = Boolean(player.fishHeld && player.lastCatch && !action && !stunned);
-    if (holdingFish) {
+    const holdingInsect = Boolean(player.insectHeld && player.lastInsect && !action && !stunned);
+    if (holdingFish || holdingInsect) {
       this.camera.getWorldDirection(this.viewDirection).negate();
       const desired = Math.atan2(this.viewDirection.x, this.viewDirection.z);
       actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(24, delta);
@@ -465,21 +488,22 @@ export class LoungeScene implements LoungeSceneController {
       || (action.giveRole === "giver" && progress < .5));
     const foodKind = (gift && !giftInHand ? null : action?.foodKind) ?? carried;
     const fish = player.fishHeld && (!action || paired) && !stunned ? player.lastCatch : undefined;
-    const heldKind = fishing ? "rod" : foodKind ?? fish?.kind;
+    const insect = !foodKind && !fish && player.insectHeld && (!action || action.kind === "collectInsect" && progress > .65) && !stunned ? player.lastInsect : undefined;
+    const heldKind = fishing ? "rod" : foodKind ?? fish?.kind ?? insect?.kind;
     const visual = actor.visual;
     visual.group.position.set(worldX(position.x), .025, worldZ(position.y));
     visual.group.rotation.y = actor.facing;
     const speed = walking ? Math.min(loungeWorld.speed * SCALE, Math.hypot(dx, dy) * SCALE / delta) : 0;
     const pairTarget = (paired || action?.kind === "punch") && peerPosition
       ? this.peerTarget.set(worldX(peerPosition.x), .025, worldZ(peerPosition.y)) : null;
-    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried, carryingFish: Boolean(fish) });
-    visual.grip(this.grip, paired && Boolean(carried || fish) && !giftInHand, holdingFish);
+    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried, carryingFish: Boolean(fish), carryingInsect: Boolean(insect) });
+    visual.grip(this.grip, paired && Boolean(carried || fish) && !giftInHand, holdingFish || Boolean(insect));
     this.root.makeRotationY(actor.facing); this.root.setPosition(worldX(position.x), .025, worldZ(position.y));
     this.dummy.position.set(worldX(position.x), .012, worldZ(position.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.40, .29, 1); this.dummy.updateMatrix(); this.shadows.setMatrixAt(index, this.dummy.matrix);
     if (heldKind) {
       if (actor.heldKind !== heldKind) {
         actor.held?.removeFromParent();
-        actor.held = fishing ? this.createRod() : foodKind ? this.createFood(foodKind) : this.createFish(fish!.kind);
+        actor.held = fishing ? this.createRod() : foodKind ? this.createFood(foodKind) : insect ? this.insectModels.create(insect.kind) : this.createFish(fish!.kind);
         actor.held.matrixAutoUpdate = false;
         actor.heldKind = heldKind;
         this.scene.add(actor.held);
@@ -489,10 +513,11 @@ export class LoungeScene implements LoungeSceneController {
       const motionScale = this.reducedMotion ? .3 : 1;
       const rodPitch = (-1.85 * rod.windup + .2 * rod.release - 1.05 * rod.pull * (1 - .57 * rod.recovery)) * motionScale;
       const rodYaw = (-.13 * rod.windup - .28 * rod.pull) * motionScale;
-      this.dummy.rotation.set(fishing ? rodPitch : .25, fishing ? rodYaw : fish && !foodKind ? .12 : 0, eating ? -.2 : 0);
+      this.dummy.rotation.set(fishing ? rodPitch : .25, fishing ? rodYaw : insect ? Math.PI / 2 : fish && !foodKind ? .12 : 0, eating ? -.2 : 0);
       const scale = fishing ? 1 : eating ? Math.max(.05, 1 - progress * .85)
-        : fish && !foodKind ? fishDisplayLength(fish.sizeCm) : .8;
+        : insect ? insectHeldScale(insect.sizeCm) : fish && !foodKind ? fishDisplayLength(fish.sizeCm) : .8;
       this.dummy.scale.setScalar(scale); this.dummy.updateMatrix(); actor.held!.matrix.multiplyMatrices(this.grip, this.dummy.matrix); actor.held!.matrixWorldNeedsUpdate = true;
+      if (insect) this.insectModels.animate(actor.held!, insect.kind, now, this.reducedMotion, false);
       if (fishing && action) this.drawCast(actor, position, action, now);
       if (eating && Math.random() < delta * 12) this.burst(position, 0xe4bf7c, 2, 0.75, 1.27);
     } else if (actor.held) { this.scene.remove(actor.held); actor.held = null; actor.heldKind = null; }
@@ -501,8 +526,8 @@ export class LoungeScene implements LoungeSceneController {
       actor.cast.bobber.visible = false;
       if (actor.cast.fish) actor.cast.fish.visible = false;
     }
-    actor.fishLabel.hidden = !holdingFish || !fish;
-    if (holdingFish && fish && actor.held) {
+    actor.fishLabel.hidden = !(holdingFish && fish || holdingInsect && insect);
+    if ((holdingFish && fish || holdingInsect && insect) && actor.held) {
       this.catchPosition.set(0, -.13, .25).applyMatrix4(actor.held.matrix).project(this.camera);
       actor.fishLabel.style.transform = `translate3d(${(this.catchPosition.x * .5 + .5) * this.width}px,${(-this.catchPosition.y * .5 + .5) * this.height}px,0) translate(-50%,0)`;
     }
@@ -603,7 +628,7 @@ export class LoungeScene implements LoungeSceneController {
     const now = this.options.getNow();
     const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
-    const active = turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    const active = [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
     if (at - this.lastFrame < 1000 / (active ? 60 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
@@ -646,6 +671,19 @@ export class LoungeScene implements LoungeSceneController {
       food.group.position.set(worldX(x), 0.13 + (this.reducedMotion ? 0 : Math.sin(this.elapsed * 2 + food.phase) * 0.035 + flight + bounce), worldZ(y));
       food.group.rotation.y = 0.58 + (this.reducedMotion ? 0 : Math.sin(this.elapsed + food.phase) * 0.15 + (origin ? fall * TAU : 0));
       food.group.rotation.z = origin && !this.reducedMotion ? Math.sin(fall * Math.PI) * 1.2 : 0;
+    }
+    for (const visual of this.insects.values()) {
+      const { insect, group } = visual;
+      group.visible = now < insect.expiresAt;
+      if (!group.visible) continue;
+      const point = insectPositionAt(insect, now);
+      const moving = insect.move.endsAt > now;
+      if (moving) {
+        const desired = Math.atan2(insect.move.to.x - insect.move.from.x, insect.move.to.y - insect.move.from.y);
+        visual.facing += Math.atan2(Math.sin(desired - visual.facing), Math.cos(desired - visual.facing)) * ease(insect.kind === "butterfly" ? 32 : 14, delta);
+      }
+      visual.point = point; group.position.set(worldX(point.x), insectHeight(insect, now, this.reducedMotion), worldZ(point.y)); group.rotation.y = visual.facing;
+      this.insectModels.animate(group, insect.kind, now + insect.seed * 100, this.reducedMotion, moving);
     }
     if (this.marker.visible) {
       const life = (now - this.markerAt) / 850;
@@ -710,6 +748,11 @@ export class LoungeScene implements LoungeSceneController {
         nearest = gap; chosen = { kind: "food", id: food.point.id }; point = food.point;
       }
     }
+    for (const visual of this.insects.values()) {
+      if (!visual.group.visible || visual.insect.expiresAt <= this.options.getNow()) continue;
+      const gap = distance(self.point, visual.point);
+      if (gap <= insectRules.captureRange && gap < nearest) { nearest = gap; chosen = { kind: "insect", id: visual.insect.id }; point = visual.point; }
+    }
     const shoreGap = distance(self.point, lakeCenter) - lake.radius * 100;
     if (canFishFrom(self.point) && shoreGap < nearest) {
       chosen = { kind: "lake", id: "lake" };
@@ -745,11 +788,12 @@ export class LoungeScene implements LoungeSceneController {
     if (label?.dataset.scenePlayer) return { kind: "player", id: label.dataset.scenePlayer };
     this.ray(event);
     const foodObjects = [...this.foods.values()].filter((food) => food.group.visible).map((food) => food.group);
-    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects], true);
+    const insectObjects = [...this.insects.values()].filter((visual) => visual.group.visible && visual.insect.expiresAt > this.options.getNow()).map((visual) => visual.group);
+    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects], true);
     for (const hit of hits) {
       if (!hit.object.visible) continue;
       let object: THREE.Object3D | null = hit.object;
-      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; object = object.parent; }
+      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; object = object.parent; }
     }
     if (this.camp && this.raycaster.intersectObject(this.camp.lake).length) return { kind: "lake", id: "lake" };
     return null;
@@ -780,7 +824,7 @@ export class LoungeScene implements LoungeSceneController {
     const person = target?.kind === "player" ? this.actors.get(target.id)?.player : null;
     const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
-      : target?.kind === "lake" ? "호수" : "";
+      : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private pointerLeave = () => {
@@ -821,11 +865,11 @@ export class LoungeScene implements LoungeSceneController {
     }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
-    this.fishModels.dispose();
+    this.fishModels.dispose(); this.insectModels.dispose();
     this.camp?.dispose();
     this.renderer.renderLists.dispose(); this.renderer.dispose(); this.renderer.domElement.remove(); this.overlay.remove();
     if (this.audio) void this.audio.close().catch(() => {});
-    this.actors.clear(); this.foods.clear(); this.bubbles.clear(); this.particles.length = 0;
+    this.actors.clear(); this.foods.clear(); this.insects.clear(); this.bubbles.clear(); this.particles.length = 0;
   }
 }
 

@@ -1,30 +1,26 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { canFishFrom, fishSpecies, fishingRules, gaugePosition } from "../../lounge/fishing";
 import { interactionBlock, positionAt } from "../../lounge/shared";
-import type { LoungeCommandInput, LoungeFishingCommand, LoungePlayer } from "../../types/Lounge";
+import { signCatch } from "./catch-receipt";
+import type { LoungeCommandInput, LoungeFishingCommand, LoungeStoredPlayer } from "../../types/Lounge";
 
 export function isFishingCommand(command: LoungeCommandInput): command is LoungeFishingCommand {
   return command.type === "cast" || command.type === "reel" || command.type === "stopFishing"
-    || command.type === "holdFish" || command.type === "releaseFish" || command.type === "storeFish";
+    || command.type === "holdFish" || command.type === "releaseFish" || command.type === "storeFish" || command.type === "keepFish";
 }
 
-export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand, now: number): string | null {
-  if (command.type === "storeFish" || command.type === "releaseFish") {
+export function applyFishing(player: LoungeStoredPlayer, command: LoungeFishingCommand, now: number, secret = process.env.LOUNGE_SOCKET_SECRET || process.env.DATABASE_URL || ""): string | null {
+  if (command.type === "storeFish" || command.type === "keepFish" || command.type === "releaseFish") {
     const pending = player.pendingCatch;
     if (pending && pending.id === command.catchId) {
       if (player.action?.kind === "fishCatch" && player.action.endsAt > now) return "물고기를 끌어올리고 있어요.";
-      const catches = player.catches ?? [];
-      if (command.type === "storeFish") {
-        if (catches.length >= fishingRules.catchCapacity) return "물고기 가방이 가득 찼어요.";
-        player.catches = [...catches, pending];
-      }
       player.pendingCatch = null;
-      player.fishHeld = false;
+      player.fishHeld = command.type !== "releaseFish";
       if (player.action?.kind === "fishCatch") player.action = null;
-      player.lastCatch = command.type === "storeFish" ? pending : player.catches?.at(-1);
+      player.lastCatch = pending;
       return null;
     }
-    if (command.type === "storeFish") return "이미 보관했거나 버린 물고기예요.";
+    if (command.type === "storeFish" || command.type === "keepFish") return "이미 확인한 물고기예요.";
   }
   if (command.type === "cast" || command.type === "holdFish" || command.type === "releaseFish") {
     const reason = interactionBlock(player, now);
@@ -40,23 +36,24 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
       return null;
     }
     if (command.type === "holdFish") {
-      const fish = player.catches.find((item) => item.id === command.catchId);
+      const fish = player.lastCatch?.id === command.catchId ? player.lastCatch : player.catches.find((item) => item.id === command.catchId);
       if (!fish || typeof command.held !== "boolean") {
         return "지금 들 수 있는 물고기가 아니에요.";
       }
       player.fishHeld = command.held;
       if (command.held) {
+        player.insectHeld = false;
         player.lastCatch = fish;
         player.heldFoodId = null;
       }
       return null;
     }
-    if (player.catches.length >= fishingRules.catchCapacity) return `물고기는 ${fishingRules.catchCapacity}마리까지 보관해요. 내 캐릭터 메뉴에서 놓아줄 수 있어요.`;
     const point = positionAt(player, now);
     if (!canFishFrom(point)) return "호수 물가에서 낚시할 수 있어요.";
     player.move = { from: point, to: point, startedAt: now, endsAt: now };
     player.heldFoodId = null;
     player.fishHeld = false;
+    player.insectHeld = false;
     player.action = {
       id: randomUUID(),
       kind: "fish",
@@ -88,7 +85,8 @@ export function applyFishing(player: LoungePlayer, command: LoungeFishingCommand
 
   let roll = randomInt(fishSpecies.reduce((total, fish) => total + fish.weight, 0));
   const species = fishSpecies.find((fish) => (roll -= fish.weight) < 0)!;
-  player.lastCatch = { id: action.id, kind: species.kind, sizeCm: randomInt(species.minCm, species.maxCm + 1) };
+  player.lastCatch = { id: action.id, kind: species.kind, sizeCm: randomInt(species.minCm, species.maxCm + 1), caughtAt: now };
+  player.lastCatch.receipt = signCatch(player.lastCatch, player.tokenHash, now, secret);
   player.pendingCatch = player.lastCatch;
   player.fishHeld = true;
   player.action = { id: randomUUID(), kind: "fishCatch", startedAt: now, endsAt: now + fishingRules.catchMs };

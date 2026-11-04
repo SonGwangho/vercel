@@ -2,6 +2,7 @@ import type { Group, Line, Mesh, Vector3 } from "three";
 import type { LoungeAction, LoungeActionKind, LoungeFishKind, LoungeFoodKind, LoungeGroundFood, LoungeMenuTarget, LoungeMove, LoungePlayer, LoungePoint, LoungeSnapshot } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
 import type { LoungeCharacterVisual } from "./LoungeCharacter";
+import type { LoungeInsectKind } from "./LoungeInsect";
 
 export type LoungeSceneActor = {
   player: LoungePlayer;
@@ -18,7 +19,7 @@ export type LoungeSceneActor = {
   nameWidth: number;
   actionId: string | null;
   held: Group | null;
-  heldKind: LoungeFoodKind | LoungeFishKind | "rod" | null;
+  heldKind: LoungeFoodKind | LoungeFishKind | LoungeInsectKind | "rod" | null;
   cast?: { line: Line; bobber: Mesh; fish?: Group; fishKind?: LoungeFishKind; landedFor?: string; liftedFor?: string };
 };
 export type LoungeSceneFood = { group: Group; point: LoungeGroundFood; createdAt: number; phase: number };

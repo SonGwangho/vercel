@@ -3,9 +3,13 @@
   import { onMount, tick } from "svelte";
   import FoodIcon from "./FoodIcon.svelte";
   import FishIcon from "./FishIcon.svelte";
+  import InsectIcon from "./InsectIcon.svelte";
+  import { describeInsect, insectPositionAt, insectRules } from "$lib/lounge/insects";
   import AppVersion from "$lib/components/UI/AppVersion.svelte";
   import ChatHistory from "./ChatHistory.svelte";
   import FishingGauge from "./FishingGauge.svelte";
+  import Encyclopedia from "./Encyclopedia.svelte";
+  import { encyclopedia, encyclopediaFish, encyclopediaInsects, rememberCatch, startEncyclopedia } from "$lib/client/encyclopedia.svelte.js";
   import { canFishFrom, describeFish, fishLength, fishingRules, fishingSpot } from "$lib/lounge/fishing";
   import { loungeSocket, forgetLoungeSession, loadLoungeSession, LoungeClientError, postLoungeCommand, takeInitialLoungeSnapshot } from "$lib/client/lounge";
   import { actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, interactionSpacingFor, isLoungeEmote, loungeEmotes, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
@@ -27,6 +31,10 @@
   let muted = $state(false);
   let chatOpen = $state(false);
   let historyOpen = $state(false);
+  let encyclopediaOpen = $state(false);
+  let encyclopediaButton = $state<HTMLButtonElement | null>(null);
+  const discoveredInsects = $derived(encyclopediaInsects.filter((kind) => encyclopedia.insects[kind]).length);
+  const discoveredFish = $derived(encyclopediaFish.filter((kind) => encyclopedia.fish[kind]).length);
   let unreadChat = $state(0);
   let historyButton = $state<HTMLButtonElement | null>(null);
   let chatDraft = $state("");
@@ -62,8 +70,9 @@
   const fishing = $derived(currentAction?.kind === "fish" && currentAction.fishing ? currentAction : null);
   const catching = $derived(currentAction?.kind === "fishCatch");
   const caughtFish = $derived(me?.lastCatch ?? null);
+  const caughtInsect = $derived(me?.lastInsect ?? null);
+  const menuInsect = $derived(menu?.kind === "insect" ? room?.insects?.find((insect) => insect.id === menu?.id && insect.expiresAt > now) : null);
   const pendingCatch = $derived(me?.pendingCatch ?? null);
-  const catches = $derived(me?.catches ?? (caughtFish && !pendingCatch ? [caughtFish] : []));
   const block = $derived(me ? interactionBlock(me, now) : "라운지에 연결하고 있어요.");
   const incoming = $derived(room?.requests.find((request) => request.toId === session?.playerId && request.expiresAt > now) ?? null);
   const outgoing = $derived(room?.requests.find((request) => request.fromId === session?.playerId && request.expiresAt > now) ?? null);
@@ -99,6 +108,10 @@
     if (!mounted || leaving || connection === "expired" || snapshot.channel.id !== channel.id || (room && room.epoch === snapshot.epoch && snapshot.revision < room.revision)) return;
     if (!clockReady) { clockOffset = snapshot.serverNow - Date.now(); now = Date.now() + clockOffset; }
     if (room?.epoch !== snapshot.epoch || room?.revision !== snapshot.revision) { room = snapshot; engine?.update(snapshot); }
+    const catchFish = snapshot.players.find((player) => player.id === session?.playerId)?.lastCatch;
+    if (session && catchFish) void rememberCatch(session, catchFish);
+    const caughtBug = snapshot.players.find((player) => player.id === session?.playerId)?.lastInsect;
+    if (session && caughtBug) void rememberCatch(session, caughtBug, "insects");
     if (session && !snapshot.players.some((player) => player.id === session!.playerId)) expire();
   }
 
@@ -169,7 +182,18 @@
     return best;
   }
 
+  function approachTarget(input: LoungeApproach["input"]) {
+    if (input.type === "cast") return fishingSpot;
+    if (input.type === "pickup") return room?.foods.find((food) => food.id === input.foodId);
+    if (input.type === "collectInsect") {
+      const insect = room?.insects?.find((insect) => insect.id === input.insectId && insect.expiresAt > gameNow());
+      return insect ? insectPositionAt(insect, gameNow()) : undefined;
+    }
+    return room?.players.find((player) => player.id === input.targetId);
+  }
+
   function readyFor(input: LoungeApproach["input"], point: LoungePoint) {
+    if (input.type === "collectInsect") return nearby(point, insectRules.captureRange);
     if (input.type === "cast") return Boolean(me && canFishFrom(positionAt(me, now)) && canFishFrom(engine?.position() ?? positionAt(me, now)));
     const kind = input.type === "pickup" ? "pickup" : input.kind;
     const spacing = interactionSpacingFor(kind);
@@ -184,32 +208,32 @@
     closeMenu(false);
     if (input.type === "cast") { chatOpen = false; historyOpen = false; showHelp = false; }
     if (!usable || sending || block) { if (block) inform(block); return; }
-    const target = input.type === "cast" ? fishingSpot : input.type === "pickup" ? room?.foods.find((food) => food.id === input.foodId) : room?.players.find((player) => player.id === input.targetId);
+    const target = approachTarget(input);
     if (!target) { inform("대상이 더 이상 여기에 없어요."); return; }
     const point = "move" in target ? positionAt(target, now) : target;
     if (readyFor(input, point)) { void perform(input); return; }
     plan = { input, target: point, startedAt: now, lastSentAt: now };
-    queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" ? "pickup" : input.kind)));
+    queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" || input.type === "collectInsect" ? "pickup" : input.kind)));
   }
 
   function advancePlan() {
     if (!plan || sending || !me || !room) return;
     if (!usable || stunned || currentAction || block || now - plan.startedAt > 15000) { plan = null; return; }
     const input = plan.input;
-    const target = input.type === "cast" ? fishingSpot : input.type === "pickup" ? room.foods.find((food) => food.id === input.foodId) : room.players.find((player) => player.id === input.targetId);
+    const target = approachTarget(input);
     if (!target) { plan = null; inform("대상이 더 이상 여기에 없어요."); return; }
     if ("move" in target && interactionBlock(target, now)) { plan = null; inform("상대가 다른 행동을 시작했어요."); return; }
     const point = "move" in target ? positionAt(target, now) : target;
     if (readyFor(input, point) && !queuedMove) { plan = null; void perform(input); }
-    else if (distance(point, plan.target) > 38 && now - plan.lastSentAt > 600) {
+    else if (distance(point, plan.target) > (input.type === "collectInsect" ? 20 : 38) && now - plan.lastSentAt > (input.type === "collectInsect" ? 180 : 600)) {
       plan = { ...plan, target: point, lastSentAt: now };
-      queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" ? "pickup" : input.kind)));
+      queueMove(input.type === "cast" ? fishingSpot : approachPoint(point, interactionSpacingFor(input.type === "pickup" || input.type === "collectInsect" ? "pickup" : input.kind)));
     }
   }
 
   async function perform(input: LoungeCommandInput) {
     if (!usable || !me || sending || stunned) return;
-    if (!["respond", "cancel", "stopEmote", "reel", "stopFishing", "storeFish", "releaseFish"].includes(input.type) && block) { inform(block); return; }
+    if (!["respond", "cancel", "stopEmote", "reel", "stopFishing", "keepFish", "storeFish", "releaseFish"].includes(input.type) && block) { inform(block); return; }
     if (input.type === "eat" && me.heldFoodId !== input.foodId) { inform("가방에서 음식을 먼저 손에 들어 주세요."); return; }
     const wasHoldingFood = input.type === "emote" && Boolean(heldFood);
     closeMenu(false); plan = null; queuedMove = null; sending = true;
@@ -237,12 +261,16 @@
           inform(`${species.grade}등급 ${species.name} · ${fishLength(fish.sizeCm)}!`);
         } else inform("놓쳤어요. 다시 던져 보세요.");
       }
+      if (input.type === "collectInsect") {
+        const insect = result?.players.find((player) => player.id === session?.playerId)?.lastInsect;
+        if (insect) inform(`${describeInsect(insect.kind).grade}등급 ${describeInsect(insect.kind).name} · ${insect.sizeCm} cm!`);
+      }
       if (input.type === "stopEmote") engine?.stopEmote();
       if (wasHoldingFood) inform("음식은 가방에 넣어 뒀어요.");
       if (input.type === "pickup") inform("가방에 넣었어요. 내 캐릭터에서 손에 들 수 있어요.");
       if (input.type === "equip") inform("손에 들었어요. 준비되면 먹어 보세요.");
       if (input.type === "releaseFish") inform("물고기를 놓아줬어요.");
-      if (input.type === "storeFish") inform("물고기를 가방에 넣었어요.");
+      if (input.type === "keepFish" || input.type === "storeFish") inform("물고기를 계속 들고 있어요.");
     } catch (error) { engine?.settle(id, false); commandError(error); }
     finally {
       sending = false;
@@ -306,6 +334,14 @@
 
   function closeMenu(focus = true) { menu = null; if (focus) host?.focus({ preventScroll: true }); }
   function selfMenuOpen() { if (session && engine) void openMenu({ kind: "player", id: session.playerId, ...engine.selfScreen() }); }
+  function openEncyclopedia() {
+    closeMenu(false); chatOpen = false; historyOpen = false; showHelp = false; plan = null; queuedMove = null;
+    encyclopediaOpen = true;
+  }
+  async function closeEncyclopedia() {
+    encyclopediaOpen = false;
+    await tick(); encyclopediaButton?.focus({ preventScroll: true });
+  }
   function outsideMenu(event: PointerEvent) { if (menu && event.target instanceof Node && !menuElement?.contains(event.target)) closeMenu(false); }
   function menuKeys(event: KeyboardEvent) {
     if (!menuElement || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -318,6 +354,7 @@
 
   function keyDown(event: KeyboardEvent) {
     loungeSocket.activity();
+    if (encyclopediaOpen) return;
     if (event.key === "Escape") {
       if (fishing) void perform({ type: "stopFishing", actionId: fishing.id });
       closeMenu(); chatOpen = false; showHelp = false; plan = null; if (historyOpen) void closeHistory(); return;
@@ -358,6 +395,7 @@
 
   onMount(() => {
     mounted = true;
+    const stopEncyclopedia = startEncyclopedia();
     const sceneAbort = new AbortController();
     const timer = setInterval(() => { if (document.hidden) return; now = Date.now() + clockOffset; advancePlan(); if (stunned) { menu = null; chatOpen = false; queuedMove = null; } }, 100);
     void (async () => {
@@ -387,7 +425,7 @@
     window.addEventListener("pointerdown", outsideMenu); window.addEventListener("keydown", keyDown);
     window.addEventListener("pointerdown", activity); window.addEventListener("pointermove", activity, { passive: true });
     return () => {
-      mounted = false; sceneAbort.abort(); clearInterval(timer); unsubscribe?.();
+      mounted = false; sceneAbort.abort(); clearInterval(timer); unsubscribe?.(); stopEncyclopedia();
       if (moveTimer) clearTimeout(moveTimer); if (toastTimer) clearTimeout(toastTimer);
       engine?.dispose(); engine = null;
       document.removeEventListener("visibilitychange", visibilityChanged);
@@ -403,7 +441,10 @@
 <section class="lounge-game" aria-label={`${channel.name} 3D 라운지`}>
   <div class="lounge-scene-host" bind:this={host} tabindex="0" role="application" aria-label="3D 게임 공간. 좌클릭 이동, 우클릭 또는 스페이스 행동. Enter 대화, Escape 닫기." aria-keyshortcuts="Space Enter ContextMenu Escape"></div>
   <header class="game-hud">
+    <div class="game-hud-start">
+      <button type="button" class="game-encyclopedia-button" bind:this={encyclopediaButton} aria-haspopup="dialog" aria-expanded={encyclopediaOpen} aria-controls="lounge-encyclopedia" onclick={openEncyclopedia}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Zm0 0v15" /></svg><span>도감<small>{discoveredFish + discoveredInsects}/12</small></span></button>
     <div class="game-channel"><svg class="camp-emblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13 2c1 5-4 5-2 9 2-1 3-3 3-5 5 5 7 8 4 12-3 4-10 4-13 0-3-5 2-8 2-11 1 3 2 3 3 4-1-5 3-6 3-9Z"/><path d="m5 23 14-3M5 20l14 3"/></svg><span class="game-live-dot" class:offline={connection !== "connected"}></span><div><h1>{channel.name} <AppVersion /></h1><span>{room?.players.length ?? 0} / {channel.capacity}명{#if connection === "reconnecting"} · 연결 중{/if}</span></div></div>
+    </div>
     <nav class="game-tools" aria-label="라운지 설정">
       <button type="button" class="game-tool" disabled={!usable || Boolean(block) || sending} onclick={() => choose({ type: "cast" })} title="호수에서 낚시하기">낚시</button>
       <button type="button" class="game-tool" disabled={!usable} onclick={() => moveTo({ x: loungeWorld.width / 2, y: loungeWorld.height / 2 + 200 })} aria-label="모닥불 앞으로 이동" title="모닥불 앞으로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 3 8 17H4L12 3Z"/><path d="m8 20 4-9 4 9M2 20h20"/></svg></button>
@@ -422,19 +463,19 @@
   {#if ready && room && me && connection !== "expired" && !sceneError}
     {#if pendingCatch && !catching}
       {@const species = describeFish(pendingCatch.kind)}
-      <section class="catch-choice" aria-label="잡은 물고기 보관 선택" aria-live="polite">
+      <section class="catch-choice" aria-label="잡은 물고기" aria-live="polite">
         <span class="catch-choice-grade">{species.grade}등급</span>
         <h2>{species.name}</h2>
         <p class="catch-choice-size">{fishLength(pendingCatch.sizeCm)}</p>
-        <p class="catch-choice-hint">물고기를 어떻게 할까요?</p>
+        <p class="catch-choice-hint">{encyclopedia.error ? "도감에 저장할 기록이 남아 있어요." : encyclopedia.saving ? "도감에 기록하는 중…" : "도감에 자동으로 기록돼요."}</p>
         <div>
-          <button class="lounge-button primary" type="button" disabled={sending || !usable} onclick={() => void perform({ type: "storeFish", catchId: pendingCatch!.id })}>가방에 넣기</button>
-          <button class="lounge-button secondary" type="button" disabled={sending || !usable} onclick={() => void perform({ type: "releaseFish", catchId: pendingCatch!.id })}>버리기</button>
+          <button class="lounge-button primary" type="button" disabled={sending || !usable} onclick={() => void perform({ type: "keepFish", catchId: pendingCatch!.id })}>계속 들기</button>
+          <button class="lounge-button secondary" type="button" disabled={sending || !usable} onclick={() => void perform({ type: "releaseFish", catchId: pendingCatch!.id })}>놓아주기</button>
         </div>
       </section>
     {/if}
     <ChatHistory messages={room.messages} selfId={me.id} open={historyOpen} onClose={() => void closeHistory()} onCompose={() => void openChat()} onUnread={updateUnread} />
-    {#if showHelp}<section class="game-help" aria-label="조작 안내"><header><h2>이렇게 놀아요.</h2><button type="button" class="game-tool" aria-label="안내 닫기" onclick={() => showHelp = false}>×</button></header><dl><div><dt>좌클릭 / 터치</dt><dd>원하는 곳으로 이동</dd></div><div><dt>우클릭 / 길게 누르기</dt><dd>캐릭터·음식·호수의 행동 선택</dd></div><div><dt>Space</dt><dd>가리킨 대상 또는 주변 대상의 행동 선택</dd></div><div><dt>내 캐릭터 우클릭</dt><dd>혼자 놀기 · 가방에서 음식 들기</dd></div><div><dt>Enter</dt><dd>머리 위로 한마디</dd></div><div><dt>마우스 휠 / + −</dt><dd>화면 확대·축소</dd></div></dl><p>악수·포옹·선물은 상대가 수락하면 시작돼요. 펀치를 맞으면 1.5초 동안 쉬어요.</p><p>음식은 1분마다 누군가의 근처에 하나씩 떨어져요. 5분 동안 활동하지 않으면 자동으로 퇴장해요.</p></section>{/if}
+    {#if showHelp}<section class="game-help" aria-label="조작 안내"><header><h2>이렇게 놀아요.</h2><button type="button" class="game-tool" aria-label="안내 닫기" onclick={() => showHelp = false}>×</button></header><dl><div><dt>좌클릭 / 터치</dt><dd>원하는 곳으로 이동</dd></div><div><dt>우클릭 / 길게 누르기</dt><dd>캐릭터·음식·곤충·호수의 행동 선택</dd></div><div><dt>Space</dt><dd>가리킨 대상 또는 주변 대상의 행동 선택</dd></div><div><dt>내 캐릭터 우클릭</dt><dd>혼자 놀기 · 가방에서 음식 들기</dd></div><div><dt>Enter</dt><dd>머리 위로 한마디</dd></div><div><dt>마우스 휠 / + −</dt><dd>화면 확대·축소</dd></div></dl><p>악수·포옹·선물은 상대가 수락하면 시작돼요. 펀치를 맞으면 1.5초 동안 쉬어요.</p><p>음식은 1분마다 누군가의 근처에 하나씩 떨어져요. 5분 동안 활동하지 않으면 자동으로 퇴장해요.</p></section>{/if}
     {#if incoming || outgoing}<div class="game-consent" role="region" aria-label="상호작용 요청" aria-live="polite"><div><span class="game-eyebrow">{incoming ? "함께할까요?" : "응답을 기다리고 있어요"} <small aria-live="off">{requestSeconds}초</small></span><strong>{incoming ? `${requester?.nickname ?? "상대"} 님의 ${incoming.kind === "give" ? foodName(incoming.foodKind ?? "") + " 선물" : actionNames[incoming.kind]}` : `${receiver?.nickname ?? "상대"} 님에게 ${outgoing ? actionNames[outgoing.kind] : ""} 요청`}</strong></div><div class="game-consent-actions">{#if incoming}<button class="lounge-button secondary" type="button" disabled={sending || stunned} onclick={() => void perform({ type: "respond", requestId: incoming!.id, accept: false })}>거절</button><button class="lounge-button primary" type="button" disabled={sending || stunned} onclick={() => void perform({ type: "respond", requestId: incoming!.id, accept: true })}>수락</button>{:else if outgoing}<button class="lounge-button secondary" type="button" disabled={sending || stunned} onclick={() => void perform({ type: "cancel", requestId: outgoing!.id })}>취소</button>{/if}</div></div>{/if}
     {#if stunned}<div class="game-stun" role="status">잠깐, 별이 보여요… <strong aria-hidden="true">{Math.max(0, (me.stunnedUntil - now) / 1000).toFixed(1)}초</strong></div>
     {:else if currentAction && !fishing}<div class="game-action" aria-live="polite">{currentAction.kind === "eat" ? "냠냠!" : actionNames[currentAction.kind]}{#if currentEmote}<button type="button" class="game-action-stop" disabled={sending || !usable} onclick={() => void perform({ type: "stopEmote" })}>그만하기</button>{/if}<span class="game-action-progress" style={`--progress:${Math.max(0, Math.min(1, (currentAction.endsAt - now) / (currentAction.endsAt - currentAction.startedAt)))}`} aria-hidden="true"></span></div>
@@ -442,15 +483,18 @@
     <div class="game-bottom">
       {#if fishing}
         <FishingGauge action={fishing} {now} getNow={gameNow} disabled={sending || !usable} onReel={reel} onCancel={() => void perform({ type: "stopFishing", actionId: fishing!.id })} />
-      {:else if caughtFish && !pendingCatch && !chatOpen}
+      {:else if caughtFish && me.fishHeld && !pendingCatch && !chatOpen}
         {@const species = describeFish(caughtFish.kind)}
         <div class="game-held game-catch">
           <FishIcon kind={caughtFish.kind} />
-          <div><small>{me.fishHeld ? "손에 든 물고기" : "내 물고기"} · {catches.length}/{fishingRules.catchCapacity}마리</small><strong><span class="fish-grade">{species.grade}</span> {species.name} · {fishLength(caughtFish.sizeCm)}</strong></div>
-          <button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "holdFish", catchId: caughtFish!.id, held: !me.fishHeld })}>{me.fishHeld ? "넣기" : "손에 들기"}</button>
+          <div><small>손에 든 물고기</small><strong><span class="fish-grade">{species.grade}</span> {species.name} · {fishLength(caughtFish.sizeCm)}</strong></div>
+          <button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "holdFish", catchId: caughtFish!.id, held: false })}>놓아주기</button>
         </div>
       {/if}
       {#if toast}<div class="game-toast" role="status">{toast}</div>{:else if connection === "reconnecting"}<div class="game-toast" role="status">연결을 다시 확인하고 있어요.</div>{:else if lastNotice && now - lastNotice.createdAt < 6000}<div class="game-notice" aria-live="polite">{lastNotice.text}</div>{/if}
+      {#if caughtInsect && me.insectHeld && !chatOpen && currentAction?.kind !== "collectInsect"}
+        <div class="game-held game-catch"><InsectIcon kind={caughtInsect.kind} /><div><small>손에 든 곤충</small><strong><span class="fish-grade">{describeInsect(caughtInsect.kind).grade}</span> {describeInsect(caughtInsect.kind).name} · {caughtInsect.sizeCm} cm</strong></div><button class="lounge-button secondary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => void perform({ type: "releaseInsect" })}>놓아주기</button></div>
+      {/if}
       {#if heldFood && !chatOpen}<div class="game-held"><FoodIcon kind={heldFood.kind} size={32} /><div><small>손에 든 음식</small><strong>{foodName(heldFood.kind)}</strong></div><button class="lounge-button primary" type="button" disabled={sending || Boolean(block) || !usable} onclick={() => heldFood && void perform({ type: "eat", foodId: heldFood.id })}>먹기</button><button class="game-tool" type="button" disabled={sending || Boolean(block) || !usable} aria-label="음식을 가방에 넣기" title="가방에 넣기" onclick={() => void perform({ type: "stow" })}>×</button></div>{/if}
       {#if chatOpen}<form class="game-chat" onsubmit={chat}><label for="lounge-chat" class="sr-only">머리 위에 띄울 말</label><span class="game-chat-name">{me.nickname}</span><input id="lounge-chat" bind:this={chatInput} bind:value={chatDraft} oninput={limitChat} oncompositionend={limitChat} maxlength={loungeRules.chatMaxLength * 2} autocomplete="off" placeholder="가볍게 한마디…" disabled={stunned || !usable} /><span class="game-chat-count" aria-label="글자 수">{[...chatDraft].length}/{loungeRules.chatMaxLength}</span><button class="lounge-button primary" type="submit" disabled={!chatDraft.trim() || chatting || stunned || !usable}>보내기</button><button class="game-tool" type="button" aria-label="대화 입력 닫기" onclick={() => { chatOpen = false; host?.focus(); }}>×</button></form>
       {:else}<div class="game-bottom-row"><div class="game-play-tools"><button class="game-chat-open" type="button" disabled={stunned || !usable || chatting} onclick={() => void openChat()}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 4-4 7-8 7H7l-4 4V10c0-4 4-7 9-7s8 3 8 7Z" /></svg>한마디 <kbd>Enter</kbd></button><button class="game-history-toggle" type="button" bind:this={historyButton} disabled={!usable || stunned} aria-label={unreadChat ? `채팅 기록, 새 메시지 ${unreadChat}개` : "채팅 기록"} aria-expanded={historyOpen} aria-controls={historyOpen ? "lounge-chat-history" : undefined} onclick={() => void toggleHistory()}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 4h14v16H5V4Zm4 5h6m-6 4h6m-6 4h4" /></svg><span class="history-toggle-label">기록</span>{#if unreadChat}<span class="history-unread" aria-hidden="true">{unreadChat > 99 ? "99+" : unreadChat}</span>{/if}</button><button class="game-self-button" type="button" disabled={stunned || !usable} onclick={selfMenuOpen}><i style={`background:${me.color}`}></i>내 캐릭터</button></div><span class="game-hint">{hover ? `${hover} · 우클릭 / Space` : "좌클릭 이동 · 우클릭 / Space 행동"}</span><div class="game-zoom"><button class="game-tool" type="button" aria-label="축소" onclick={() => engine?.zoom(-0.12)}>−</button><button class="game-tool" type="button" aria-label="확대" onclick={() => engine?.zoom(0.12)}>+</button></div></div>{/if}
@@ -458,9 +502,12 @@
     <div class="sr-only" role="log" aria-label="라운지 대화" aria-live="polite" aria-relevant="additions">{#each room.messages.slice(-4) as message (message.id)}<p>{message.nickname}: {message.text}</p>{/each}</div>
   {/if}
   {#if menu && me && room}
-    <div class="lounge-context-menu" bind:this={menuElement} role="menu" tabindex="-1" aria-label={menuPlayer ? `${menuPlayer.nickname} 행동` : menu.kind === "lake" ? "호수 행동" : "음식 행동"} style={`left:${menu.x}px;top:${menu.y}px;`} onkeydown={menuKeys}>
-      <header><div><strong>{menuPlayer?.nickname ?? (menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{selfMenu ? "내 캐릭터" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
-      {#if menu?.kind === "lake"}
+    <div class="lounge-context-menu" bind:this={menuElement} role="menu" tabindex="-1" aria-label={menuPlayer ? `${menuPlayer.nickname} 행동` : menu.kind === "lake" ? "호수 행동" : menu.kind === "insect" ? "곤충 행동" : "음식 행동"} style={`left:${menu.x}px;top:${menu.y}px;`} onkeydown={menuKeys}>
+      <header><div><strong>{menuPlayer?.nickname ?? (menuInsect ? describeInsect(menuInsect.kind).name : menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{selfMenu ? "내 캐릭터" : menu?.kind === "insect" ? "야생 곤충" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
+      {#if menuInsect}
+        <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => choose({ type: "collectInsect", insectId: menuInsect!.id })}><InsectIcon kind={menuInsect.kind} /><span>{nearby(insectPositionAt(menuInsect, now), insectRules.captureRange) ? "채집하기" : "다가가서 채집하기"}</span></button>
+        {#if block}<p class="context-hint">{block}</p>{/if}
+      {:else if menu?.kind === "lake"}
         <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => choose({ type: "cast" })}>낚시하기</button>
         {#if block}<p class="context-hint">{block}</p>{/if}
       {:else if menuFood}<button type="button" role="menuitem" disabled={sending || Boolean(block) || me.inventory.length >= loungeRules.inventoryCapacity} onclick={() => choose({ type: "pickup", foodId: menuFood!.id })}><FoodIcon kind={menuFood.kind} size={26} /><span>{nearby(menuFood) ? "줍기" : "다가가서 줍기"}</span></button>{#if block}<p class="context-hint">{block}</p>{:else if me.inventory.length >= loungeRules.inventoryCapacity}<p class="context-hint">음식은 {loungeRules.inventoryCapacity}개까지 들 수 있어요.</p>{/if}
@@ -477,18 +524,8 @@
           <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => heldFood && void perform({ type: "eat", foodId: heldFood.id })}><FoodIcon kind={heldFood.kind} size={26} /><span>{foodName(heldFood.kind)} 먹기</span></button>
           <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => void perform({ type: "stow" })}><span>가방에 넣기</span></button>
         {/if}
-        {#if catches.length}
-          <p class="context-section-label">내 물고기 <span>{catches.length} / {fishingRules.catchCapacity}</span></p>
-          {#each catches as fish (fish.id)}
-            {@const species = describeFish(fish.kind)}
-            {@const holding = Boolean(me.fishHeld && caughtFish?.id === fish.id)}
-            <div class="context-fish-row">
-              <button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => void perform({ type: "holdFish", catchId: fish.id, held: !holding })}>
-                <span>{species.grade} {species.name} · {fishLength(fish.sizeCm)}</span><small>{holding ? "넣기" : "손에 들기"}</small>
-              </button>
-              <button type="button" role="menuitem" class="fish-release" disabled={sending || Boolean(block)} aria-label={`${species.name} ${fishLength(fish.sizeCm)} 놓아주기`} onclick={() => void perform({ type: "releaseFish", catchId: fish.id })}>놓아주기</button>
-            </div>
-          {/each}
+        {#if caughtInsect && me.insectHeld}
+          <p class="context-section-label">손에 든 곤충</p><button type="button" role="menuitem" disabled={sending || Boolean(block)} onclick={() => void perform({ type: "releaseInsect" })}><InsectIcon kind={caughtInsect.kind} /><span>{describeInsect(caughtInsect.kind).name} 놓아주기</span></button>
         {/if}
         <p class="context-section-label">내 가방 <span>{me.inventory.length} / {loungeRules.inventoryCapacity}</span></p>
         {#if !me.inventory.length}<p class="context-hint">아직 음식이 없어요. 숲길에 떨어지면 주워 보세요.</p>{/if}
@@ -500,4 +537,5 @@
       {:else}<p class="context-hint">다른 캐릭터나 음식을 선택해 주세요.</p>{/if}
     </div>
   {/if}
+  <Encyclopedia open={encyclopediaOpen} onClose={() => void closeEncyclopedia()} />
 </section>

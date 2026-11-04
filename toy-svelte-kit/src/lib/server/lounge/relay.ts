@@ -26,7 +26,7 @@ export class LoungeRelay {
   private stopped = false;
   private channel: string;
 
-  constructor(private databaseUrl: string, private scope: string, private changed: (room: MemoryLounge) => void, private failed: () => void) {
+  constructor(private databaseUrl: string, private scope: string, private changed: (room: MemoryLounge) => void, private failed: () => void, private secret = "") {
     this.channel = `lounge_${createHash("sha256").update(scope).digest("hex").slice(0, 20)}`;
   }
 
@@ -76,9 +76,9 @@ export class LoungeRelay {
         catch (error) { await this.client?.query("SELECT pg_advisory_unlock($1::int, $2::int)", [15325477, key]).catch(() => {}); throw error; }
         const replica = saved.rows[0]?.replica as LoungeReplica | undefined;
         const current = this.rooms.get(channelId);
-        if (replica && (!current || (current.epoch === replica.epoch && current.revision < replica.revision))) this.rooms.set(channelId, new MemoryLounge(channelId, replica));
+        if (replica && (!current || (current.epoch === replica.epoch && current.revision < replica.revision))) this.rooms.set(channelId, new MemoryLounge(channelId, replica, this.secret));
         this.leaders.add(channelId);
-        if (!this.rooms.has(channelId)) this.rooms.set(channelId, new MemoryLounge(channelId));
+        if (!this.rooms.has(channelId)) this.rooms.set(channelId, new MemoryLounge(channelId, undefined, this.secret));
         this.replicate(this.rooms.get(channelId)!);
         return true;
       }
@@ -214,7 +214,7 @@ export class LoungeRelay {
     this.replicaAt.set(replica.channelId, Date.now());
     const existing = this.rooms.get(replica.channelId);
     if (existing && existing.epoch === replica.epoch && existing.revision >= replica.revision) return;
-    if (existing) existing.restore(replica); else this.rooms.set(replica.channelId, new MemoryLounge(replica.channelId, replica));
+    if (existing) existing.restore(replica); else this.rooms.set(replica.channelId, new MemoryLounge(replica.channelId, replica, this.secret));
     this.changed(this.rooms.get(replica.channelId)!);
   }
 

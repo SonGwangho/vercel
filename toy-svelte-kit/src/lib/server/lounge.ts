@@ -1,7 +1,9 @@
+import { applyInsectCommand, maintainInsects } from "$lib/server/lounge/insects";
 import { arrangeSocialPlayers } from "$lib/server/lounge/interaction";
 import { applyFishing, isFishingCommand } from "$lib/server/lounge/fishing";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getNeonSql } from "$lib/server/neon";
+import { env } from "$env/dynamic/private";
 import { normalizeAppearance } from "$lib/lounge/appearance";
 import { ambientFoodCount, dropHeldFood, groundFoodsAt } from "$lib/server/lounge/food";
 import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "$lib/lounge/shared";
@@ -123,6 +125,7 @@ function maintainRoom(state: LoungeRoomState, now: number) {
     state.lastFoodAt = now;
     changed = true;
   }
+  changed = maintainInsects(state, now) || changed;
   return changed;
 }
 
@@ -130,7 +133,7 @@ function snapshot(channelId: string, revision: number, state: LoungeRoomState, n
   const players: LoungePlayer[] = state.players.map(({ tokenHash: _token, lastSeenAt: _seen, lastCommandAt: _command, lastChatAt: _chat, lastActivityAt: _activity, ...player }) => ({ ...player, appearance: normalizeAppearance(player.appearance, player.color) }));
   return {
     channel: channelFor(channelId), revision, serverNow: now,
-    players, foods: state.foods, requests: state.requests,
+    players, foods: state.foods, insects: state.insects ?? [], requests: state.requests,
     messages: state.messages, notices: state.notices
   };
 }
@@ -200,7 +203,7 @@ function freeze(player: LoungeStoredPlayer, now: number) {
 
 function beginAction(player: LoungeStoredPlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
   freeze(player, now);
-  player.fishHeld = false;
+  player.fishHeld = false; player.insectHeld = false;
   player.action = { id: randomUUID(), kind, startedAt: now, endsAt: now + duration, peerId };
 }
 
@@ -329,7 +332,7 @@ async function moveLounge(session: LoungeSession, command: Extract<LoungeCommand
     const player = current.players.find((item) => item.id === session.playerId);
     if (!player) throw new LoungeError("다시 입장해 주세요.", 401);
     if (player.stunnedUntil > Date.now()) throw new LoungeError("기절 중에는 행동할 수 없어요.");
-    if (player.pendingCatch) throw new LoungeError("잡은 물고기를 가방에 넣거나 버려 주세요.");
+    if (player.pendingCatch) throw new LoungeError("잡은 물고기를 계속 들거나 놓아줄지 골라 주세요.");
     if (player.action && player.action.endsAt > Date.now()) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
     throw new LoungeError("이동 상태가 바뀌었어요. 다시 클릭해 주세요.");
   }
@@ -392,14 +395,17 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       state.messages.push({ id: randomUUID(), playerId: player.id, nickname: player.nickname, text, createdAt: now });
       state.messages = state.messages.slice(-loungeRules.chatHistoryLimit);
       player.lastChatAt = now;
+    } else if (command.type === "collectInsect" || command.type === "releaseInsect") {
+      const reason = applyInsectCommand(state, player, command, now, env.LOUNGE_SOCKET_SECRET || env.DATABASE_URL || "");
+      if (reason) throw new LoungeError(reason);
     } else if (isFishingCommand(command)) {
-      const error = applyFishing(player, command, now);
+      const error = applyFishing(player, command, now, env.LOUNGE_SOCKET_SECRET || env.DATABASE_URL || "");
       if (error) throw new LoungeError(error);
     } else if (command.type === "emote") {
       requireAvailable(player, now);
       if (!isLoungeEmote(command.kind)) throw new LoungeError("지원하지 않는 표현이에요.", 400);
       player.heldFoodId = null;
-      player.fishHeld = false;
+      player.fishHeld = false; player.insectHeld = false;
       beginAction(player, command.kind, actionDuration(command.kind), now);
     } else if (command.type === "stopEmote") {
       if (player.action && !isLoungeEmote(player.action.kind)) throw new LoungeError("이 행동은 도중에 멈출 수 없어요.");
@@ -447,7 +453,7 @@ export async function commandLounge(session: LoungeSession, command: LoungeComma
       requireAvailable(player, now);
       if (!player.inventory.some((food) => food.id === command.foodId)) throw new LoungeError("가방에 없는 음식이에요.");
       player.heldFoodId = command.foodId;
-      player.fishHeld = false;
+      player.fishHeld = false; player.insectHeld = false;
     } else if (command.type === "stow") {
       requireAvailable(player, now);
       player.heldFoodId = null;
