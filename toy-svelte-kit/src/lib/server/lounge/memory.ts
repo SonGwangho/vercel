@@ -43,6 +43,7 @@ function releaseRequest(state: LoungeRoomState, request: LoungeRequest) {
   for (const player of state.players) {
     if (player.pendingRequestId === request.id) player.pendingRequestId = null;
   }
+  if (state.npc?.pendingRequestId === request.id) state.npc.pendingRequestId = null;
   state.requests = state.requests.filter((item) => item.id !== request.id);
 }
 
@@ -104,33 +105,33 @@ function authorize(state: LoungeRoomState, session: LoungeSession) {
   return player;
 }
 
-function requireAwake(player: LoungeStoredPlayer, now: number) {
+function requireAwake(player: LoungePlayer, now: number) {
   if (player.stunnedUntil > now) throw new LoungeError("기절 중에는 행동할 수 없어요.");
 }
 
-function requireAvailable(player: LoungeStoredPlayer, now: number) {
+function requireAvailable(player: LoungePlayer, now: number) {
   const reason = interactionBlock(player, now);
   if (reason) throw new LoungeError(reason);
 }
 
-function requireNear(a: LoungeStoredPlayer, b: LoungePoint, now: number, range = loungeRules.interactionRange) {
+function requireNear(a: LoungePlayer, b: LoungePoint, now: number, range = loungeRules.interactionRange) {
   if (distance(positionAt(a, now), b) > range) {
     throw new LoungeError("조금 더 가까이 이동한 후 시도해 주세요.");
   }
 }
 
-function freeze(player: LoungeStoredPlayer, now: number) {
+function freeze(player: LoungePlayer, now: number) {
   const point = positionAt(player, now);
   player.move = { from: point, to: point, startedAt: now, endsAt: now };
 }
 
-function beginAction(player: LoungeStoredPlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
+function beginAction(player: LoungePlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
   freeze(player, now);
   player.fishHeld = false; player.insectHeld = false;
   player.action = { id: randomUUID(), kind, startedAt: now, endsAt: now + duration, peerId };
 }
 
-function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Extract<LoungeCommand, { type: "respond" }>, now: number) {
+function respond(state: LoungeRoomState, player: LoungePlayer, command: Extract<LoungeCommand, { type: "respond" }>, now: number) {
   const request = state.requests.find((item) => item.id === command.requestId && item.toId === player.id);
   if (!request) throw new LoungeError("이미 끝났거나 만료된 요청입니다.");
   const sender = state.players.find((item) => item.id === request.fromId);
@@ -145,10 +146,15 @@ function respond(state: LoungeRoomState, player: LoungeStoredPlayer, command: Ex
   if (request.kind === "give") {
     const food = sender.inventory.find((item) => item.id === request.foodId);
     if (!food) throw new LoungeError("건넬 음식이 더 이상 없어요.");
-    if (player.inventory.length >= loungeRules.inventoryCapacity) throw new LoungeError("음식을 받을 공간이 없어요.");
+    if (player.inventory.length >= loungeRules.inventoryCapacity) {
+      if (player.id !== state.npc?.id) throw new LoungeError("음식을 받을 공간이 없어요.");
+      player.heldFoodId = player.inventory.find((item) => item.id === player.heldFoodId)?.id ?? player.inventory[0].id;
+      dropHeldFood(state, player, sender, now);
+    }
     sender.inventory = sender.inventory.filter((item) => item.id !== food.id);
     if (sender.heldFoodId === food.id) sender.heldFoodId = null;
     player.inventory.push(food);
+    if (player.id === state.npc?.id) player.heldFoodId = food.id;
     notice(state, `${sender.nickname} 님 → ${player.nickname} 님 · ${foodName(food.kind)} 선물`, now);
   } else {
     notice(state, `${sender.nickname} 님과 ${player.nickname} 님이 ${actionNames[request.kind]}했어요.`, now);
@@ -313,7 +319,7 @@ export class MemoryLounge {
       player.action = null;
     } else if (command.type === "interact") {
       requireAvailable(player, now);
-      const target = state.players.find((item) => item.id === command.targetId && item.id !== player.id);
+      const target = state.npc?.id === command.targetId ? state.npc : state.players.find((item) => item.id === command.targetId && item.id !== player.id);
       if (!target) throw new LoungeError("상대를 찾을 수 없어요.");
       if (!["handshake", "hug", "give", "punch"].includes(command.kind)) throw new LoungeError("지원하지 않는 행동입니다.", 400);
       requireAvailable(target, now);
@@ -329,11 +335,12 @@ export class MemoryLounge {
       } else {
         const food = command.kind === "give" ? player.inventory.find((item) => item.id === command.foodId) : undefined;
         if (command.kind === "give" && !food) throw new LoungeError("먼저 건넬 음식을 골라 주세요.");
-        if (command.kind === "give" && target.inventory.length >= loungeRules.inventoryCapacity) throw new LoungeError("상대가 음식을 더 받을 수 없어요.");
+        if (command.kind === "give" && target.id !== state.npc?.id && target.inventory.length >= loungeRules.inventoryCapacity) throw new LoungeError("상대가 음식을 더 받을 수 없어요.");
         const request: LoungeRequest = { id: randomUUID(), kind: command.kind, fromId: player.id, toId: target.id, createdAt: now, expiresAt: now + loungeRules.requestMs, foodId: food?.id, foodKind: food?.kind };
         state.requests.push(request);
         player.pendingRequestId = request.id;
         target.pendingRequestId = request.id;
+        if (target.id === state.npc?.id) respond(state, target, { type: "respond", requestId: request.id, accept: true, commandId: command.commandId }, now);
       }
     } else if (command.type === "respond") {
       if (typeof command.accept !== "boolean") throw new LoungeError("수락 여부가 올바르지 않습니다.", 400);

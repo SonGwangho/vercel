@@ -1,6 +1,7 @@
 import settings from "../../assets/data/lounge/npc.json";
 import { planMove, walkablePoint } from "../../lounge/navigation";
 import { distance, loungeWorld, positionAt } from "../../lounge/shared";
+import { normalizeNpc } from "../../lounge/npc";
 import type { LoungeRoomState } from "../../types/Lounge";
 
 const waypoints = settings.waypoints.map((point) => walkablePoint({ x: loungeWorld.width / 2 + point.x, y: loungeWorld.height / 2 + point.y }));
@@ -16,15 +17,24 @@ export function hibernateNpc(state: LoungeRoomState, now: number): boolean {
 }
 
 export function maintainNpc(state: LoungeRoomState, now: number): boolean {
-  if (!state.players.length) return hibernateNpc(state, now);
+  let changed = false;
+  if (state.npc && !Array.isArray(state.npc.inventory)) { state.npc = normalizeNpc(state.npc); changed = true; }
+  if (!state.players.length) return hibernateNpc(state, now) || changed;
   if (!state.npc) {
     const point = waypoints[0];
-    state.npc = { id: settings.id, move: { from: point, to: point, startedAt: now, endsAt: now }, waypoint: 0, nextMoveAt: now + pause(), paused: false };
+    state.npc = normalizeNpc({ id: settings.id, move: { from: point, to: point, startedAt: now, endsAt: now }, waypoint: 0, nextMoveAt: now + pause(), paused: false });
     return true;
   }
   const npc = state.npc;
-  if (npc.paused) { npc.paused = false; npc.nextMoveAt = now + pause(); return true; }
-  if (now < npc.nextMoveAt) return false;
+  if (npc.paused) { npc.paused = false; npc.nextMoveAt = now + pause(); changed = true; }
+  if (npc.action) {
+    const peer = state.players.find((player) => player.id === npc.action?.peerId);
+    const social = ["handshake", "hug", "give"].includes(npc.action.kind);
+    if (npc.action.endsAt > now && (!social || peer?.action?.kind === npc.action.kind && peer.action.peerId === npc.id && peer.action.startedAt === npc.action.startedAt)) return changed;
+    npc.action = null; npc.nextMoveAt = Math.max(now, npc.stunnedUntil) + pause(); changed = true;
+  }
+  if (npc.stunnedUntil > now) return changed;
+  if (now < npc.nextMoveAt) return changed;
   const from = positionAt(npc, now);
   const waypoint = distance(from, waypoints[npc.waypoint]) > 8 ? npc.waypoint : (npc.waypoint + 1) % waypoints.length;
   const move = planMove(from, waypoints[waypoint], now);
@@ -35,4 +45,9 @@ export function maintainNpc(state: LoungeRoomState, now: number): boolean {
   return true;
 }
 
-export function nextNpcEvent(state: LoungeRoomState): number { return state.players.length && state.npc && !state.npc.paused ? state.npc.nextMoveAt : Infinity; }
+export function nextNpcEvent(state: LoungeRoomState): number {
+  const npc = state.npc;
+  if (!state.players.length || !npc || npc.paused) return Infinity;
+  if (npc.action) return npc.action.endsAt;
+  return Math.max(npc.nextMoveAt, npc.stunnedUntil);
+}

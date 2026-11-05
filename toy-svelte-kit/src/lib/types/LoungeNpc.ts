@@ -1,6 +1,5 @@
-import type { Vector3 } from "three";
-import type { LoungeMove, LoungePoint } from "./Lounge";
-import type { LoungeCharacterVisual } from "./LoungeCharacter";
+import type { LoungeMove, LoungePlayer } from "./Lounge";
 
-export type LoungeNpc = { id: string; move: LoungeMove; waypoint: number; nextMoveAt: number; paused: boolean };
-export type LoungeSceneNpc = { npc: LoungeNpc; visual: LoungeCharacterVisual; label: HTMLDivElement; head: Vector3; point: LoungePoint; facing: number };
+export type LoungeNpcPatrol = { id: string; move: LoungeMove; waypoint: number; nextMoveAt: number; paused: boolean };
+export type LoungeNpcInput = LoungeNpcPatrol & Partial<LoungePlayer>;
+export type LoungeNpc = LoungePlayer & LoungeNpcPatrol;

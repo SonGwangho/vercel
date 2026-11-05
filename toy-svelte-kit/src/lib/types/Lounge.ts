@@ -152,7 +152,7 @@ export type LoungeCommand = LoungeCommandInput & { commandId: string };
 export type LoungeAvatarProps = { color: string; walking?: boolean; action?: LoungeActionKind | null; stunned?: boolean; size?: number };
 export type LoungeFoodIconProps = { kind: LoungeFoodKind; size?: number };
 export type LoungeRenderedPlayer = LoungePlayer & LoungePoint & { walking: boolean; stunned: boolean; busy: boolean };
-export type LoungeMenuTarget = { kind: "player" | "food" | "lake" | "insect" | "monster"; id: string; x: number; y: number };
+export type LoungeMenuTarget = { kind: "player" | "npc" | "food" | "lake" | "insect" | "monster"; id: string; x: number; y: number };
 export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number; zIndex: number };
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;

@@ -2,7 +2,7 @@ import { LoungeInsectModels } from "./insect-models";
 import { LoungeMonsterModels } from "./monster-models";
 import characterModel from "../assets/data/lounge/character-model.json";
 import npcSettings from "../assets/data/lounge/npc.json";
-import type { LoungeSceneNpc } from "$lib/types/LoungeNpc";
+import { normalizeNpc } from "./npc";
 import { describeMonster, monsterPositionAt, monsterPunchRange, monsterRules } from "./monsters";
 import type { LoungeMonsterVisual } from "$lib/types/LoungeMonster";
 import { describeInsect, insectHeight, insectHeldScale, insectPositionAt, insectRules } from "./insects";
@@ -57,7 +57,6 @@ export class LoungeScene implements LoungeSceneController {
   private insects = new Map<string, LoungeInsectVisual>();
   private monsterModels: LoungeMonsterModels;
   private monsters = new Map<string, LoungeMonsterVisual>();
-  private npc: LoungeSceneNpc | null = null;
   private actors = new Map<string, LoungeSceneActor>();
   private actorIds: string[] = [];
   private foods = new Map<string, LoungeSceneFood>();
@@ -125,7 +124,7 @@ export class LoungeScene implements LoungeSceneController {
     this.particleMesh.frustumCulled = false;
     this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(this.particleMesh);
-    this.stars = new THREE.InstancedMesh(this.geometry("star", () => new THREE.OctahedronGeometry(0.055, 0)), this.material("gold", () => new THREE.MeshBasicMaterial({ color: 0xf5c456 })), CAPACITY * 3);
+    this.stars = new THREE.InstancedMesh(this.geometry("star", () => new THREE.OctahedronGeometry(0.055, 0)), this.material("gold", () => new THREE.MeshBasicMaterial({ color: 0xf5c456 })), (CAPACITY + 1) * 3);
     this.stars.count = 0;
     this.stars.frustumCulled = false;
     this.scene.add(this.stars);
@@ -306,18 +305,23 @@ export class LoungeScene implements LoungeSceneController {
   update(snapshot: LoungeSnapshot) {
     if (this.disposed) return;
     this.state = snapshot;
-    const ids = new Set(snapshot.players.slice(0, CAPACITY).map((player) => player.id));
+    const participants = snapshot.players.slice(0, CAPACITY);
+    if (!this.options.preview && snapshot.npc) participants.push(normalizeNpc(snapshot.npc));
+    const ids = new Set(participants.map((player) => player.id));
     for (const [id, actor] of this.actors) if (!ids.has(id)) {
       this.disposeCast(actor);
       actor.label.remove(); actor.fishLabel.remove(); actor.visual.dispose(); this.pickables = this.pickables.filter((object) => object !== actor.visual.group); if (actor.held) this.scene.remove(actor.held); this.actors.delete(id); this.lastAction.delete(id);
     }
-    this.actorIds = snapshot.players.slice(0, CAPACITY).map((player) => player.id);
+    this.actorIds = participants.map((player) => player.id);
     const now = this.options.getNow();
-    for (const player of snapshot.players.slice(0, CAPACITY)) {
+    for (const player of participants) {
+      const isNpc = player.id === npcSettings.id;
       let actor = this.actors.get(player.id);
       if (!actor) {
         const label = document.createElement("button"); label.type = "button"; label.className = "scene-name";
-        label.dataset.scenePlayer = player.id; label.textContent = player.nickname + (player.id === this.options.selfId ? " · 나" : "");
+        if (isNpc) { label.dataset.sceneNpc = player.id; label.classList.add("scene-npc-label"); }
+        else label.dataset.scenePlayer = player.id;
+        label.textContent = player.nickname + (player.id === this.options.selfId ? " · 나" : "");
         label.title = `${player.nickname} · 우클릭 / Space로 행동`;
         label.addEventListener("keydown", (event) => {
           if (!["Enter", " ", "ContextMenu"].includes(event.key)) return;
@@ -325,7 +329,7 @@ export class LoungeScene implements LoungeSceneController {
           event.preventDefault(); event.stopPropagation();
           if (event.repeat) return;
           const rect = label.getBoundingClientRect();
-          this.options.onContext({ kind: "player", id: player.id, x: rect.right, y: rect.bottom });
+          this.options.onContext({ kind: isNpc ? "npc" : "player", id: player.id, x: rect.right, y: rect.bottom });
         });
         this.overlay.appendChild(label);
         const fishLabel = document.createElement("div");
@@ -335,7 +339,7 @@ export class LoungeScene implements LoungeSceneController {
         fishLabel.append(document.createElement("strong"), document.createElement("span"));
         this.overlay.appendChild(fishLabel);
         const visual = new LoungeCharacter(this.characterAsset, normalizeAppearance(player.appearance, player.color));
-        visual.group.userData.playerId = player.id; this.scene.add(visual.group); this.pickables.push(visual.group);
+        visual.group.userData[isNpc ? "npcId" : "playerId"] = player.id; this.scene.add(visual.group); this.pickables.push(visual.group);
         actor = { player, visual, appearance: normalizeAppearance(player.appearance, player.color), point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, fishLabel, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
         this.actors.set(player.id, actor);
       }
@@ -398,15 +402,6 @@ export class LoungeScene implements LoungeSceneController {
       group.scale.setScalar(species.fieldScale * (.85 + .3 * (insect.sizeCm - species.minCm) / Math.max(1, species.maxCm - species.minCm))); this.scene.add(group);
       this.insects.set(insect.id, { group, insect, point: insectPositionAt(insect, now), facing: insect.seed });
     }
-    if (!this.options.preview && snapshot.npc) {
-      if (!this.npc) {
-        const visual = new LoungeCharacter(this.characterAsset, normalizeAppearance(npcSettings.appearance));
-        this.scene.add(visual.group);
-        const label = document.createElement("div"); label.className = "scene-npc-label"; label.textContent = npcSettings.label;
-        this.overlay.appendChild(label);
-        this.npc = { npc: snapshot.npc, visual, label, head: new THREE.Vector3(), point: positionAt(snapshot.npc, now), facing: 0 };
-      } else this.npc.npc = snapshot.npc;
-    } else if (this.npc) { this.npc.visual.dispose(); this.npc.label.remove(); this.npc = null; }
     const monsterIds = new Set((snapshot.monsters ?? []).map((monster) => monster.id));
     for (const [id, visual] of this.monsters) if (!monsterIds.has(id)) {
       this.burst(visual.point, 0xe7c98c, 24, 1.2);
@@ -528,6 +523,9 @@ export class LoungeScene implements LoungeSceneController {
         ? .6 * THREE.MathUtils.smoothstep(progress, 0, .23) * (1 - THREE.MathUtils.smoothstep(progress, .76, 1)) : 0;
       const desired = Math.atan2(peerPosition.x - position.x, peerPosition.y - position.y) + turn;
       actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(22, delta);
+    } else if (player.id === npcSettings.id && !action && !stunned) {
+      const desired = Math.atan2(loungeWorld.width / 2 - position.x, loungeWorld.height / 2 - position.y);
+      actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(12, delta);
     }
     // Position is predicted locally and only constrained immediately by authoritative stun/action states.
     actor.point.x = position.x; actor.point.y = position.y;
@@ -537,7 +535,7 @@ export class LoungeScene implements LoungeSceneController {
     const gift = action?.kind === "give";
     const giftInHand = gift && ((action.giveRole === "receiver" && progress >= .5)
       || (action.giveRole === "giver" && progress < .5));
-    const foodKind = (gift && !giftInHand ? null : action?.foodKind) ?? carried;
+    const foodKind = gift ? giftInHand ? action?.foodKind : null : action?.foodKind ?? carried;
     const fish = player.fishHeld && (!action || paired) && !stunned ? player.lastCatch : undefined;
     const insect = !foodKind && !fish && player.insectHeld && (!action || action.kind === "collectInsect" && progress > .65) && !stunned ? player.lastInsect : undefined;
     const heldKind = fishing ? "rod" : foodKind ?? fish?.kind ?? insect?.kind;
@@ -674,33 +672,14 @@ export class LoungeScene implements LoungeSceneController {
     if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
   }
 
-  private drawNpc(now: number, delta: number) {
-    if (!this.npc) return;
-    const npc = this.npc;
-    const point = positionAt(npc.npc, now);
-    const walking = !npc.npc.paused && npc.npc.move.endsAt > now && npc.npc.move.startedAt <= now;
-    const dx = point.x - npc.point.x, dy = point.y - npc.point.y;
-    const desired = walking ? Math.hypot(dx, dy) > .001 ? Math.atan2(dx, dy) : npc.facing : Math.atan2(loungeWorld.width / 2 - point.x, loungeWorld.height / 2 - point.y);
-    npc.facing += Math.atan2(Math.sin(desired - npc.facing), Math.cos(desired - npc.facing)) * ease(12, delta);
-    npc.point = point;
-    npc.visual.group.position.set(worldX(point.x), .025, worldZ(point.y)); npc.visual.group.rotation.y = npc.facing;
-    npc.visual.pose({ now, delta, speed: walking ? npcSettings.speed * SCALE : 0, stunned: false, reducedMotion: this.reducedMotion, action: null, peer: null, carried: null, carryingFish: false });
-    npc.visual.group.updateMatrixWorld(true);
-    npc.visual.label(npc.head); npc.head.project(this.camera);
-    const x = (npc.head.x * .5 + .5) * this.width, y = (-npc.head.y * .5 + .5) * this.height;
-    npc.label.hidden = npc.head.z < -1 || npc.head.z > 1 || x < -40 || x > this.width + 40 || y < -30 || y > this.height + 30;
-    npc.label.style.transform = `translate3d(${x}px,${y - 8}px,0) translate(-50%,-100%)`;
-    this.dummy.position.set(worldX(point.x), .008, worldZ(point.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.35, .27, 1); this.dummy.updateMatrix();
-    this.shadows.setMatrixAt(this.actorIds.length, this.dummy.matrix);
-  }
-
   private frame = (at: number) => {
     if (this.disposed || this.lostContext || document.hidden || !this.inViewport || !this.state) return;
     const now = this.options.getNow();
     const previewActor = this.options.preview ? this.actors.get(this.options.selfId) : null;
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
-    const ambientMoving = Boolean(this.npc && !this.npc.npc.paused && this.npc.npc.move.endsAt > now) || [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now);
-    const active = [...this.monsters.values()].some(({ monster }) => monster.attack || monster.targetId || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    const npc = this.actors.get(npcSettings.id)?.player;
+    const ambientMoving = Boolean(npc && npc.move.endsAt > now) || [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now);
+    const active = Boolean(npc && (npc.stunnedUntil > now || npc.action && npc.action.endsAt > now)) || [...this.monsters.values()].some(({ monster }) => monster.attack || monster.targetId || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
     if (at - this.lastFrame < 1000 / (active ? 60 : ambientMoving ? 30 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
@@ -712,7 +691,7 @@ export class LoungeScene implements LoungeSceneController {
     else { this.camera.position.copy(this.look).add(this.project.set(9, 11, 12)); this.camera.lookAt(this.look.x, 0.35, this.look.z); }
     this.camera.updateMatrixWorld();
     let stars = 0;
-    this.shadows.count = this.actorIds.length + Number(Boolean(this.npc));
+    this.shadows.count = this.actorIds.length;
     for (let index = 0; index < this.actorIds.length; index += 1) {
       const actor = this.actors.get(this.actorIds[index])!;
       if (this.options.preview) actor.facing += (this.previewFacing - actor.facing) * (this.reducedMotion ? 1 : ease(16, delta));
@@ -723,7 +702,6 @@ export class LoungeScene implements LoungeSceneController {
         this.dummy.rotation.set(0, angle, Math.PI / 4); this.dummy.scale.set(1, 1, 0.4); this.dummy.updateMatrix(); this.stars.setMatrixAt(stars++, this.dummy.matrix);
       }
     }
-    this.drawNpc(now, delta);
     this.stars.count = stars; this.stars.instanceMatrix.needsUpdate = true;
     this.shadows.instanceMatrix.needsUpdate = true;
     for (const [id, food] of this.foods) {
@@ -834,7 +812,7 @@ export class LoungeScene implements LoungeSceneController {
     for (const actor of this.actors.values()) {
       if (actor === self) continue;
       const gap = distance(self.point, actor.point);
-      if (gap <= nearest) { nearest = gap; chosen = { kind: "player", id: actor.player.id }; point = actor.point; }
+      if (gap <= nearest) { nearest = gap; chosen = { kind: actor.player.id === npcSettings.id ? "npc" : "player", id: actor.player.id }; point = actor.point; }
     }
     for (const food of this.foods.values()) {
       if (!food.group.visible) continue;
@@ -860,7 +838,7 @@ export class LoungeScene implements LoungeSceneController {
       const radius = lake.radius * 100 / distance(self.point, lakeCenter);
       point = { x: lakeCenter.x + (self.point.x - lakeCenter.x) * radius, y: lakeCenter.y + (self.point.y - lakeCenter.y) * radius };
     }
-    const head = chosen.kind === "player" ? this.actors.get(chosen.id)?.head : null;
+    const head = chosen.kind === "player" || chosen.kind === "npc" ? this.actors.get(chosen.id)?.head : null;
     if (head) this.project.copy(head);
     else this.project.set(worldX(point.x), .2, worldZ(point.y)).project(this.camera);
     const rect = this.host.getBoundingClientRect();
@@ -887,6 +865,8 @@ export class LoungeScene implements LoungeSceneController {
   private pick(event: { clientX: number; clientY: number; target: EventTarget | null }): LoungeScenePick | null {
     const label = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-player]") : null;
     if (label?.dataset.scenePlayer) return { kind: "player", id: label.dataset.scenePlayer };
+    const npcLabel = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-npc]") : null;
+    if (npcLabel?.dataset.sceneNpc) return { kind: "npc", id: npcLabel.dataset.sceneNpc };
     const monsterLabel = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-monster]") : null;
     if (monsterLabel?.dataset.sceneMonster) return { kind: "monster", id: monsterLabel.dataset.sceneMonster };
     this.ray(event);
@@ -896,7 +876,7 @@ export class LoungeScene implements LoungeSceneController {
     for (const hit of hits) {
       if (!hit.object.visible) continue;
       let object: THREE.Object3D | null = hit.object;
-      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId }; object = object.parent; }
+      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.npcId) return { kind: "npc", id: object.userData.npcId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId }; object = object.parent; }
     }
     if (this.camp && this.raycaster.intersectObject(this.camp.lake).length) return { kind: "lake", id: "lake" };
     return null;
@@ -924,7 +904,7 @@ export class LoungeScene implements LoungeSceneController {
     if (this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 8) this.cancelHold();
     if (performance.now() - this.hoverAt < 70) return; this.hoverAt = performance.now();
     const target = this.pick(event);
-    const person = target?.kind === "player" ? this.actors.get(target.id)?.player : null;
+    const person = target?.kind === "player" || target?.kind === "npc" ? this.actors.get(target.id)?.player : null;
     const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
       : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "lake" ? "호수" : "";
@@ -966,7 +946,6 @@ export class LoungeScene implements LoungeSceneController {
       actor.visual.dispose();
       this.disposeCast(actor);
     }
-    if (this.npc) { this.npc.visual.dispose(); this.npc.label.remove(); this.npc = null; }
     for (const geometry of this.geometries.values()) geometry.dispose();
     for (const material of this.materials.values()) material.dispose();
     for (const visual of this.monsters.values()) this.monsterModels.release(visual.group);

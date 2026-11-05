@@ -5,6 +5,7 @@
   import FishIcon from "./FishIcon.svelte";
   import InsectIcon from "./InsectIcon.svelte";
   import { describeMonster, monsterPositionAt, monsterPunchRange } from "$lib/lounge/monsters";
+  import { normalizeNpc } from "$lib/lounge/npc";
   import { describeInsect, insectPositionAt, insectRules } from "$lib/lounge/insects";
   import AppVersion from "$lib/components/UI/AppVersion.svelte";
   import ChatHistory from "./ChatHistory.svelte";
@@ -79,7 +80,8 @@
   const outgoing = $derived(room?.requests.find((request) => request.fromId === session?.playerId && request.expiresAt > now) ?? null);
   const requester = $derived(room?.players.find((player) => player.id === incoming?.fromId));
   const receiver = $derived(room?.players.find((player) => player.id === outgoing?.toId));
-  const menuPlayer = $derived(menu?.kind === "player" ? room?.players.find((player) => player.id === menu?.id) : null);
+  const menuIsNpc = $derived(menu?.kind === "npc");
+  const menuPlayer = $derived(menuIsNpc && room?.npc ? normalizeNpc(room.npc) : menu?.kind === "player" ? room?.players.find((player) => player.id === menu?.id) : null);
   const menuFood = $derived(menu?.kind === "food" ? room?.foods.find((food) => food.id === menu?.id) : null);
   const menuMonster = $derived(menu?.kind === "monster" ? room?.monsters?.find((monster) => monster.id === menu?.id) : null);
   const selfMenu = $derived(menuPlayer?.id === session?.playerId);
@@ -197,7 +199,7 @@
       const insect = room?.insects?.find((insect) => insect.id === input.insectId && insect.expiresAt > gameNow());
       return insect ? insectPositionAt(insect, gameNow()) : undefined;
     }
-    return room?.players.find((player) => player.id === input.targetId);
+    return room?.npc?.id === input.targetId ? normalizeNpc(room.npc) : room?.players.find((player) => player.id === input.targetId);
   }
 
   function readyFor(input: LoungeApproach["input"], point: LoungePoint) {
@@ -514,7 +516,7 @@
   {/if}
   {#if menu && me && room}
     <div class="lounge-context-menu" bind:this={menuElement} role="menu" tabindex="-1" aria-label={menuMonster ? `${describeMonster(menuMonster.kind).name} 행동` : menuPlayer ? `${menuPlayer.nickname} 행동` : menu.kind === "lake" ? "호수 행동" : menu.kind === "insect" ? "곤충 행동" : "음식 행동"} style={`left:${menu.x}px;top:${menu.y}px;`} onkeydown={menuKeys}>
-      <header><div><strong>{menuMonster ? describeMonster(menuMonster.kind).name : menuPlayer?.nickname ?? (menuInsect ? describeInsect(menuInsect.kind).name : menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{menuMonster ? `${describeMonster(menuMonster.kind).grade} · 체력 ${menuMonster.hp} / ${menuMonster.maxHp}` : selfMenu ? "내 캐릭터" : menu?.kind === "insect" ? "야생 곤충" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
+      <header><div><strong>{menuMonster ? describeMonster(menuMonster.kind).name : menuPlayer?.nickname ?? (menuInsect ? describeInsect(menuInsect.kind).name : menu?.kind === "lake" ? "호수" : menuFood ? foodName(menuFood.kind) : "대상이 사라졌어요")}</strong><span>{menuMonster ? `${describeMonster(menuMonster.kind).grade} · 체력 ${menuMonster.hp} / ${menuMonster.maxHp}` : menuIsNpc ? "자동 수락" : selfMenu ? "내 캐릭터" : menu?.kind === "insect" ? "야생 곤충" : menu?.kind === "lake" ? "물가에서 낚시" : menu?.kind === "food" ? "바닥에 떨어진 음식" : "함께 놀기"}</span></div><button type="button" class="game-tool" aria-label="행동 메뉴 닫기" onclick={() => closeMenu()}>×</button></header>
       {#if menuMonster}
         <button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(block) || !usable} onclick={() => choose({ type: "punchMonster", monsterId: menuMonster!.id })}><span>{nearby(monsterPositionAt(menuMonster, now), monsterPunchRange(menuMonster)) ? "펀치하기" : "다가가서 펀치하기"}</span><small>피해 1</small></button>
         {#if block}<p class="context-hint">{block}</p>{/if}
@@ -551,7 +553,17 @@
           <button type="button" role="menuitem" disabled={sending || Boolean(block) || food.id === me.heldFoodId} onclick={() => void perform({ type: "equip", foodId: food.id })}><FoodIcon kind={food.kind} size={26} /><span>{foodName(food.kind)}</span><small>{food.id === me.heldFoodId ? "들고 있음" : "손에 들기"}</small></button>
         {/each}
         {#if block}<p class="context-hint">{block}</p>{/if}
-      {:else if menuPlayer}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "handshake", targetId: menuPlayer!.id })}><span>악수하기</span><small>상대 동의</small></button><button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "hug", targetId: menuPlayer!.id })}><span>포옹하기</span><small>상대 동의</small></button>{#if me.inventory.length}<p class="context-section-label">음식 건네기 · 상대 동의</p>{#each me.inventory as food (food.id)}<button type="button" role="menuitem" disabled={sending || Boolean(targetBlock) || menuPlayer.inventory.length >= loungeRules.inventoryCapacity} onclick={() => choose({ type: "interact", kind: "give", targetId: menuPlayer!.id, foodId: food.id })}><FoodIcon kind={food.kind} size={24} /><span>{foodName(food.kind)} 건네기</span></button>{/each}{/if}<button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "punch", targetId: menuPlayer!.id })}><span>펀치하기</span><small>즉시 실행</small></button>{#if targetBlock}<p class="context-hint">{targetBlock}</p>{:else if !nearby(positionAt(menuPlayer, now))}<p class="context-hint">거리를 맞춘 뒤 행동해요.</p>{/if}
+      {:else if menuPlayer}
+        <button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "handshake", targetId: menuPlayer!.id })}><span>악수하기</span><small>{menuIsNpc ? "자동 수락" : "상대 동의"}</small></button>
+        <button type="button" role="menuitem" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "hug", targetId: menuPlayer!.id })}><span>포옹하기</span><small>{menuIsNpc ? "자동 수락" : "상대 동의"}</small></button>
+        {#if me.inventory.length}
+          <p class="context-section-label">음식 건네기 · {menuIsNpc ? "자동 수락" : "상대 동의"}</p>
+          {#each me.inventory as food (food.id)}
+            <button type="button" role="menuitem" disabled={sending || Boolean(targetBlock) || !menuIsNpc && menuPlayer.inventory.length >= loungeRules.inventoryCapacity} onclick={() => choose({ type: "interact", kind: "give", targetId: menuPlayer!.id, foodId: food.id })}><FoodIcon kind={food.kind} size={24} /><span>{foodName(food.kind)} 건네기</span></button>
+          {/each}
+        {/if}
+        <button type="button" role="menuitem" class="punch-menu-item" disabled={sending || Boolean(targetBlock)} onclick={() => choose({ type: "interact", kind: "punch", targetId: menuPlayer!.id })}><span>펀치하기</span><small>즉시 실행</small></button>
+        {#if targetBlock}<p class="context-hint">{targetBlock}</p>{:else if !nearby(positionAt(menuPlayer, now))}<p class="context-hint">거리를 맞춘 뒤 행동해요.</p>{/if}
       {:else}<p class="context-hint">다른 캐릭터나 음식을 선택해 주세요.</p>{/if}
     </div>
   {/if}
