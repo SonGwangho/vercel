@@ -1,6 +1,7 @@
 import type { Bone, Group, Matrix4, Quaternion, Vector3 } from "three";
 import type { LoungeAction, LoungeFoodKind } from "./Lounge";
 import type { LoungeAppearance } from "./LoungeAppearance";
+import type { LoungeSitting } from "./LoungeSeating";
 
 export type LoungeCharacterPose = {
   now: number;
@@ -13,6 +14,7 @@ export type LoungeCharacterPose = {
   carried: LoungeFoodKind | null | undefined;
   carryingFish: boolean;
   carryingInsect?: boolean;
+  sitting?: LoungeSitting | null;
 };
 export type LoungeCharacterVisual = {
   group: Group;

@@ -77,6 +77,7 @@ function impact(state: LoungeRoomState, monster: LoungeStoredMonster, now: numbe
   dropHeldFood(state, target, source, now);
   target.move = { from: point, to: point, startedAt: now, endsAt: now };
   target.fishHeld = false; target.insectHeld = false;
+  target.sitting = null;
   target.stunnedUntil = now + loungeRules.stunMs;
   target.stunImmuneUntil = target.stunnedUntil + monsterRules.stunImmunityMs;
   target.action = { id: randomUUID(), kind: "hit", startedAt: now, endsAt: target.stunnedUntil, peerId: monster.id };
@@ -178,6 +179,7 @@ export function punchMonster(state: LoungeRoomState, player: LoungeStoredPlayer,
   player.move = { from: point, to: point, startedAt: now, endsAt: now };
   player.action = { id: randomUUID(), kind: "punch", startedAt: now, endsAt: now + monsterRules.punchCooldownMs, peerId: monster.id };
   player.heldFoodId = null; player.fishHeld = false; player.insectHeld = false; player.lastMonsterPunchAt = now;
+  player.sitting = null;
   if (!monster.targetId) monster.home = target;
   monster.hp = Math.max(0, monster.hp - monsterRules.punchDamage); monster.lastHitAt = now; monster.targetId = player.id; monster.returning = false;
   if (!monster.contributors.includes(player.encyclopediaHash)) monster.contributors.push(player.encyclopediaHash);

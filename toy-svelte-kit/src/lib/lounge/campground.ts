@@ -4,6 +4,7 @@ import camp from "../assets/data/lounge/campground.json";
 export class Campground {
   readonly floor: THREE.Mesh;
   readonly lake: THREE.Mesh;
+  readonly logs: THREE.Mesh[] = [];
   private waterTime = { value: 0 };
   private geometries = new Map<string, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.Material>();
@@ -25,6 +26,8 @@ export class Campground {
     this.geometries.set("cylinder", new THREE.CylinderGeometry(1, 1, 1, 9));
     this.geometries.set("circle", new THREE.CircleGeometry(1, 48));
     this.geometries.set("grass", new THREE.ConeGeometry(1, 1, 3));
+    this.geometries.set("log-hit", new THREE.BoxGeometry(.64, .6, 1.9));
+    this.materials.set("log-hit", new THREE.MeshBasicMaterial({ visible: false }));
     const triangle = new THREE.Shape(); triangle.moveTo(-1.25, 0); triangle.lineTo(1.25, 0); triangle.lineTo(0, 1.65); triangle.closePath();
     this.geometries.set("tent-door", new THREE.ShapeGeometry(triangle));
     const earth = new THREE.PlaneGeometry(38, 31, 1, 1); this.geometries.set("earth", earth);
@@ -65,6 +68,7 @@ export class Campground {
     this.lake.rotation.x = -Math.PI / 2;
     this.lake.scale.set(lake.radius, lake.radius, 1);
     this.lake.position.set(lake.x, .004, lake.z);
+    this.lake.userData.lakeId = "lake";
     this.group.add(this.lake);
     for (let n = 0; n < 6; n += 1) {
       this.part("box", n % 2 ? "#aa8962" : "#bb9b71", lake.x + lake.radius - .28 + n * .23, .021, lake.z, .219, .05, 1.14);
@@ -126,10 +130,13 @@ export class Campground {
     this.part("circle", "#454336", 0, 0.005, 0, 0.81, 0.81, 1, -Math.PI / 2);
     for (let n = 0; n < 14; n += 1) { const a = n * Math.PI / 7; this.part("rock", n % 2 ? "#a29e86" : "#7f8779", Math.cos(a) * 0.77, 0.12, Math.sin(a) * 0.77, 0.2, 0.15, 0.17, 0, a); }
     for (const turn of [-0.65, 0.65]) this.part("cylinder", "#624431", 0, 0.15, 0, 0.105, 1.12, 0.105, Math.PI / 2, 0, turn);
-    for (const log of camp.logs) {
+    for (const [index, log] of camp.logs.entries()) {
       this.root.makeRotationY(log.rotation); this.root.setPosition(log.x, 0, log.z);
       this.part("cylinder", "#755039", 0, 0.24, 0, 0.24, 1.65, 0.24, Math.PI / 2);
       for (const z of [-0.83, 0.83]) this.part("circle", "#c5a373", 0, 0.24, z, 0.2, 0.2, 1, 0, z < 0 ? Math.PI : 0);
+      const hit = new THREE.Mesh(this.geometries.get("log-hit"), this.materials.get("log-hit"));
+      hit.position.set(log.x, .3, log.z); hit.rotation.y = log.rotation; hit.userData.logId = `log-${index}`;
+      this.logs.push(hit); this.group.add(hit);
       this.root.identity();
     }
     for (const [x, z] of camp.lanterns) { this.part("cylinder", "#80684b", x, 1.45, z, 0.06, 2.9, 0.06); this.lantern(x, 2.7, z); }

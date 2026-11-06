@@ -1,12 +1,14 @@
 import { applyInsectCommand, maintainInsects, nextInsectEvent } from "./insects";
 import { hibernateMonsters, maintainMonsters, nextMonsterEvent, punchMonster } from "./monsters";
 import { hibernateNpc, maintainNpc, nextNpcEvent } from "./npc";
+import { applySeating } from "./seating";
+import { seatedMove } from "../../lounge/seating";
 import { monsterRules } from "../../lounge/monsters";
 import { arrangeSocialPlayers } from "./interaction";
 import { applyFishing, isFishingCommand } from "./fishing";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { normalizeAppearance } from "../../lounge/appearance";
-import { planMove, walkablePoint } from "../../lounge/navigation";
+import { walkablePoint } from "../../lounge/navigation";
 import { ambientFoodCount, dropHeldFood, groundFoodsAt } from "./food";
 import { actionDuration, actionNames, clampPosition, distance, foodName, interactionBlock, interactionRangeFor, isLoungeEmote, loungeChannels, loungeFoods, loungeRules, loungeWorld, positionAt } from "../../lounge/shared";
 import type { LoungeActionKind, LoungeCommand, LoungeGroundFood, LoungeJoinInput, LoungeJoinResult, LoungePlayer, LoungePoint, LoungeRequest, LoungeRoomMutation, LoungeRoomState, LoungeSession, LoungeSnapshot, LoungeStoredPlayer } from "../../types/Lounge";
@@ -127,6 +129,7 @@ function freeze(player: LoungePlayer, now: number) {
 
 function beginAction(player: LoungePlayer, kind: LoungeActionKind, duration: number, now: number, peerId?: string) {
   freeze(player, now);
+  if (kind !== "eat" || player.sitting?.kind === "lying") player.sitting = null;
   player.fishHeld = false; player.insectHeld = false;
   player.action = { id: randomUUID(), kind, startedAt: now, endsAt: now + duration, peerId };
 }
@@ -287,19 +290,25 @@ export class MemoryLounge {
       return true;
     }
     requireAwake(player, now);
-    if (command.type === "punchMonster") {
+    if (command.type === "sitGround" || command.type === "sitLog" || command.type === "lieGround" || command.type === "stand") {
+      const reason = applySeating(state, player, command, now);
+      if (reason) throw new LoungeError(reason);
+    } else if (command.type === "punchMonster") {
       const reason = punchMonster(state, player, command.monsterId, now);
       if (reason) throw new LoungeError(reason);
     } else if (command.type === "collectInsect" || command.type === "releaseInsect") {
       const reason = applyInsectCommand(state, player, command, now, this.secret);
       if (reason) throw new LoungeError(reason);
+      if (command.type === "collectInsect") player.sitting = null;
     } else if (isFishingCommand(command)) {
       const error = applyFishing(player, command, now, this.secret);
       if (error) throw new LoungeError(error);
+      if (command.type === "cast") player.sitting = null;
     } else if (command.type === "move") {
       if (player.action && player.action.endsAt > now) throw new LoungeError("행동이 끝나면 이동할 수 있어요.");
       if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) throw new LoungeError("이동할 위치가 올바르지 않습니다.", 400);
-      player.move = planMove(positionAt(player, now), command, now);
+      player.move = seatedMove(positionAt(player, now), player.sitting, command, now);
+      player.sitting = null;
     } else if (command.type === "chat") {
       if (typeof command.text !== "string") throw new LoungeError("보낼 내용을 입력해 주세요.", 400);
       const text = command.text.normalize("NFKC").trim().replace(/[\p{C}]/gu, " ");
@@ -362,6 +371,7 @@ export class MemoryLounge {
     } else if (command.type === "equip") {
       requireAvailable(player, now);
       if (!player.inventory.some((food) => food.id === command.foodId)) throw new LoungeError("가방에 없는 음식이에요.");
+      if (player.sitting?.kind === "lying") player.sitting = null;
       player.heldFoodId = command.foodId;
       player.fishHeld = false; player.insectHeld = false;
     } else if (command.type === "stow") {

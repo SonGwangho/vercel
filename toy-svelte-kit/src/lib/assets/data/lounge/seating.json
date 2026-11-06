@@ -1,0 +1,13 @@
+{
+  "slotOffsets": [-40, 40],
+  "logHeight": 0.48,
+  "approachDistance": 75,
+  "interactRange": 110,
+  "groundRange": 36,
+  "settleMs": 280,
+  "logHalfWidth": 40,
+  "logHalfLength": 95,
+  "lyingHalfLength": 95,
+  "lyingHalfWidth": 35,
+  "transitionRate": 14
+}

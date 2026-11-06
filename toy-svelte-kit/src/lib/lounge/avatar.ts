@@ -8,6 +8,8 @@ import type { LoungeAction } from "../types/Lounge";
 import type { LoungeCharacterPose, LoungeCharacterVisual, LoungeChibiJoint, LoungeChibiLimb } from "../types/LoungeCharacter";
 import { ChibiWardrobe } from "./chibi-wardrobe";
 import { fishingMotion } from "./fishing";
+import { findSeat, seatingRules } from "./seating";
+import type { LoungeSitting } from "../types/LoungeSeating";
 import model from "../assets/data/lounge/character-model.json";
 
 const MODEL_SCALE = model.scale;
@@ -15,6 +17,7 @@ const PALM_LENGTH = 3.7;
 const TAU = Math.PI * 2;
 const smooth = THREE.MathUtils.smoothstep;
 const kneePole = new THREE.Vector3(0, 0, 1);
+const lyingBoundsCache = new WeakMap<THREE.BufferGeometry, Map<LoungeAppearance["hairStyle"], THREE.Box3>>();
 
 let source: Promise<GLTF> | null = null;
 export function loadLoungeCharacters(): Promise<GLTF> {
@@ -28,6 +31,10 @@ export function loadLoungeCharacters(): Promise<GLTF> {
 export class LoungeCharacter implements LoungeCharacterVisual {
   readonly group = new THREE.Group();
   private rig: THREE.Group;
+  private bodyRoot = new THREE.Group();
+  private lieWeight = 0;
+  private lyingBounds = new THREE.Box3();
+  private lyingHeadLift = .25;
   private joints = new Map<string, LoungeChibiJoint>();
   private skins = new Set<THREE.Skeleton>();
   private hips: THREE.Bone;
@@ -69,11 +76,15 @@ export class LoungeCharacter implements LoungeCharacterVisual {
   private palm = new THREE.Vector3();
   private midpoint = new THREE.Vector3();
   private along = new THREE.Vector3();
+  private sitWeight = 0;
+  private seatPose: LoungeSitting | null = null;
+  private seatedPole = new THREE.Vector3();
 
   constructor(asset: GLTF, appearance: LoungeAppearance) {
     this.rig = clone(asset.scene) as THREE.Group;
     this.rig.scale.setScalar(MODEL_SCALE);
-    this.group.add(this.rig);
+    this.bodyRoot.add(this.rig);
+    this.group.add(this.bodyRoot);
     this.group.updateMatrixWorld(true);
     let body: THREE.SkinnedMesh | undefined;
     this.rig.traverse((object) => {
@@ -106,8 +117,16 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       this.limb("RightUpLeg_024", "RightLeg_025", "RightFoot_026"),
       this.limb("Left_UpLeg_00", "Left_Leg_028", "Left_Foot_029")
     ];
+    const sourceGeometry = body!.geometry;
     this.wardrobe = new ChibiWardrobe(body!, this.rig, this.head, this.hips, this.bone("Spine2_04"), this.arms[0].end);
     this.appearance(appearance);
+    let boundsByHair = lyingBoundsCache.get(sourceGeometry);
+    if (!boundsByHair) { boundsByHair = new Map(); lyingBoundsCache.set(sourceGeometry, boundsByHair); }
+    let bounds = boundsByHair.get(appearance.hairStyle);
+    if (!bounds) { bounds = new THREE.Box3().setFromObject(this.rig); boundsByHair.set(appearance.hairStyle, bounds); }
+    this.lyingBounds.copy(bounds);
+    this.head.getWorldPosition(this.origin);
+    this.lyingHeadLift = Math.max(.18, (bounds.max.y - this.origin.y) * .5) + .06;
   }
 
   private bone(name: string) {
@@ -210,8 +229,18 @@ export class LoungeCharacter implements LoungeCharacterVisual {
   }
 
   pose(state: LoungeCharacterPose) {
+    this.bodyRoot.rotation.set(0, 0, 0); this.bodyRoot.position.set(0, 0, 0);
     for (const joint of this.joints.values()) joint.bone.quaternion.copy(joint.rotation);
     const { now, delta, reducedMotion, stunned, peer } = state;
+    const lying = state.sitting?.kind === "lying";
+    this.lieWeight = THREE.MathUtils.damp(this.lieWeight, lying ? 1 : 0, reducedMotion || state.action || stunned ? 30 : seatingRules.transitionRate, delta);
+    if (!lying && this.lieWeight < .001) this.lieWeight = 0;
+    const requestedSeat = state.sitting && !lying ? state.sitting : null;
+    if (requestedSeat) this.seatPose = requestedSeat;
+    this.sitWeight = THREE.MathUtils.damp(this.sitWeight, requestedSeat && this.lieWeight < .2 ? 1 : 0, reducedMotion ? 30 : seatingRules.transitionRate, delta);
+    if (!requestedSeat && this.sitWeight < .001) { this.sitWeight = 0; this.seatPose = null; }
+    const seat = this.seatPose;
+    const seatHeight = seat?.kind === "log" ? findSeat(seat.seatId)?.height ?? seatingRules.logHeight : 0;
     if (state.action) {
       this.lastAction = state.action;
       this.release = 1;
@@ -262,6 +291,13 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     const headTilt = kind === "scratchHead" ? .11 : kind === "tongueOut" ? .19 : 0;
     this.rotate("Head_06", headPitch * weight - .21 * laugh - .18 * running - .16 * this.fishHold, look * weight, headTilt * weight + recoil * .4);
     this.group.updateMatrixWorld(true);
+    if (seat && this.sitWeight > .001) {
+      this.hips.getWorldPosition(this.target);
+      this.target.y = this.group.position.y + seatHeight + .1;
+      this.hips.parent!.worldToLocal(this.target);
+      this.hips.position.lerp(this.target, this.sitWeight);
+      this.group.updateMatrixWorld(true);
+    }
     this.rig.getWorldQuaternion(this.rigRotation);
     for (let i = 0; i < this.legs.length; i += 1) {
       const limb = this.legs[i];
@@ -274,7 +310,21 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       this.target.y += lift;
       this.target.z += sweep * stride;
       this.target.applyMatrix4(this.rig.matrixWorld);
-      this.solve(limb, this.target, kneePole);
+      let pole = kneePole;
+      if (seat && this.sitWeight > .001) {
+        const side = i === 0 ? -1 : 1;
+        if (seat.kind === "log") {
+          limb.upper.getWorldPosition(this.aimFrom);
+          this.aimTo.set(0, 0, 1).applyQuaternion(this.rigRotation);
+          this.aimFrom.addScaledVector(this.aimTo, limb.upperLength * .98);
+          this.aimFrom.y = Math.max(this.group.position.y + .04, this.aimFrom.y - limb.lowerLength * .95);
+        } else {
+          this.aimFrom.set(-side * .1, .035, .2).applyMatrix4(this.group.matrixWorld);
+          this.seatedPole.set(side, .15, .25); pole = this.seatedPole;
+        }
+        this.target.lerp(this.aimFrom, this.sitWeight);
+      }
+      this.solve(limb, this.target, pole);
       this.orientEnd(limb);
     }
 
@@ -290,7 +340,13 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       let roll = 0;
       let worldPalm = false;
       let direction: THREE.Vector3 | undefined;
-      if (carryingSpecimen && !state.action) {
+      if (this.lieWeight > .1 && !state.action && !state.carried && !carryingSpecimen) {
+        this.palm.set(side * 6.8, 11, 1.4);
+        armWeight = this.lieWeight;
+      } else if (seat && this.sitWeight > .001 && !state.action && !state.carried && !carryingSpecimen) {
+        this.palm.set(side * .15, seatHeight + .2, .17).applyMatrix4(this.group.matrixWorld);
+        armWeight = this.sitWeight; worldPalm = true;
+      } else if (carryingSpecimen && !state.action) {
         this.palm.set(side * 4.7, 15, 10);
         armWeight = this.fishHold;
       } else if (peer && paired && ((i === 0 && kind !== "hug") || kind === "hug")) {
@@ -377,6 +433,12 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     const laughing = kind === "laugh" && weight > .25;
     const chewing = kind === "eat" && weight > .45 && (reducedMotion || Math.sin(elapsed * 14) > 0);
     this.wardrobe.expression(tongue || laughing || chewing, tongue, kind === "middleFinger" && weight > .38);
+    if (this.lieWeight > .001) {
+      const angle = Math.PI / 2 * this.lieWeight, sine = Math.sin(angle), cosine = Math.cos(angle);
+      this.bodyRoot.rotation.x = -angle;
+      this.bodyRoot.position.y = Math.max(0, this.lyingBounds.min.y * (1 - cosine) - this.lyingBounds.min.z * sine + .02 * sine);
+      this.bodyRoot.position.z = (this.lyingBounds.min.y + this.lyingBounds.max.y) * .5 * sine;
+    }
     this.group.updateMatrixWorld(true);
   }
 
@@ -394,6 +456,11 @@ export class LoungeCharacter implements LoungeCharacterVisual {
 
   label(point: THREE.Vector3) {
     point.set(0, this.wardrobe.topY + .8, 0).applyMatrix4(this.headBind).applyMatrix4(this.head.matrixWorld);
+    if (this.lieWeight > .001) {
+      this.head.getWorldPosition(this.origin);
+      point.lerp(this.origin, this.lieWeight * .5);
+      point.y += this.lieWeight * this.lyingHeadLift;
+    }
   }
 
   dispose() {

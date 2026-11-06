@@ -12,7 +12,7 @@ import { actionDuration, clampPosition, distance, foodName, isLoungeEmote, loung
 import { nameLabels, speechBubbles } from "./layout";
 import { normalizeAppearance } from "./appearance";
 import { Campground } from "./campground";
-import { planMove } from "./navigation";
+import { groundSeatAllowed, loungeLogs, seatedMove, seatingRules } from "./seating";
 import { canFishFrom, catchLabel, describeFish, fishDisplayLength, fishDisplayOffset, fishLength, fishingMotion, lake, lakeCenter } from "./fishing";
 import { LoungeFishModels } from "./fish-models";
 import { LoungeCharacter, loadLoungeCharacters } from "./avatar";
@@ -343,6 +343,11 @@ export class LoungeScene implements LoungeSceneController {
         actor = { player, visual, appearance: normalizeAppearance(player.appearance, player.color), point: positionAt(player, now), correction: { x: 0, y: 0 }, facing: 0.58, head: new THREE.Vector3(), label, fishLabel, nameOffset: { x: -45, y: -25 }, nameWidth: 90, actionId: null, held: null, heldKind: null };
         this.actors.set(player.id, actor);
       }
+      if (player.sitting && player.sitting.startedAt !== actor.player.sitting?.startedAt) {
+        const point = positionAt(player, now);
+        actor.correction.x = actor.point.x - point.x; actor.correction.y = actor.point.y - point.y;
+        if (player.id === this.options.selfId) { this.localMove = null; this.marker.visible = false; }
+      }
       if (player.id !== this.options.selfId && player.move.startedAt !== actor.player.move.startedAt) {
         const point = positionAt(player, now);
         actor.correction.x = actor.point.x - point.x; actor.correction.y = actor.point.y - point.y;
@@ -439,7 +444,7 @@ export class LoungeScene implements LoungeSceneController {
     const actor = this.actors.get(this.options.selfId);
     if (!actor) return;
     const now = this.options.getNow();
-    this.localMove = planMove(actor.point, point, now);
+    this.localMove = seatedMove(actor.point, this.localMove ? null : actor.player.sitting, point, now);
     const to = this.localMove.to;
     this.marker.position.set(worldX(to.x), 0.025, worldZ(to.y)); this.markerAt = now; this.marker.visible = true;
     this.tone(330, 0.035, 0.025);
@@ -497,10 +502,10 @@ export class LoungeScene implements LoungeSceneController {
     if (paired) {
       actor.correction.x = 0;
       actor.correction.y = 0;
-    } else if (!self) {
-      const decay = Math.exp(-(stunned ? 40 : 28) * delta);
+    } else {
+      const decay = Math.exp(-(player.sitting ? 4000 / seatingRules.settleMs : stunned ? 40 : 28) * delta);
       actor.correction.x *= decay; actor.correction.y *= decay;
-      position.x += actor.correction.x; position.y += actor.correction.y;
+      if (!self || !predicted && !this.localMove) { position.x += actor.correction.x; position.y += actor.correction.y; }
     }
     const dx = position.x - actor.point.x;
     const dy = position.y - actor.point.y;
@@ -508,7 +513,10 @@ export class LoungeScene implements LoungeSceneController {
     const progress = action ? THREE.MathUtils.clamp((now - action.startedAt) / Math.max(1, action.endsAt - action.startedAt), 0, 1) : 0;
     const holdingFish = Boolean(player.fishHeld && player.lastCatch && !action && !stunned);
     const holdingInsect = Boolean(player.insectHeld && player.lastInsect && !action && !stunned);
-    if (holdingFish || holdingInsect) {
+    const sitting = !stunned && (!action || action.kind === "eat") && !(self && this.localMove) ? player.sitting : null;
+    if (sitting) {
+      actor.facing += Math.atan2(Math.sin(sitting.facing - actor.facing), Math.cos(sitting.facing - actor.facing)) * ease(18, delta);
+    } else if (holdingFish || holdingInsect) {
       this.camera.getWorldDirection(this.viewDirection).negate();
       const desired = Math.atan2(this.viewDirection.x, this.viewDirection.z);
       actor.facing += Math.atan2(Math.sin(desired - actor.facing), Math.cos(desired - actor.facing)) * ease(24, delta);
@@ -542,10 +550,10 @@ export class LoungeScene implements LoungeSceneController {
     const visual = actor.visual;
     visual.group.position.set(worldX(position.x), .025, worldZ(position.y));
     visual.group.rotation.y = actor.facing;
-    const speed = walking ? Math.min(loungeWorld.speed * SCALE, Math.hypot(dx, dy) * SCALE / delta) : 0;
+    const speed = walking && !sitting ? Math.min(loungeWorld.speed * SCALE, Math.hypot(dx, dy) * SCALE / delta) : 0;
     const pairTarget = (paired || action?.kind === "punch") && peerPosition
       ? this.peerTarget.set(worldX(peerPosition.x), .025, worldZ(peerPosition.y)) : null;
-    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried, carryingFish: Boolean(fish), carryingInsect: Boolean(insect) });
+    visual.pose({ now, delta, speed, stunned, reducedMotion: this.reducedMotion, action, peer: pairTarget, carried, carryingFish: Boolean(fish), carryingInsect: Boolean(insect), sitting });
     visual.grip(this.grip, paired && Boolean(carried || fish) && !giftInHand, holdingFish || Boolean(insect));
     this.root.makeRotationY(actor.facing); this.root.setPosition(worldX(position.x), .025, worldZ(position.y));
     this.dummy.position.set(worldX(position.x), .012, worldZ(position.y)); this.dummy.rotation.set(-Math.PI / 2, 0, 0); this.dummy.scale.set(.40, .29, 1); this.dummy.updateMatrix(); this.shadows.setMatrixAt(index, this.dummy.matrix);
@@ -679,7 +687,7 @@ export class LoungeScene implements LoungeSceneController {
     const turning = previewActor && Math.abs(previewActor.facing - this.previewFacing) > 0.001;
     const npc = this.actors.get(npcSettings.id)?.player;
     const ambientMoving = Boolean(npc && npc.move.endsAt > now) || [...this.monsters.values()].some(({ monster }) => monster.move.endsAt > now);
-    const active = Boolean(npc && (npc.stunnedUntil > now || npc.action && npc.action.endsAt > now)) || [...this.monsters.values()].some(({ monster }) => monster.attack || monster.targetId || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now));
+    const active = Boolean(npc && (npc.stunnedUntil > now || npc.action && npc.action.endsAt > now)) || [...this.monsters.values()].some(({ monster }) => monster.attack || monster.targetId || now - monster.lastHitAt < 200) || [...this.insects.values()].some(({ insect }) => insect.kind === "bee" || insect.kind === "butterfly" || insect.move.endsAt > now) || turning || this.localMove || this.prediction || this.particles.length || this.state.players.some((player) => player.move.endsAt > now || player.stunnedUntil > now || (player.action && player.action.endsAt > now) || player.sitting && now - player.sitting.startedAt < 400);
     if (at - this.lastFrame < 1000 / (active ? 60 : ambientMoving ? 30 : 24) - 1) return;
     const delta = Math.min(0.05, Math.max(0.001, (at - this.lastFrame) / 1000)); this.lastFrame = at; this.elapsed += delta;
     if (this.prediction && this.prediction.action.endsAt < now) this.prediction = null;
@@ -827,6 +835,11 @@ export class LoungeScene implements LoungeSceneController {
       if (gap <= insectRules.captureRange && gap < nearest) { nearest = gap; chosen = { kind: "insect", id: visual.insect.id }; point = visual.point; }
     }
     const shoreGap = distance(self.point, lakeCenter) - lake.radius * 100;
+    for (const log of loungeLogs) {
+      const center = { x: loungeWorld.width / 2 + log.x * 100, y: loungeWorld.height / 2 + log.z * 100 };
+      const gap = distance(self.point, center);
+      if (gap <= seatingRules.interactRange && gap < nearest) { nearest = gap; chosen = { kind: "log", id: log.id }; point = center; }
+    }
     for (const visual of this.monsters.values()) {
       const gap = distance(self.point, visual.point);
       if (gap <= monsterPunchRange(visual.monster) && gap - describeMonster(visual.monster.kind).radius < nearest) {
@@ -862,23 +875,57 @@ export class LoungeScene implements LoungeSceneController {
     this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
   }
-  private pick(event: { clientX: number; clientY: number; target: EventTarget | null }): LoungeScenePick | null {
-    const label = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-player]") : null;
-    if (label?.dataset.scenePlayer) return { kind: "player", id: label.dataset.scenePlayer };
-    const npcLabel = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-npc]") : null;
-    if (npcLabel?.dataset.sceneNpc) return { kind: "npc", id: npcLabel.dataset.sceneNpc };
-    const monsterLabel = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-scene-monster]") : null;
-    if (monsterLabel?.dataset.sceneMonster) return { kind: "monster", id: monsterLabel.dataset.sceneMonster };
+  private pickLabel(element: Element | null): LoungeScenePick | null {
+    const label = element?.closest<HTMLElement>("[data-scene-player],[data-scene-npc],[data-scene-monster]");
+    if (!label || label.hidden || !this.overlay.contains(label)) return null;
+    if (label.dataset.scenePlayer) return { kind: "player", id: label.dataset.scenePlayer };
+    if (label.dataset.sceneNpc) return { kind: "npc", id: label.dataset.sceneNpc };
+    if (label.dataset.sceneMonster) return { kind: "monster", id: label.dataset.sceneMonster };
+    return null;
+  }
+  private pick(event: { clientX: number; clientY: number; target: EventTarget | null }, allowGround = false): LoungeScenePick | null {
+    const direct = this.pickLabel(event.target instanceof Element ? event.target : null);
+    let own: LoungeScenePick | null = null;
+    if (direct) {
+      if (direct.kind !== "player" || direct.id !== this.options.selfId) return direct;
+      own = direct;
+      for (const element of document.elementsFromPoint(event.clientX, event.clientY)) {
+        const label = this.pickLabel(element);
+        if (label && (label.kind !== "player" || label.id !== this.options.selfId)) return label;
+      }
+    }
     this.ray(event);
     const foodObjects = [...this.foods.values()].filter((food) => food.group.visible).map((food) => food.group);
     const insectObjects = [...this.insects.values()].filter((visual) => visual.group.visible && visual.insect.expiresAt > this.options.getNow()).map((visual) => visual.group);
-    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects, ...[...this.monsters.values()].map((visual) => visual.group)], true);
+    const surroundings: THREE.Object3D[] = this.camp ? [...this.camp.logs, this.camp.lake] : [];
+    const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects, ...[...this.monsters.values()].map((visual) => visual.group), ...surroundings], true);
     for (const hit of hits) {
       if (!hit.object.visible) continue;
       let object: THREE.Object3D | null = hit.object;
-      while (object) { if (object.userData.playerId) return { kind: "player", id: object.userData.playerId }; if (object.userData.npcId) return { kind: "npc", id: object.userData.npcId }; if (object.userData.foodId) return { kind: "food", id: object.userData.foodId }; if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId }; if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId }; object = object.parent; }
+      while (object) {
+        if (object.userData.playerId) {
+          const id = String(object.userData.playerId);
+          if (id === this.options.selfId) { own = { kind: "player", id }; break; }
+          return { kind: "player", id };
+        }
+        if (object.userData.npcId) return { kind: "npc", id: object.userData.npcId };
+        if (object.userData.foodId) return { kind: "food", id: object.userData.foodId };
+        if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId };
+        if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId };
+        if (object.userData.logId) return { kind: "log", id: object.userData.logId };
+        if (object.userData.lakeId) return { kind: "lake", id: object.userData.lakeId };
+        object = object.parent;
+      }
     }
-    if (this.camp && this.raycaster.intersectObject(this.camp.lake).length) return { kind: "lake", id: "lake" };
+    if (own) return own;
+    if (allowGround) {
+      const hit = this.raycaster.intersectObject(this.floor)[0];
+      if (hit) {
+        const raw = { x: hit.point.x / SCALE + loungeWorld.width / 2, y: hit.point.z / SCALE + loungeWorld.height / 2 };
+        const point = clampPosition(raw);
+        if (distance(raw, point) < 1 && groundSeatAllowed(point)) return { kind: "ground", id: "ground", point };
+      }
+    }
     return null;
   }
   private pointerDown = (event: PointerEvent) => {
@@ -888,7 +935,7 @@ export class LoungeScene implements LoungeSceneController {
     if (event.button !== 0) return;
     this.unlockAudio(); this.down = { x: event.clientX, y: event.clientY, at: performance.now() }; this.suppressClick = false;
     if (event.pointerType === "touch") {
-      const target = this.pick(event);
+      const target = this.pick(event, true);
       if (target) this.hold = setTimeout(() => { this.suppressClick = true; this.options.onContext({ ...target, x: event.clientX, y: event.clientY }); }, 450);
     }
   };
@@ -907,7 +954,7 @@ export class LoungeScene implements LoungeSceneController {
     const person = target?.kind === "player" || target?.kind === "npc" ? this.actors.get(target.id)?.player : null;
     const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
-      : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "lake" ? "호수" : "";
+      : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "log" ? "통나무" : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private pointerLeave = () => {
@@ -917,7 +964,7 @@ export class LoungeScene implements LoungeSceneController {
   private contextMenu = (event: MouseEvent) => {
     if (this.options.preview) { event.preventDefault(); return; }
     if (event.target instanceof Element && event.target.closest(".scene-speech")) return;
-    event.preventDefault(); this.cancelHold(); this.unlockAudio(); const target = this.pick(event);
+    event.preventDefault(); this.cancelHold(); this.unlockAudio(); const target = this.pick(event, true);
     if (target) this.options.onContext({ ...target, x: event.clientX, y: event.clientY });
   };
   private cancelHold = () => { if (this.hold) clearTimeout(this.hold); this.hold = null; };

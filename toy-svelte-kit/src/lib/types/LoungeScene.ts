@@ -57,6 +57,6 @@ export type LoungeSceneController = {
   unlockAudio: () => void;
   dispose: () => void;
 };
-export type LoungeScenePick = Pick<LoungeMenuTarget, "kind" | "id">;
+export type LoungeScenePick = Pick<LoungeMenuTarget, "kind" | "id" | "point">;
 export type LoungeSceneLocalMove = LoungeMove;
 export type LoungeHeldPrediction = { kind: LoungeFoodKind | null; commandId: string };
