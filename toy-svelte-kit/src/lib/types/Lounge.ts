@@ -136,9 +136,10 @@ export type LoungeCommandInput =
   | LoungeFishingCommand
   | { type: "punchMonster"; monsterId: string }
   | { type: "bindEncyclopedia"; token: string }
-  | { type: "sitGround"; x: number; y: number }
-  | { type: "lieGround"; x: number; y: number }
+  | { type: "sitGround"; x: number; y: number; facing?: number }
+  | { type: "lieGround"; x: number; y: number; facing?: number }
   | { type: "sitLog"; logId: string }
+  | { type: "sitBench"; benchId: string }
   | { type: "stand" }
   | { type: "collectInsect"; insectId: string }
   | { type: "releaseInsect" }
@@ -158,13 +159,13 @@ export type LoungeCommand = LoungeCommandInput & { commandId: string };
 export type LoungeAvatarProps = { color: string; walking?: boolean; action?: LoungeActionKind | null; stunned?: boolean; size?: number };
 export type LoungeFoodIconProps = { kind: LoungeFoodKind; size?: number };
 export type LoungeRenderedPlayer = LoungePlayer & LoungePoint & { walking: boolean; stunned: boolean; busy: boolean };
-export type LoungeMenuTarget = { kind: "player" | "npc" | "food" | "lake" | "insect" | "monster" | "log" | "ground"; id: string; x: number; y: number; point?: LoungePoint };
+export type LoungeMenuTarget = { kind: "player" | "npc" | "food" | "lake" | "insect" | "monster" | "log" | "bench" | "ground"; id: string; x: number; y: number; point?: LoungePoint };
 export type LoungeBubble = { id: string; playerId: string; nickname: string; text: string; x: number; y: number; width: number; height: number; anchorX: number; anchorY: number; zIndex: number };
 export type LoungeRoomClientState = "connecting" | "connected" | "reconnecting" | "expired";
 export type LoungeRoomMutation = (state: LoungeRoomState, now: number) => boolean;
 export type LoungeRoomProps = { channel: LoungeChannel };
 export type LoungeApproach = {
-  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" | "cast" | "collectInsect" | "punchMonster" | "sitGround" | "sitLog" | "lieGround" }>;
+  input: Extract<LoungeCommandInput, { type: "pickup" | "interact" | "cast" | "collectInsect" | "punchMonster" | "sitGround" | "sitLog" | "sitBench" | "lieGround" }>;
   target: LoungePoint;
   startedAt: number;
   lastSentAt: number;

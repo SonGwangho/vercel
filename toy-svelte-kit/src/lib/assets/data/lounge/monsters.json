@@ -21,10 +21,10 @@
   "attackCooldownMs": 2600,
   "species": [
     { "kind": "hornRabbit", "name": "뿔토끼", "grade": "C", "hp": 3, "scale": 0.75, "radius": 26, "color": "#e2d4b7", "passive": true, "speed": 125 },
-    { "kind": "wolf", "name": "늑대", "grade": "B", "hp": 7, "scale": 1, "radius": 37, "color": "#85939b", "passive": false, "speed": 185 },
-    { "kind": "bear", "name": "곰", "grade": "A", "hp": 13, "scale": 1.35, "radius": 46, "color": "#876247", "passive": false, "speed": 135 },
-    { "kind": "tiger", "name": "커다란 호랑이", "grade": "S", "hp": 21, "scale": 1.75, "radius": 55, "color": "#d79a48", "passive": false, "speed": 175 },
-    { "kind": "griffin", "name": "그리폰", "grade": "SS", "hp": 35, "scale": 2.2, "radius": 63, "color": "#bc9058", "passive": false, "speed": 160 },
-    { "kind": "easternDragon", "name": "동양 용", "grade": "SSS", "hp": 100, "scale": 3, "radius": 76, "color": "#548f85", "passive": false, "speed": 150 }
+    { "kind": "wolf", "name": "늑대", "grade": "B", "hp": 7, "scale": 1, "radius": 37, "color": "#85939b", "passive": true, "speed": 185 },
+    { "kind": "bear", "name": "곰", "grade": "A", "hp": 13, "scale": 1.35, "radius": 46, "color": "#876247", "passive": true, "speed": 135 },
+    { "kind": "tiger", "name": "커다란 호랑이", "grade": "S", "hp": 21, "scale": 1.75, "radius": 55, "color": "#d79a48", "passive": true, "speed": 175 },
+    { "kind": "griffin", "name": "그리폰", "grade": "SS", "hp": 35, "scale": 2.2, "radius": 63, "color": "#bc9058", "passive": true, "speed": 160 },
+    { "kind": "easternDragon", "name": "동양 용", "grade": "SSS", "hp": 100, "scale": 3, "radius": 76, "color": "#548f85", "passive": true, "speed": 150 }
   ]
 }

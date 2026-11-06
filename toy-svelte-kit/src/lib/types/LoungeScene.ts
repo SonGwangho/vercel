@@ -41,6 +41,7 @@ export type LoungeSceneController = {
   move: (point: LoungePoint) => void;
   rejectMove: () => void;
   position: () => LoungePoint | null;
+  facing: () => number | null;
   predict: (kind: LoungeActionKind, commandId: string, foodKind?: LoungeFoodKind, foodId?: string, peerId?: string) => void;
   settle: (commandId: string, accepted: boolean) => void;
   stopEmote: () => void;

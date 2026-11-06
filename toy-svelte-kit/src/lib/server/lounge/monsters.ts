@@ -91,7 +91,12 @@ export function maintainMonsters(state: LoungeRoomState, now: number): boolean {
   for (const monster of state.monsters) {
     if (monster.lastHitAt && now - monster.lastHitAt >= monsterRules.healAfterMs) {
       monster.hp = monster.maxHp; monster.contributors = []; monster.lastHitAt = 0;
-      if (describeMonster(monster.kind).passive) monster.targetId = undefined;
+      changed = true;
+    }
+    if (describeMonster(monster.kind).passive && !monster.lastHitAt && (monster.targetId || monster.attack)) {
+      stop(monster, now);
+      monster.targetId = undefined; monster.attack = undefined; monster.returning = false;
+      monster.nextThinkAt = now; monster.nextRoamAt = now + roamPause();
       changed = true;
     }
   }

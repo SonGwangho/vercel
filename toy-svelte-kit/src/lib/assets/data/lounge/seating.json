@@ -1,13 +1,20 @@
 {
   "slotOffsets": [-40, 40],
   "logHeight": 0.48,
+  "benchOffsets": [-87, 87],
+  "benchSlotOffsets": [-50, 50],
+  "benchHeight": 0.445,
+  "benchHalfLength": 110,
+  "benchHalfWidth": 15,
   "approachDistance": 75,
   "interactRange": 110,
   "groundRange": 36,
   "settleMs": 280,
   "logHalfWidth": 40,
   "logHalfLength": 95,
-  "lyingHalfLength": 95,
-  "lyingHalfWidth": 35,
+  "lyingHalfLength": 70,
+  "lyingHalfWidth": 24,
+  "lyingObstaclePadding": 4,
+  "lyingArrivalRange": 18,
   "transitionRate": 14
 }

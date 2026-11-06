@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import camp from "../assets/data/lounge/campground.json";
+import { loungeBenches, seatingRules } from "./seating";
 
 export class Campground {
   readonly floor: THREE.Mesh;
   readonly lake: THREE.Mesh;
   readonly logs: THREE.Mesh[] = [];
+  readonly benches: THREE.Mesh[] = [];
   private waterTime = { value: 0 };
   private geometries = new Map<string, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.Material>();
@@ -27,6 +29,7 @@ export class Campground {
     this.geometries.set("circle", new THREE.CircleGeometry(1, 48));
     this.geometries.set("grass", new THREE.ConeGeometry(1, 1, 3));
     this.geometries.set("log-hit", new THREE.BoxGeometry(.64, .6, 1.9));
+    this.geometries.set("bench-hit", new THREE.BoxGeometry(seatingRules.benchHalfLength / 50, .58, seatingRules.benchHalfWidth / 50 + .12));
     this.materials.set("log-hit", new THREE.MeshBasicMaterial({ visible: false }));
     const triangle = new THREE.Shape(); triangle.moveTo(-1.25, 0); triangle.lineTo(1.25, 0); triangle.lineTo(0, 1.65); triangle.closePath();
     this.geometries.set("tent-door", new THREE.ShapeGeometry(triangle));
@@ -125,7 +128,14 @@ export class Campground {
     this.root.makeTranslation(camp.picnic.x, 0, camp.picnic.z);
     for (const z of [-0.48, -0.24, 0, 0.24, 0.48]) this.part("box", "#ad8c5f", 0, 0.77, z, 2.1, 0.09, 0.2);
     for (const x of [-0.7, 0.7]) for (const side of [-1, 1]) this.part("box", "#695541", x, 0.39, side * 0.35, 0.1, 0.8, 0.1, side * 0.4);
-    for (const z of [-0.87, 0.87]) { this.part("box", "#ad8c5f", 0, 0.4, z, 2.2, 0.09, 0.3); for (const x of [-0.75, 0.75]) this.part("box", "#695541", x, 0.21, z, 0.12, 0.42, 0.12); }
+    for (const bench of loungeBenches) {
+      const z = bench.z - camp.picnic.z;
+      this.part("box", "#ad8c5f", 0, seatingRules.benchHeight - .045, z, seatingRules.benchHalfLength / 50, .09, seatingRules.benchHalfWidth / 50);
+      for (const x of [-.75, .75]) this.part("box", "#695541", x, .21, z, .12, .42, .12);
+      const hit = new THREE.Mesh(this.geometries.get("bench-hit"), this.materials.get("log-hit"));
+      hit.position.set(bench.x, .28, bench.z); hit.userData.benchId = bench.id;
+      this.benches.push(hit); this.group.add(hit);
+    }
     this.lantern(-0.5, 0.92, 0); this.part("box", "#688f91", 1.8, 0.27, -0.25, 0.6, 0.5, 0.45); this.part("box", "#d3d8bc", 1.8, 0.54, -0.25, 0.65, 0.08, 0.5); this.root.identity();
     this.part("circle", "#454336", 0, 0.005, 0, 0.81, 0.81, 1, -Math.PI / 2);
     for (let n = 0; n < 14; n += 1) { const a = n * Math.PI / 7; this.part("rock", n % 2 ? "#a29e86" : "#7f8779", Math.cos(a) * 0.77, 0.12, Math.sin(a) * 0.77, 0.2, 0.15, 0.17, 0, a); }

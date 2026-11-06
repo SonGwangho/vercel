@@ -240,7 +240,7 @@ export class LoungeCharacter implements LoungeCharacterVisual {
     this.sitWeight = THREE.MathUtils.damp(this.sitWeight, requestedSeat && this.lieWeight < .2 ? 1 : 0, reducedMotion ? 30 : seatingRules.transitionRate, delta);
     if (!requestedSeat && this.sitWeight < .001) { this.sitWeight = 0; this.seatPose = null; }
     const seat = this.seatPose;
-    const seatHeight = seat?.kind === "log" ? findSeat(seat.seatId)?.height ?? seatingRules.logHeight : 0;
+    const seatHeight = seat?.kind === "log" || seat?.kind === "bench" ? findSeat(seat.seatId)?.height ?? (seat.kind === "bench" ? seatingRules.benchHeight : seatingRules.logHeight) : 0;
     if (state.action) {
       this.lastAction = state.action;
       this.release = 1;
@@ -313,7 +313,7 @@ export class LoungeCharacter implements LoungeCharacterVisual {
       let pole = kneePole;
       if (seat && this.sitWeight > .001) {
         const side = i === 0 ? -1 : 1;
-        if (seat.kind === "log") {
+        if (seat.kind === "log" || seat.kind === "bench") {
           limb.upper.getWorldPosition(this.aimFrom);
           this.aimTo.set(0, 0, 1).applyQuaternion(this.rigRotation);
           this.aimFrom.addScaledVector(this.aimTo, limb.upperLength * .98);

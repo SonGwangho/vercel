@@ -12,7 +12,7 @@ import { actionDuration, clampPosition, distance, foodName, isLoungeEmote, loung
 import { nameLabels, speechBubbles } from "./layout";
 import { normalizeAppearance } from "./appearance";
 import { Campground } from "./campground";
-import { groundSeatAllowed, loungeLogs, seatedMove, seatingRules } from "./seating";
+import { groundSeatAllowed, loungeBenches, loungeLogs, seatedMove, seatingRules } from "./seating";
 import { canFishFrom, catchLabel, describeFish, fishDisplayLength, fishDisplayOffset, fishLength, fishingMotion, lake, lakeCenter } from "./fishing";
 import { LoungeFishModels } from "./fish-models";
 import { LoungeCharacter, loadLoungeCharacters } from "./avatar";
@@ -451,6 +451,7 @@ export class LoungeScene implements LoungeSceneController {
   }
 
   position() { const actor = this.actors.get(this.options.selfId); return actor ? { ...actor.point } : null; }
+  facing() { return this.actors.get(this.options.selfId)?.facing ?? null; }
   rejectMove() { this.localMove = null; this.marker.visible = false; }
 
   predict(kind: LoungeActionKind, commandId: string, foodKind?: LoungeFoodKind, foodId?: string, peerId?: string) {
@@ -835,10 +836,10 @@ export class LoungeScene implements LoungeSceneController {
       if (gap <= insectRules.captureRange && gap < nearest) { nearest = gap; chosen = { kind: "insect", id: visual.insect.id }; point = visual.point; }
     }
     const shoreGap = distance(self.point, lakeCenter) - lake.radius * 100;
-    for (const log of loungeLogs) {
-      const center = { x: loungeWorld.width / 2 + log.x * 100, y: loungeWorld.height / 2 + log.z * 100 };
+    for (const [kind, fixtures] of [["log", loungeLogs], ["bench", loungeBenches]] as const) for (const fixture of fixtures) {
+      const center = { x: loungeWorld.width / 2 + fixture.x * 100, y: loungeWorld.height / 2 + fixture.z * 100 };
       const gap = distance(self.point, center);
-      if (gap <= seatingRules.interactRange && gap < nearest) { nearest = gap; chosen = { kind: "log", id: log.id }; point = center; }
+      if (gap <= seatingRules.interactRange && gap < nearest) { nearest = gap; chosen = { kind, id: fixture.id }; point = center; }
     }
     for (const visual of this.monsters.values()) {
       const gap = distance(self.point, visual.point);
@@ -897,7 +898,7 @@ export class LoungeScene implements LoungeSceneController {
     this.ray(event);
     const foodObjects = [...this.foods.values()].filter((food) => food.group.visible).map((food) => food.group);
     const insectObjects = [...this.insects.values()].filter((visual) => visual.group.visible && visual.insect.expiresAt > this.options.getNow()).map((visual) => visual.group);
-    const surroundings: THREE.Object3D[] = this.camp ? [...this.camp.logs, this.camp.lake] : [];
+    const surroundings: THREE.Object3D[] = this.camp ? [...this.camp.logs, ...this.camp.benches, this.camp.lake] : [];
     const hits = this.raycaster.intersectObjects([...this.pickables, ...foodObjects, ...insectObjects, ...[...this.monsters.values()].map((visual) => visual.group), ...surroundings], true);
     for (const hit of hits) {
       if (!hit.object.visible) continue;
@@ -913,6 +914,7 @@ export class LoungeScene implements LoungeSceneController {
         if (object.userData.insectId) return { kind: "insect", id: object.userData.insectId };
         if (object.userData.monsterId) return { kind: "monster", id: object.userData.monsterId };
         if (object.userData.logId) return { kind: "log", id: object.userData.logId };
+        if (object.userData.benchId) return { kind: "bench", id: object.userData.benchId };
         if (object.userData.lakeId) return { kind: "lake", id: object.userData.lakeId };
         object = object.parent;
       }
@@ -954,7 +956,7 @@ export class LoungeScene implements LoungeSceneController {
     const person = target?.kind === "player" || target?.kind === "npc" ? this.actors.get(target.id)?.player : null;
     const label = person ? person.nickname + (person.fishHeld && person.lastCatch ? ` · ${catchLabel(person.lastCatch)}` : "")
       : target?.kind === "food" ? foodName(this.state?.foods.find((food) => food.id === target.id)?.kind ?? "")
-      : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "log" ? "통나무" : target?.kind === "lake" ? "호수" : "";
+      : target?.kind === "monster" ? describeMonster(this.monsters.get(target.id)!.monster.kind).name : target?.kind === "insect" ? describeInsect(this.insects.get(target.id)!.insect.kind).name : target?.kind === "log" ? "통나무" : target?.kind === "bench" ? "테이블 의자" : target?.kind === "lake" ? "호수" : "";
     if (label !== this.hover) { this.hover = label; this.host.style.cursor = label ? "context-menu" : "crosshair"; this.options.onHover(label); }
   };
   private pointerLeave = () => {

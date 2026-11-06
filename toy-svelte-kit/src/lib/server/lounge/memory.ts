@@ -290,7 +290,7 @@ export class MemoryLounge {
       return true;
     }
     requireAwake(player, now);
-    if (command.type === "sitGround" || command.type === "sitLog" || command.type === "lieGround" || command.type === "stand") {
+    if (command.type === "sitGround" || command.type === "sitLog" || command.type === "sitBench" || command.type === "lieGround" || command.type === "stand") {
       const reason = applySeating(state, player, command, now);
       if (reason) throw new LoungeError(reason);
     } else if (command.type === "punchMonster") {
