@@ -462,7 +462,6 @@
             {#each editorRecord.memos as memo (memo.id)}
               <li>
                 <button id={`fitness-memo-${memo.id}`} type="button" class="memo-row" disabled={editorSaving} onclick={() => void openMemo(memo)}>
-                  <span class="memo-edit">수정</span>
                   <span class="memo-text">{memo.author ? `${memo.author} - ` : ""}{memo.body}</span>
                 </button>
               </li>
@@ -834,7 +833,7 @@
   .memo-list li { border-top: 1px solid var(--line); }
   .memo-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: baseline;
     gap: 12px;
     width: 100%;
@@ -843,7 +842,6 @@
     text-align: left;
     font-size: 0.875rem;
   }
-  .memo-edit { color: var(--brand-strong); font-weight: 650; }
   .memo-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
   .availability-options {
