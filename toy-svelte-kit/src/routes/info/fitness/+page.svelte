@@ -475,19 +475,17 @@
         <p class="editor-error" role="alert">{editorError}</p>
       {/if}
 
-      {#if availabilityChanged}
-       <div class="editor-actions">
+      <div class="editor-actions">
         <button type="button" class="action-button ghost" disabled={editorSaving} onclick={closeEditor}>취소</button>
         <button
           type="button"
           class="action-button primary"
-          disabled={editorSaving}
+          disabled={editorSaving || !availabilityChanged}
           onclick={() => void saveAvailability()}
         >
           {editorSaving ? "저장 중" : "일정 저장"}
         </button>
       </div>
-      {/if}
       {/if}
     </dialog>
 {/if}
