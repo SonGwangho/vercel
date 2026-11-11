@@ -5,8 +5,9 @@
   import type {
     DayOffItem,
     DayOffYearGroup,
-    FitnessCalendarData,
+    FitnessMemo,
     FitnessRecord,
+    FitnessRecordSaveRequest,
     FitnessRecordSaveResponse,
   } from "$lib";
   import dayOffSource from "$lib/assets/data/calendar/dayOff.json";
@@ -37,7 +38,8 @@
   let editorDateKey = $state<string | null>(null);
   let editorIsUnavailable = $state(false);
   let editorIsAvailable = $state(false);
-  let editorMemo = $state("");
+  let draft = $state<FitnessMemo | null>(null);
+  let loadSequence = 0;
   let editorError = $state("");
   let editorSaving = $state(false);
   let memoTextarea = $state<HTMLTextAreaElement | null>(null);
@@ -45,8 +47,12 @@
 
   const device = $derived(page.url.searchParams.get("device"));
   const deviceMode = $derived(device === "mobile" || device === "pc" ? device : "auto");
-  const records = $derived(editableRecords);
-  const recordMap = $derived(new Map(records.map((record) => [record.date, record])));
+  const recordMap = $derived(new Map(editableRecords.map((record) => [record.date, record])));
+  const editorRecord = $derived(editorDateKey ? recordMap.get(editorDateKey) : undefined);
+  const availabilityChanged = $derived(
+    editorIsAvailable !== (editorRecord?.isAvailable ?? false) ||
+    editorIsUnavailable !== (editorRecord?.isUnavailable ?? false),
+  );
   const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
   const dayOffItems = $derived(readDayOffItems(dayOffSource, visibleYearKey));
   const dayOffMap = $derived(new Map(dayOffItems.map((item) => [item.date, item.name])));
@@ -70,22 +76,6 @@
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
-  }
-
-  function isFitnessRecord(value: unknown): value is FitnessRecord {
-    return Boolean(
-      value &&
-        typeof value === "object" &&
-        "date" in value &&
-        "isUnavailable" in value &&
-        "isAvailable" in value &&
-        "memo" in value &&
-        typeof value.date === "string" &&
-        typeof value.isUnavailable === "boolean" &&
-        typeof value.isAvailable === "boolean" &&
-        typeof value.memo === "string" &&
-        !(value.isUnavailable && value.isAvailable),
-    );
   }
 
   function isDayOffItem(value: unknown): value is DayOffItem {
@@ -116,31 +106,6 @@
     }
 
     return yearGroup.dayOffs.filter(isDayOffItem);
-  }
-
-  function readFitnessRecords(source: unknown) {
-    if (!source || typeof source !== "object") {
-      return [];
-    }
-
-    const sourceRecords = (source as Partial<FitnessCalendarData>).records;
-    if (!Array.isArray(sourceRecords)) {
-      return [];
-    }
-
-    return sourceRecords.filter(isFitnessRecord).sort((left, right) => left.date.localeCompare(right.date));
-  }
-
-  function toPlainFitnessRecords(sourceRecords: FitnessRecord[]) {
-    return sourceRecords
-      .filter(isFitnessRecord)
-      .map((record) => ({
-        date: record.date,
-        isUnavailable: record.isUnavailable,
-        isAvailable: record.isAvailable,
-        memo: record.memo,
-      }))
-      .sort((left, right) => left.date.localeCompare(right.date));
   }
 
   function buildCalendarCells(
@@ -200,24 +165,32 @@
     void loadFitnessRecords();
   }
 
+  function applyRecords(records: FitnessRecord[]) {
+    const syncAvailability = editorDateKey !== null && !availabilityChanged;
+    editableRecords = records;
+    if (syncAvailability && editorDateKey) {
+      const record = recordMap.get(editorDateKey);
+      editorIsAvailable = record?.isAvailable ?? false;
+      editorIsUnavailable = record?.isUnavailable ?? false;
+    }
+  }
+
   async function loadFitnessRecords() {
+    const sequence = ++loadSequence;
     recordsLoading = true;
     recordsError = "";
 
     try {
       const response = await fetch("/api/fitness");
 
-      if (!response.ok) {
-        recordsError = "운동 기록을 불러오지 못했습니다.";
-        return;
-      }
+      if (!response.ok) throw new Error();
 
       const data = (await response.json()) as FitnessRecordSaveResponse;
-      editableRecords = toPlainFitnessRecords(data.records);
+      if (sequence === loadSequence) applyRecords(data.records);
     } catch {
-      recordsError = "운동 기록을 불러오지 못했습니다.";
+      if (sequence === loadSequence) recordsError = "운동 기록을 불러오지 못했습니다.";
     } finally {
-      recordsLoading = false;
+      if (sequence === loadSequence) recordsLoading = false;
     }
   }
 
@@ -226,22 +199,44 @@
     editorDateKey = cell.key;
     editorIsUnavailable = cell.record?.isUnavailable ?? false;
     editorIsAvailable = cell.record?.isAvailable ?? false;
-    editorMemo = cell.record?.memo ?? "";
+    draft = null;
     editorError = "";
 
     await tick();
     editorDialog?.showModal();
-    memoTextarea?.focus();
   }
 
   function closeEditor() {
+    if (editorSaving) return;
     editorDialog?.close();
     editorDateKey = null;
     editorIsUnavailable = false;
     editorIsAvailable = false;
-    editorMemo = "";
+    draft = null;
     editorError = "";
     editorSaving = false;
+  }
+
+  async function openMemo(memo?: FitnessMemo) {
+    if (editorSaving) return;
+    draft = memo ? { ...memo } : { id: crypto.randomUUID(), author: "", body: "", revision: 0 };
+    editorError = "";
+    await tick();
+    memoTextarea?.focus();
+  }
+
+  async function backToDay(focusId?: string) {
+    if (editorSaving) return;
+    draft = null;
+    editorError = "";
+    await tick();
+    const target = focusId && document.getElementById(`fitness-memo-${focusId}`);
+    (target || document.getElementById("fitness-add-memo"))?.focus();
+  }
+
+  function dismissEditor() {
+    if (draft) void backToDay(draft.id);
+    else closeEditor();
   }
 
   function dismissEditorFromBackdrop(event: MouseEvent) {
@@ -254,22 +249,12 @@
       event.clientX < bounds.left || event.clientX > bounds.right ||
       event.clientY < bounds.top || event.clientY > bounds.bottom
     ) {
-      closeEditor();
+      dismissEditor();
     }
   }
 
-  async function saveEditor() {
-    if (!editorDateKey || editorSaving) {
-      return;
-    }
-
-    const nextRecord: FitnessRecord = {
-      date: editorDateKey,
-      isUnavailable: editorIsUnavailable,
-      isAvailable: editorIsAvailable,
-      memo: editorMemo.trim(),
-    };
-
+  async function persistChange(change: FitnessRecordSaveRequest) {
+    if (editorSaving) return false;
     editorSaving = true;
     editorError = "";
 
@@ -279,24 +264,46 @@
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          record: nextRecord,
-        }),
+        body: JSON.stringify(change),
       });
 
       if (!response.ok) {
-        editorError = "저장하지 못했습니다.";
-        return;
+        if (response.status === 409) {
+          await loadFitnessRecords();
+          editorError = "메모가 변경되었습니다. 취소한 뒤 목록에서 다시 열어 주세요.";
+        } else {
+          editorError = "저장하지 못했습니다. 다시 시도해 주세요.";
+        }
+        return false;
       }
 
       const data = (await response.json()) as FitnessRecordSaveResponse;
-      editableRecords = toPlainFitnessRecords(data.records);
-      closeEditor();
+      applyRecords(data.records);
+      return true;
     } catch {
-      editorError = "저장하지 못했습니다.";
+      editorError = "저장하지 못했습니다. 다시 시도해 주세요.";
+      return false;
     } finally {
       editorSaving = false;
     }
+  }
+
+  async function saveAvailability() {
+    if (!editorDateKey || !availabilityChanged) return;
+    const saved = await persistChange({
+      action: "availability", date: editorDateKey,
+      isAvailable: editorIsAvailable, isUnavailable: editorIsUnavailable,
+    });
+    if (saved) closeEditor();
+  }
+
+  async function saveMemo() {
+    if (!editorDateKey || !draft || !draft.body.trim()) return;
+    const memo = { ...draft };
+    const saved = await persistChange({
+      action: memo.revision === 0 ? "addMemo" : "editMemo", date: editorDateKey, memo,
+    });
+    if (saved) await backToDay(memo.id);
   }
 </script>
 
@@ -355,6 +362,7 @@
           type="button"
           class={`calendar-cell ${cell.inCurrentMonth ? "" : "is-muted"} ${cell.isToday ? "is-today" : ""} ${cell.isHoliday || cell.isSunday ? "is-red" : ""} ${cell.isSaturday && !cell.isHoliday ? "is-blue" : ""} ${cell.isSelected ? "is-selected" : ""}`}
           onclick={() => void openEditor(cell)}
+          disabled={recordsLoading || Boolean(recordsError)}
           aria-pressed={cell.isSelected}
           aria-label={`${cell.key}${cell.holidayName ? `, ${cell.holidayName}` : ""}${cell.record?.isUnavailable ? ", 안 되는 날 X" : ""}${cell.record?.isAvailable ? ", 되는 날 O" : ""}${cell.hasMemo ? `, ${cell.record?.memo}` : ""} 편집`}
           >
@@ -386,20 +394,42 @@
       class="editor-panel"
       aria-labelledby="fitness-editor-title"
       onclick={dismissEditorFromBackdrop}
-      oncancel={(event) => { event.preventDefault(); closeEditor(); }}
+      oncancel={(event) => { event.preventDefault(); dismissEditor(); }}
     >
       <div class="editor-head">
-        <h2 id="fitness-editor-title">{editorDateKey}</h2>
-        <button type="button" class="editor-close" aria-label="편집 닫기" onclick={closeEditor}>
+        <h2 id="fitness-editor-title">{draft ? (draft.revision === 0 ? "메모 추가" : "메모 수정") : editorDateKey}</h2>
+        <button type="button" class="editor-close" aria-label={draft ? "메모 편집 닫기" : "날짜 닫기"} disabled={editorSaving} onclick={dismissEditor}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
         </button>
       </div>
 
+      {#if draft}
+        <form class="memo-form" onsubmit={(event) => { event.preventDefault(); void saveMemo(); }}>
+          <label class="editor-field">
+            <span>작성자 (선택)</span>
+            <input type="text" bind:value={draft.author} disabled={editorSaving} />
+          </label>
+          <label class="editor-field">
+            <span>메모 내용</span>
+            <textarea rows="7" required bind:this={memoTextarea} bind:value={draft.body} disabled={editorSaving}></textarea>
+          </label>
+          {#if editorError}
+            <p class="editor-error" role="alert">{editorError}</p>
+          {/if}
+          <div class="editor-actions">
+            <button type="button" class="action-button ghost" disabled={editorSaving} onclick={dismissEditor}>취소</button>
+            <button type="submit" class="action-button primary" disabled={editorSaving || !draft.body.trim()}>
+              {editorSaving ? "저장 중" : "저장"}
+            </button>
+          </div>
+        </form>
+      {:else}
       <div class="availability-options" aria-label="일정 가능 여부">
         <label class="availability-toggle is-available">
           <input
             type="checkbox"
             checked={editorIsAvailable}
+            disabled={editorSaving}
             onchange={(event) => {
               editorIsAvailable = event.currentTarget.checked;
               if (editorIsAvailable) {
@@ -413,6 +443,7 @@
           <input
             type="checkbox"
             checked={editorIsUnavailable}
+            disabled={editorSaving}
             onchange={(event) => {
               editorIsUnavailable = event.currentTarget.checked;
               if (editorIsUnavailable) {
@@ -424,30 +455,40 @@
         </label>
       </div>
 
-      <label class="editor-field">
-        <span>메모</span>
-        <textarea
-          bind:this={memoTextarea}
-          bind:value={editorMemo}
-          rows="7"
-        ></textarea>
-      </label>
+      <div class="day-memos">
+        <button id="fitness-add-memo" type="button" class="memo-add" disabled={editorSaving} onclick={() => void openMemo()}>메모 추가</button>
+        {#if editorRecord?.memos.length}
+          <ul class="memo-list" aria-label="메모 목록">
+            {#each editorRecord.memos as memo (memo.id)}
+              <li>
+                <button id={`fitness-memo-${memo.id}`} type="button" class="memo-row" disabled={editorSaving} onclick={() => void openMemo(memo)}>
+                  <span class="memo-edit">수정</span>
+                  <span class="memo-text">{memo.author ? `${memo.author} - ` : ""}{memo.body}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
 
       {#if editorError}
         <p class="editor-error" role="alert">{editorError}</p>
       {/if}
 
-      <div class="editor-actions">
-        <button type="button" class="action-button ghost" onclick={closeEditor}>취소</button>
+      {#if availabilityChanged}
+       <div class="editor-actions">
+        <button type="button" class="action-button ghost" disabled={editorSaving} onclick={closeEditor}>취소</button>
         <button
           type="button"
           class="action-button primary"
           disabled={editorSaving}
-          onclick={() => void saveEditor()}
+          onclick={() => void saveAvailability()}
         >
-          {editorSaving ? "저장 중" : "저장"}
+          {editorSaving ? "저장 중" : "일정 저장"}
         </button>
       </div>
+      {/if}
+      {/if}
     </dialog>
 {/if}
 </div>
@@ -776,6 +817,37 @@
 
   .editor-close { background: var(--surface-muted); }
 
+  .memo-form, .day-memos { display: grid; min-width: 0; gap: 14px; }
+  .memo-add, .memo-row {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .memo-add {
+    justify-self: start;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--control-radius);
+    font-weight: 650;
+  }
+  .memo-list { list-style: none; margin: 0; padding: 0; }
+  .memo-list li { border-top: 1px solid var(--line); }
+  .memo-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 2px;
+    text-align: left;
+    font-size: 0.875rem;
+  }
+  .memo-edit { color: var(--brand-strong); font-weight: 650; }
+  .memo-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
   .availability-options {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -821,11 +893,10 @@
     font-weight: 600;
   }
 
+  .editor-field input,
   .editor-field textarea {
     width: 100%;
-    min-height: 160px;
     padding: 12px 14px;
-    resize: vertical;
     border: 1px solid var(--line-strong);
     border-radius: var(--control-radius);
     background: var(--surface);
@@ -835,6 +906,7 @@
     font-size: 1rem;
     line-height: 1.55;
   }
+  .editor-field textarea { min-height: 160px; resize: vertical; }
 
   .editor-error {
     margin: 0;
@@ -863,6 +935,9 @@
   .calendar-cell:focus-visible,
   .records-status button:focus-visible,
   .editor-close:focus-visible,
+  .memo-add:focus-visible,
+  .memo-row:focus-visible,
+  .editor-field input:focus-visible,
   .action-button:focus-visible,
   .editor-field textarea:focus-visible {
     outline: 2px solid var(--focus-ring);
@@ -875,6 +950,8 @@
     .month-button:hover,
     .today-button:hover,
     .editor-close:hover,
+    .memo-add:hover,
+    .memo-row:hover,
     .action-button.ghost:hover { background: var(--surface-strong); }
     .calendar-cell:hover { background: var(--brand-soft); }
     .action-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 90%, #000); }

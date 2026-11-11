@@ -1,130 +1,112 @@
+import { error } from "@sveltejs/kit";
+import type { FitnessRecord, FitnessRecordSaveRequest } from "$lib";
 import { getNeonSql } from "$lib/server/neon";
-import type { FitnessRecord } from "$lib";
 
-type FitnessRecordRow = {
-	date: string;
-	is_unavailable: boolean;
-	is_available: boolean;
-	memo: string;
-};
-
+const legacyMemoId = "00000000-0000-0000-0000-000000000000";
 let fitnessTableReady: Promise<void> | null = null;
 
-function mapFitnessRecordRow(row: FitnessRecordRow): FitnessRecord {
-	return {
-		date: row.date,
-		isUnavailable: row.is_unavailable,
-		isAvailable: row.is_available,
-		memo: row.memo
-	};
-}
-
-export function normalizeFitnessRecords(records: FitnessRecord[]) {
-	return records
-		.filter(
-			(record) =>
-				record.date &&
-				typeof record.isUnavailable === "boolean" &&
-				typeof record.isAvailable === "boolean" &&
-				typeof record.memo === "string"
-		)
-		.map((record) => ({
-			date: record.date,
-			isUnavailable: record.isUnavailable,
-			isAvailable: !record.isUnavailable && record.isAvailable,
-			memo: record.memo.trim()
-		}))
-		.sort((left, right) => left.date.localeCompare(right.date));
-}
-
-export async function ensureFitnessTable(): Promise<void> {
-	if (!fitnessTableReady) {
-		fitnessTableReady = (async () => {
-			const sql = getNeonSql();
-
-			await sql`
-				CREATE TABLE IF NOT EXISTS fitness_records (
-					date DATE PRIMARY KEY,
-					is_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
-					is_available BOOLEAN NOT NULL DEFAULT FALSE,
-					memo TEXT NOT NULL DEFAULT '',
-					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-				)
-			`;
-			await sql`
-				ALTER TABLE fitness_records
-				ADD COLUMN IF NOT EXISTS is_unavailable BOOLEAN NOT NULL DEFAULT FALSE
-			`;
-			await sql`
-				ALTER TABLE fitness_records
-				ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT FALSE
-			`;
-		})().catch((error) => {
-			fitnessTableReady = null;
-			throw error;
-		});
-	}
-
-	await fitnessTableReady;
-}
-
-export async function seedFitnessRecords(records: FitnessRecord[]) {
-	const sourceRecords = normalizeFitnessRecords(records);
-
-	if (sourceRecords.length === 0) {
-		return;
-	}
-
-	await ensureFitnessTable();
-
+async function prepareTables() {
 	const sql = getNeonSql();
-	for (const record of sourceRecords) {
-		await sql`
-			INSERT INTO fitness_records (date, is_unavailable, is_available, memo)
-			VALUES (${record.date}, ${record.isUnavailable}, ${record.isAvailable}, ${record.memo})
-			ON CONFLICT (date) DO NOTHING
-		`;
-	}
+	await sql.transaction([
+		sql`SELECT pg_advisory_xact_lock(hashtext('fitness_memos_schema'))`,
+		sql`
+			CREATE TABLE IF NOT EXISTS fitness_records (
+				date DATE PRIMARY KEY,
+				is_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+				is_available BOOLEAN NOT NULL DEFAULT FALSE,
+				memo TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)
+		`,
+		sql`
+			ALTER TABLE fitness_records
+				ADD COLUMN IF NOT EXISTS is_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+				ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT FALSE
+		`,
+		sql`
+			CREATE TABLE IF NOT EXISTS fitness_memos (
+				date DATE NOT NULL REFERENCES fitness_records(date) ON DELETE CASCADE,
+				id UUID NOT NULL,
+				entry_order BIGINT GENERATED ALWAYS AS IDENTITY,
+				author TEXT NOT NULL DEFAULT '',
+				body TEXT NOT NULL,
+				revision INTEGER NOT NULL DEFAULT 1,
+				PRIMARY KEY (date, id)
+			)
+		`,
+		// One legacy entry per date. Keep the original text, including its line breaks.
+		sql`
+			INSERT INTO fitness_memos (date, id, body)
+			SELECT r.date, ${legacyMemoId}::uuid, r.memo
+			FROM fitness_records r
+			WHERE r.memo <> '' AND NOT EXISTS (
+				SELECT 1 FROM fitness_memos m WHERE m.date = r.date AND m.id = ${legacyMemoId}::uuid
+			)
+			ON CONFLICT (date, id) DO NOTHING
+		`
+	]);
+}
+
+function ensureFitnessTable() {
+	return fitnessTableReady ??= prepareTables().catch((cause) => {
+		fitnessTableReady = null;
+		throw cause;
+	});
 }
 
 export async function listFitnessRecords(): Promise<FitnessRecord[]> {
 	await ensureFitnessTable();
-
 	const sql = getNeonSql();
-	const rows = (await sql`
-		SELECT date::text, is_unavailable, is_available, memo
-		FROM fitness_records
-		ORDER BY date ASC
-	`) as FitnessRecordRow[];
-
-	return rows.map(mapFitnessRecordRow);
+	const rows = await sql`
+		SELECT r.date::text AS date, r.is_available AS "isAvailable", r.is_unavailable AS "isUnavailable",
+			COALESCE(jsonb_agg(jsonb_build_object(
+				'id', m.id, 'author', m.author, 'body', m.body, 'revision', m.revision
+			) ORDER BY m.entry_order) FILTER (WHERE m.id IS NOT NULL), '[]'::jsonb) AS memos
+		FROM fitness_records r LEFT JOIN fitness_memos m ON m.date = r.date
+		GROUP BY r.date
+		ORDER BY r.date
+	` as Omit<FitnessRecord, "memo">[];
+	return rows.map((record) => ({
+		...record,
+		memo: record.memos.map((entry) => entry.body).join("\n")
+	}));
 }
 
-export async function upsertFitnessRecord(record: FitnessRecord): Promise<FitnessRecord[]> {
+export async function saveFitnessChange(change: FitnessRecordSaveRequest) {
 	await ensureFitnessTable();
-
-	const nextRecord = normalizeFitnessRecords([record])[0];
-	if (!nextRecord) {
-		throw new Error("Invalid fitness record.");
-	}
-
 	const sql = getNeonSql();
-	await sql`
-		INSERT INTO fitness_records (date, is_unavailable, is_available, memo)
-		VALUES (
-			${nextRecord.date},
-			${nextRecord.isUnavailable},
-			${nextRecord.isAvailable},
-			${nextRecord.memo}
-		)
-		ON CONFLICT (date) DO UPDATE
-		SET
-			is_unavailable = EXCLUDED.is_unavailable,
-			is_available = EXCLUDED.is_available,
-			memo = EXCLUDED.memo,
-			updated_at = NOW()
-	`;
-
+	if (change.action === "availability") {
+		await sql`
+			INSERT INTO fitness_records (date, is_available, is_unavailable)
+			VALUES (${change.date}, ${change.isAvailable}, ${change.isUnavailable})
+			ON CONFLICT (date) DO UPDATE SET is_available = EXCLUDED.is_available,
+				is_unavailable = EXCLUDED.is_unavailable, updated_at = NOW()
+		`;
+	} else {
+		const { id, author, body, revision } = change.memo;
+		if (change.action === "addMemo") {
+			const [, inserted] = await sql.transaction([
+				sql`INSERT INTO fitness_records (date) VALUES (${change.date}) ON CONFLICT (date) DO NOTHING`,
+				sql`
+					INSERT INTO fitness_memos (date, id, author, body)
+					VALUES (${change.date}, ${id}, ${author.trim()}, ${body})
+					ON CONFLICT (date, id) DO UPDATE SET id = EXCLUDED.id
+					WHERE fitness_memos.author = EXCLUDED.author AND fitness_memos.body = EXCLUDED.body
+					RETURNING id
+				`
+			]);
+			if (!inserted.length) error(409, "이미 저장된 메모입니다. 목록에서 다시 열어 주세요.");
+		} else {
+			const updated = await sql`
+				UPDATE fitness_memos SET author = ${author.trim()}, body = ${body},
+					revision = CASE WHEN revision = ${revision} THEN revision + 1 ELSE revision END
+				WHERE date = ${change.date} AND id = ${id}
+					AND (revision = ${revision} OR (author = ${author.trim()} AND body = ${body}))
+				RETURNING id
+			`;
+			if (!updated.length) error(409, "메모가 변경되었습니다. 목록에서 다시 열어 주세요.");
+		}
+	}
 	return listFitnessRecords();
 }
