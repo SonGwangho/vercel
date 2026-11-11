@@ -154,7 +154,10 @@
     const firstGridDate = new Date(firstDay);
     firstGridDate.setDate(firstDay.getDate() - firstDay.getDay());
 
-    return Array.from({ length: 42 }, (_, index) => {
+    const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+    const weekCount = Math.ceil((firstDay.getDay() + daysInMonth) / 7);
+
+    return Array.from({ length: weekCount * 7 }, (_, index) => {
       const date = new Date(firstGridDate);
       date.setDate(firstGridDate.getDate() + index);
 
@@ -357,30 +360,23 @@
           >
             <span class="date-line">
               <span class="day-number">{cell.day}</span>
+              {#if cell.record?.isUnavailable}
+                <span class="status-label is-unavailable" aria-hidden="true">X</span>
+              {:else if cell.record?.isAvailable}
+                <span class="status-label is-available" aria-hidden="true">O</span>
+              {/if}
             </span>
             {#if cell.holidayName}
               <small class="holiday-name">{cell.holidayName}</small>
             {/if}
-            {#if cell.record?.isUnavailable}
-              <span class="status-label is-unavailable" aria-label="안 되는 날">
-                X
-              </span>
-            {:else if cell.record?.isAvailable}
-              <span class="status-label is-available" aria-label="되는 날">
-                O
-              </span>
-            {/if}
             {#if cell.hasMemo}
-              <small class="record-memo">{cell.record?.memo}</small>
+              <span class="memo-preview">
+                <small class="record-memo">{cell.record?.memo}</small>
+              </span>
             {/if}
         </button>
       {/each}
     </div>
-  </div>
-  <div class="calendar-legend" aria-label="일정 표시 안내">
-    <span><b class="legend-available">O</b> 되는 날</span>
-    <span><b class="legend-unavailable">X</b> 안 되는 날</span>
-    <span class="today-legend"><i aria-hidden="true"></i> 오늘</span>
   </div>
 </section>
 
@@ -459,7 +455,11 @@
 
 <style>
   .fitness-viewport {
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     width: 100%;
+    height: 100svh;
+    height: 100dvh;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-color: var(--line-strong) var(--bg);
@@ -468,7 +468,7 @@
   .fitness-layout {
     container: fitness / inline-size;
     width: 100%;
-    max-width: 1280px;
+    min-height: 0;
     margin-inline: auto;
   }
 
@@ -481,18 +481,21 @@
   }
 
   .fitness-page {
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    min-height: 100svh;
-    padding: 16px 8px 20px;
+    height: 100%;
+    padding: 8px;
     color: var(--text);
     font-variant-numeric: tabular-nums;
   }
 
   .calendar-toolbar {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
 
   .month-navigation {
@@ -546,7 +549,11 @@
   }
 
   .calendar-panel {
-    overflow: hidden;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
     border: 1px solid var(--line);
     border-radius: var(--panel-radius);
     background: var(--surface);
@@ -554,6 +561,7 @@
 
   .records-status {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -604,6 +612,19 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
+  .weekdays {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+
+  .calendar-grid {
+    flex: 1;
+    min-height: 0;
+    grid-auto-rows: minmax(44px, 1fr);
+  }
+
   .weekdays div {
     padding: 10px 2px;
     border-bottom: 1px solid var(--line);
@@ -618,11 +639,11 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 5px;
+    gap: 3px;
     min-width: 0;
-    height: clamp(96px, 13svh, 112px);
+    min-height: 44px;
     overflow: hidden;
-    padding: 8px 5px;
+    padding: 5px 4px;
     border: 0;
     border-right: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
@@ -646,15 +667,17 @@
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    min-height: 24px;
+    gap: 2px;
+    flex-wrap: wrap;
+    min-height: 20px;
   }
 
   .day-number {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 24px;
-    height: 24px;
+    min-width: 20px;
+    height: 20px;
     border-radius: 6px;
     color: var(--text-strong);
     font-size: 0.875rem;
@@ -680,62 +703,37 @@
 
   .status-label {
     flex-shrink: 0;
-    padding-inline: 5px;
     font-size: 0.75rem;
     font-weight: 750;
     line-height: 1.2;
   }
 
-  .status-label.is-available,
-  .legend-available { color: var(--success); }
-  .status-label.is-unavailable,
-  .legend-unavailable { color: var(--danger); }
+  .status-label.is-available { color: var(--success); }
+  .status-label.is-unavailable { color: var(--danger); }
 
   .calendar-cell small {
-    display: -webkit-box;
-    min-height: 0;
+    display: block;
+    flex-shrink: 0;
     max-width: 100%;
-    overflow: hidden;
     color: var(--muted);
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.4;
-    white-space: pre-line;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
   }
 
-  .calendar-cell .holiday-name {
-    flex-shrink: 0;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+  .memo-preview {
+    flex: 1;
+    min-height: 0;
+    align-self: stretch;
+    overflow: hidden;
   }
 
-  .calendar-legend {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin-top: 14px;
-    color: var(--muted);
-    font-size: 0.75rem;
-  }
-
-  .calendar-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .calendar-legend b { font-weight: 750; }
-  .today-legend { margin-left: auto; }
-  .today-legend i {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    background: var(--brand);
+  .record-memo {
+    max-height: 100%;
+    max-height: round(down, 100%, 1lh);
+    overflow: hidden;
   }
 
   :global(body:has(.fitness-viewport .editor-panel[open])) { overflow: hidden; }
@@ -893,23 +891,14 @@
 
   /* The container width follows the URL override, including dialogs in the top layer. */
   @container fitness (min-width: 768px) {
-    .fitness-page { padding: 28px 32px 24px; }
-    .calendar-toolbar { justify-content: space-between; margin-bottom: 24px; }
-    .month-navigation { flex: none; grid-template-columns: 44px auto 44px; gap: 16px; }
-    .calendar-toolbar h1 { min-width: 210px; font-size: 1.75rem; }
+    .fitness-page { padding: 16px 24px; }
+    .calendar-toolbar { justify-content: space-between; margin-bottom: 12px; }
+    .month-navigation { flex: none; grid-template-columns: 44px auto 44px; gap: 12px; }
     .today-button { padding-inline: 20px; }
-    .weekdays div { padding-block: 12px; font-size: 0.8125rem; }
-    .calendar-cell {
-      height: clamp(112px, calc((100svh - 188px) / 6), 148px);
-      gap: 7px;
-      padding: 10px 12px;
-    }
-    .day-number { min-width: 28px; height: 28px; font-size: 1rem; }
-    .status-label { font-size: 0.875rem; }
-    .calendar-cell small { font-size: 0.875rem; }
-    .calendar-legend { margin-top: 16px; font-size: 0.8125rem; gap: 20px; }
+    .calendar-cell { padding: 6px 8px; }
     .editor-panel { width: min(calc(100% - 48px), 560px); margin: auto; padding: 28px; }
     .editor-actions { grid-template-columns: auto auto; justify-content: end; }
     .action-button { min-width: 96px; padding-inline: 24px; }
   }
+
 </style>
