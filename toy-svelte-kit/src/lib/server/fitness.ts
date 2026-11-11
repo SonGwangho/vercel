@@ -83,6 +83,28 @@ export async function saveFitnessChange(change: FitnessRecordSaveRequest) {
 			ON CONFLICT (date) DO UPDATE SET is_available = EXCLUDED.is_available,
 				is_unavailable = EXCLUDED.is_unavailable, updated_at = NOW()
 		`;
+	} else if (change.action === "deleteMemo") {
+		const { id, revision } = change.memo;
+		// Clear the legacy source atomically so a later cold start cannot restore this memo.
+		const deleted = await sql`
+			WITH deleted AS (
+				DELETE FROM fitness_memos
+				WHERE date = ${change.date} AND id = ${id} AND revision = ${revision}
+				RETURNING date, id
+			), cleared_legacy AS (
+				UPDATE fitness_records r SET memo = '', updated_at = NOW()
+				FROM deleted d
+				WHERE r.date = d.date AND d.id = ${legacyMemoId}::uuid
+				RETURNING r.date
+			)
+			SELECT d.id FROM deleted d LEFT JOIN cleared_legacy c ON c.date = d.date
+		`;
+		if (!deleted.length) {
+			const existing = await sql`
+				SELECT id FROM fitness_memos WHERE date = ${change.date} AND id = ${id}
+			`;
+			if (existing.length) error(409, "메모가 변경되었습니다. 목록에서 다시 열어 주세요.");
+		}
 	} else {
 		const { id, author, body, revision } = change.memo;
 		if (change.action === "addMemo") {

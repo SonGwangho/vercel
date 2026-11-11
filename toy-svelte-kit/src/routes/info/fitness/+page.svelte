@@ -39,6 +39,7 @@
   let editorIsUnavailable = $state(false);
   let editorIsAvailable = $state(false);
   let draft = $state<FitnessMemo | null>(null);
+  let deletingMemo = $state<FitnessMemo | null>(null);
   let loadSequence = 0;
   let editorError = $state("");
   let editorSaving = $state(false);
@@ -200,6 +201,7 @@
     editorIsUnavailable = cell.record?.isUnavailable ?? false;
     editorIsAvailable = cell.record?.isAvailable ?? false;
     draft = null;
+    deletingMemo = null;
     editorError = "";
 
     await tick();
@@ -213,6 +215,7 @@
     editorIsUnavailable = false;
     editorIsAvailable = false;
     draft = null;
+    deletingMemo = null;
     editorError = "";
     editorSaving = false;
   }
@@ -225,17 +228,30 @@
     memoTextarea?.focus();
   }
 
-  async function backToDay(focusId?: string) {
+  async function confirmMemoDeletion(memo: FitnessMemo) {
     if (editorSaving) return;
-    draft = null;
+    deletingMemo = { ...memo };
     editorError = "";
     await tick();
-    const target = focusId && document.getElementById(`fitness-memo-${focusId}`);
+    document.getElementById("fitness-cancel-delete")?.focus();
+  }
+
+  async function backToDay(focusId?: string) {
+    if (editorSaving) return;
+    const deletingId = deletingMemo?.id;
+    draft = null;
+    deletingMemo = null;
+    editorError = "";
+    await tick();
+    const target = deletingId
+      ? document.getElementById(`fitness-delete-memo-${deletingId}`)
+      : focusId && document.getElementById(`fitness-memo-${focusId}`);
     (target || document.getElementById("fitness-add-memo"))?.focus();
   }
 
   function dismissEditor() {
-    if (draft) void backToDay(draft.id);
+    if (deletingMemo) void backToDay();
+    else if (draft) void backToDay(draft.id);
     else closeEditor();
   }
 
@@ -257,6 +273,9 @@
     if (editorSaving) return false;
     editorSaving = true;
     editorError = "";
+    const failureMessage = change.action === "deleteMemo"
+      ? "삭제하지 못했습니다. 다시 시도해 주세요."
+      : "저장하지 못했습니다. 다시 시도해 주세요.";
 
     try {
       const response = await fetch("/api/fitness", {
@@ -272,7 +291,7 @@
           await loadFitnessRecords();
           editorError = "메모가 변경되었습니다. 취소한 뒤 목록에서 다시 열어 주세요.";
         } else {
-          editorError = "저장하지 못했습니다. 다시 시도해 주세요.";
+          editorError = failureMessage;
         }
         return false;
       }
@@ -281,7 +300,7 @@
       applyRecords(data.records);
       return true;
     } catch {
-      editorError = "저장하지 못했습니다. 다시 시도해 주세요.";
+      editorError = failureMessage;
       return false;
     } finally {
       editorSaving = false;
@@ -304,6 +323,16 @@
       action: memo.revision === 0 ? "addMemo" : "editMemo", date: editorDateKey, memo,
     });
     if (saved) await backToDay(memo.id);
+  }
+
+  async function deleteMemo() {
+    if (!editorDateKey || !deletingMemo) return;
+    const saved = await persistChange({
+      action: "deleteMemo",
+      date: editorDateKey,
+      memo: { id: deletingMemo.id, revision: deletingMemo.revision },
+    });
+    if (saved) await backToDay();
   }
 </script>
 
@@ -397,13 +426,28 @@
       oncancel={(event) => { event.preventDefault(); dismissEditor(); }}
     >
       <div class="editor-head">
-        <h2 id="fitness-editor-title">{draft ? (draft.revision === 0 ? "메모 추가" : "메모 수정") : editorDateKey}</h2>
-        <button type="button" class="editor-close" aria-label={draft ? "메모 편집 닫기" : "날짜 닫기"} disabled={editorSaving} onclick={dismissEditor}>
+        <h2 id="fitness-editor-title">
+          {#if deletingMemo}삭제하시겠습니까?
+          {:else if draft}{draft.revision === 0 ? "메모 추가" : "메모 수정"}
+          {:else}{editorDateKey}{/if}
+        </h2>
+        <button type="button" class="editor-close" aria-label={deletingMemo ? "삭제 취소" : draft ? "메모 편집 닫기" : "날짜 닫기"} disabled={editorSaving} onclick={dismissEditor}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
         </button>
       </div>
 
-      {#if draft}
+      {#if deletingMemo}
+        <p class="delete-memo-preview">{deletingMemo.author ? `${deletingMemo.author} - ` : ""}{deletingMemo.body}</p>
+        {#if editorError}
+          <p class="editor-error" role="alert">{editorError}</p>
+        {/if}
+        <div class="editor-actions">
+          <button id="fitness-cancel-delete" type="button" class="action-button ghost" disabled={editorSaving} onclick={dismissEditor}>취소</button>
+          <button type="button" class="action-button danger" disabled={editorSaving} onclick={() => void deleteMemo()}>
+            {editorSaving ? "삭제 중" : "삭제"}
+          </button>
+        </div>
+      {:else if draft}
         <form class="memo-form" onsubmit={(event) => { event.preventDefault(); void saveMemo(); }}>
           <label class="editor-field">
             <span>작성자 (선택)</span>
@@ -460,9 +504,22 @@
         {#if editorRecord?.memos.length}
           <ul class="memo-list" aria-label="메모 목록">
             {#each editorRecord.memos as memo (memo.id)}
-              <li>
+              <li class="memo-item">
                 <button id={`fitness-memo-${memo.id}`} type="button" class="memo-row" disabled={editorSaving} onclick={() => void openMemo(memo)}>
                   <span class="memo-text">{memo.author ? `${memo.author} - ` : ""}{memo.body}</span>
+                </button>
+                <button
+                  id={`fitness-delete-memo-${memo.id}`}
+                  type="button"
+                  class="memo-delete"
+                  aria-label="메모 삭제"
+                  title="메모 삭제"
+                  disabled={editorSaving}
+                  onclick={() => void confirmMemoDeletion(memo)}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+                  </svg>
                 </button>
               </li>
             {/each}
@@ -831,6 +888,36 @@
   }
   .memo-list { list-style: none; margin: 0; padding: 0; }
   .memo-list li { border-top: 1px solid var(--line); }
+  .memo-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: start;
+    gap: 8px;
+  }
+  .memo-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+  }
+  .memo-delete svg { width: 18px; height: 18px; }
+  .memo-delete:disabled { opacity: 0.68; cursor: wait; }
+  .delete-memo-preview {
+    max-height: 160px;
+    overflow: auto;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
   .memo-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -925,6 +1012,11 @@
   .action-button:disabled { cursor: wait; opacity: 0.68; }
   .action-button.ghost { background: var(--surface-muted); color: var(--text); }
   .action-button.primary { border-color: var(--brand); background: var(--brand); color: var(--on-brand); }
+  .action-button.danger {
+    border-color: var(--danger);
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 
   .month-button:focus-visible,
   .today-button:focus-visible,
@@ -933,6 +1025,7 @@
   .editor-close:focus-visible,
   .memo-add:focus-visible,
   .memo-row:focus-visible,
+  .memo-delete:focus-visible,
   .editor-field input:focus-visible,
   .action-button:focus-visible,
   .editor-field textarea:focus-visible {
@@ -950,6 +1043,7 @@
     .memo-row:hover,
     .action-button.ghost:hover { background: var(--surface-strong); }
     .calendar-cell:hover { background: var(--brand-soft); }
+    .memo-delete:hover:not(:disabled) { background: var(--danger-soft); }
     .action-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 90%, #000); }
   }
 

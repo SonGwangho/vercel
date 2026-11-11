@@ -15,15 +15,18 @@ function isSaveRequest(value: unknown): value is FitnessRecordSaveRequest {
 			"isUnavailable" in value && typeof value.isUnavailable === "boolean" &&
 			!(value.isAvailable && value.isUnavailable);
 	}
-	if ((value.action !== "addMemo" && value.action !== "editMemo") || !("memo" in value)) return false;
+	if ((value.action !== "addMemo" && value.action !== "editMemo" && value.action !== "deleteMemo") || !("memo" in value)) return false;
 	const memo = value.memo;
 	if (!memo || typeof memo !== "object") return false;
-	return "id" in memo && typeof memo.id === "string" &&
-		/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(memo.id) &&
+	if (!("id" in memo) || typeof memo.id !== "string" ||
+		!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(memo.id) ||
+		!("revision" in memo) || typeof memo.revision !== "number" || !Number.isSafeInteger(memo.revision)) return false;
+	if (value.action === "deleteMemo") return memo.revision > 0;
+	return (
 		"author" in memo && typeof memo.author === "string" &&
 		"body" in memo && typeof memo.body === "string" && memo.body.trim().length > 0 &&
-		"revision" in memo && typeof memo.revision === "number" && Number.isSafeInteger(memo.revision) &&
-		(value.action === "addMemo" ? memo.revision === 0 : memo.revision > 0);
+		(value.action === "addMemo" ? memo.revision === 0 : memo.revision > 0)
+	);
 }
 
 const getFitnessRecords: RequestHandler = async () => json({ records: await listFitnessRecords() });

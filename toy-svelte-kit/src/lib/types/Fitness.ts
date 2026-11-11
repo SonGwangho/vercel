@@ -19,6 +19,7 @@ export type FitnessCalendarData = {
 
 export type FitnessRecordSaveRequest =
   | { action: "availability"; date: string; isAvailable: boolean; isUnavailable: boolean }
-  | { action: "addMemo" | "editMemo"; date: string; memo: FitnessMemo };
+  | { action: "addMemo" | "editMemo"; date: string; memo: FitnessMemo }
+  | { action: "deleteMemo"; date: string; memo: Pick<FitnessMemo, "id" | "revision"> };
 
 export type FitnessRecordSaveResponse = FitnessCalendarData;
