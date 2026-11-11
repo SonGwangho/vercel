@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { page } from "$app/state";
 
   import type {
     DayOffItem,
@@ -40,7 +41,10 @@
   let editorError = $state("");
   let editorSaving = $state(false);
   let memoTextarea = $state<HTMLTextAreaElement | null>(null);
+  let editorDialog = $state<HTMLDialogElement | null>(null);
 
+  const device = $derived(page.url.searchParams.get("device"));
+  const deviceMode = $derived(device === "mobile" || device === "pc" ? device : "auto");
   const records = $derived(editableRecords);
   const recordMap = $derived(new Map(records.map((record) => [record.date, record])));
   const visibleYearKey = $derived(String(visibleMonth.getFullYear()));
@@ -187,6 +191,12 @@
     void loadFitnessRecords();
   }
 
+  function goToToday() {
+    visibleMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    selectedDateKey = toDateKey(today);
+    void loadFitnessRecords();
+  }
+
   async function loadFitnessRecords() {
     recordsLoading = true;
     recordsError = "";
@@ -217,16 +227,32 @@
     editorError = "";
 
     await tick();
+    editorDialog?.showModal();
     memoTextarea?.focus();
   }
 
   function closeEditor() {
+    editorDialog?.close();
     editorDateKey = null;
     editorIsUnavailable = false;
     editorIsAvailable = false;
     editorMemo = "";
     editorError = "";
     editorSaving = false;
+  }
+
+  function dismissEditorFromBackdrop(event: MouseEvent) {
+    if (event.target !== editorDialog || !editorDialog) {
+      return;
+    }
+
+    const bounds = editorDialog.getBoundingClientRect();
+    if (
+      event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom
+    ) {
+      closeEditor();
+    }
   }
 
   async function saveEditor() {
@@ -275,15 +301,18 @@
   <title>약속 캘린더</title>
 </svelte:head>
 
+<div class="fitness-viewport" data-device={deviceMode}>
+<div class="fitness-layout">
 <section class="fitness-page" aria-label="약속 캘린더">
-  <div class="calendar-toolbar">
+  <header class="calendar-toolbar">
+    <div class="month-navigation">
     <button
       type="button"
       class="month-button"
       onclick={() => moveMonth(-1)}
       aria-label="이전 달"
     >
-      ‹
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
     </button>
     <h1>{monthLabel}</h1>
     <button
@@ -292,14 +321,17 @@
       onclick={() => moveMonth(1)}
       aria-label="다음 달"
     >
-      ›
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 6 6 6-6 6" /></svg>
     </button>
-  </div>
+    </div>
+    <button type="button" class="today-button" onclick={goToToday}>오늘</button>
+  </header>
 
   <div class="calendar-panel">
     {#if recordsLoading}
       <div class="records-status" role="status" aria-live="polite">
-        <span class="loading-spinner"></span>
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>기록을 불러오는 중</span>
       </div>
     {:else if recordsError}
       <div class="records-status is-error" role="alert">
@@ -331,36 +363,40 @@
             {/if}
             {#if cell.record?.isUnavailable}
               <span class="status-label is-unavailable" aria-label="안 되는 날">
-                <span class="status-dot"></span>
                 X
               </span>
             {:else if cell.record?.isAvailable}
               <span class="status-label is-available" aria-label="되는 날">
-                <span class="status-dot"></span>
                 O
               </span>
             {/if}
             {#if cell.hasMemo}
-              <small>{cell.record?.memo}</small>
+              <small class="record-memo">{cell.record?.memo}</small>
             {/if}
         </button>
       {/each}
     </div>
   </div>
+  <div class="calendar-legend" aria-label="일정 표시 안내">
+    <span><b class="legend-available">O</b> 되는 날</span>
+    <span><b class="legend-unavailable">X</b> 안 되는 날</span>
+    <span class="today-legend"><i aria-hidden="true"></i> 오늘</span>
+  </div>
 </section>
 
 {#if editorDateKey}
-  <button
-    type="button"
-    class="editor-backdrop"
-    aria-label="편집 닫기"
-    onclick={closeEditor}
-  ></button>
-  <div class="editor-wrap">
-    <div class="editor-panel" role="dialog" aria-modal="true" aria-labelledby="fitness-editor-title">
+    <dialog
+      bind:this={editorDialog}
+      class="editor-panel"
+      aria-labelledby="fitness-editor-title"
+      onclick={dismissEditorFromBackdrop}
+      oncancel={(event) => { event.preventDefault(); closeEditor(); }}
+    >
       <div class="editor-head">
         <h2 id="fitness-editor-title">{editorDateKey}</h2>
-        <button type="button" class="editor-close" aria-label="편집 닫기" onclick={closeEditor}>×</button>
+        <button type="button" class="editor-close" aria-label="편집 닫기" onclick={closeEditor}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
+        </button>
       </div>
 
       <div class="availability-options" aria-label="일정 가능 여부">
@@ -416,57 +452,97 @@
           {editorSaving ? "저장 중" : "저장"}
         </button>
       </div>
-    </div>
-  </div>
+    </dialog>
 {/if}
+</div>
+</div>
 
 <style>
-  :global(body) {
-    overflow-x: hidden;
+  .fitness-viewport {
+    width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-color: var(--line-strong) var(--bg);
+  }
+
+  .fitness-layout {
+    container: fitness / inline-size;
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+  }
+
+  .fitness-viewport[data-device="mobile"] .fitness-layout {
+    max-width: 520px;
+  }
+
+  .fitness-viewport[data-device="pc"] .fitness-layout {
+    min-width: 860px;
   }
 
   .fitness-page {
-    min-height: 100svh;
     width: 100%;
-    max-width: 520px;
-    margin: 0 auto;
-    padding: 10px 8px 14px;
+    min-height: 100svh;
+    padding: 16px 8px 20px;
     color: var(--text);
+    font-variant-numeric: tabular-nums;
   }
 
   .calendar-toolbar {
-    display: grid;
-    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .month-navigation {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
   }
 
   .calendar-toolbar h1 {
     margin: 0;
-    overflow: hidden;
     color: var(--text-strong);
-    font-size: 1.875rem;
-    font-weight: 900;
-    letter-spacing: 0;
-    line-height: 1;
+    font-size: 1.375rem;
+    font-weight: 750;
+    line-height: 1.3;
     text-align: center;
-    text-overflow: ellipsis;
     white-space: nowrap;
+    letter-spacing: -0.025em;
   }
 
-  .month-button {
-    width: 42px;
-    height: 42px;
+  .month-button,
+  .today-button,
+  .editor-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
     border: 1px solid var(--line);
     border-radius: var(--control-radius);
     background: var(--surface);
     color: var(--text-strong);
-    font-size: 28px;
-    font-weight: 800;
-    line-height: 1;
     cursor: pointer;
-    box-shadow: var(--shadow-soft);
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+  }
+
+  .month-button svg,
+  .editor-close svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .today-button {
+    padding-inline: 12px;
+    font-size: 0.875rem;
+    font-weight: 650;
   }
 
   .calendar-panel {
@@ -474,54 +550,52 @@
     border: 1px solid var(--line);
     border-radius: var(--panel-radius);
     background: var(--surface);
-    box-shadow: var(--shadow-card);
   }
 
   .records-status {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    min-height: 42px;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f0fdf4;
-    color: #15803d;
-    font-size: 13px;
-    font-weight: 900;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-muted);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 550;
   }
 
   .records-status.is-error {
     justify-content: space-between;
-    padding: 0 12px;
-    background: #fef2f2;
-    color: #dc2626;
+    background: var(--danger-soft);
+    color: var(--danger);
   }
 
   .records-status button {
-    border: 1px solid rgba(220, 38, 38, 0.24);
-    border-radius: 999px;
-    background: #fff;
-    color: #dc2626;
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 1px solid currentColor;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: inherit;
     font: inherit;
-    font-size: 12px;
-    font-weight: 900;
-    padding: 6px 10px;
+    font-weight: 650;
     cursor: pointer;
   }
 
   .loading-spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(21, 128, 61, 0.2);
-    border-top-color: #16a34a;
-    border-radius: 999px;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--brand);
+    border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
 
   @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
   }
 
   .weekdays,
@@ -531,161 +605,161 @@
   }
 
   .weekdays div {
-    padding: 9px 2px;
-    border-right: 1px solid var(--line);
+    padding: 10px 2px;
     border-bottom: 1px solid var(--line);
     background: var(--surface-muted);
     color: var(--muted);
-    font-size: 12px;
-    font-weight: 900;
+    font-size: 0.75rem;
+    font-weight: 600;
     text-align: center;
   }
 
-  .weekdays div:last-child,
-  .calendar-cell:nth-child(7n) {
-    border-right: 0;
-  }
-
   .calendar-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
     min-width: 0;
-    min-height: clamp(74px, 14svh, 108px);
-    padding: 7px 5px;
+    height: clamp(96px, 13svh, 112px);
+    overflow: hidden;
+    padding: 8px 5px;
     border: 0;
     border-right: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
     background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    color: var(--text);
     text-align: left;
     cursor: pointer;
+    transition: background-color 160ms ease-out;
   }
 
-  .calendar-cell:nth-last-child(-n + 7) {
-    border-bottom: 0;
-  }
-
+  .calendar-cell:nth-child(7n) { border-right: 0; }
+  .calendar-cell:nth-last-child(-n + 7) { border-bottom: 0; }
+  .calendar-cell.is-muted { background: var(--surface-muted); }
+  .calendar-cell.is-muted .day-number { color: var(--muted); }
   .calendar-cell.is-selected {
     background: var(--brand-soft);
     box-shadow: inset 0 0 0 2px var(--brand);
   }
 
-  .calendar-cell.is-muted {
-    background: var(--surface-muted);
-  }
-
-  .calendar-cell.is-muted .date-line,
-  .calendar-cell.is-muted small,
-  .calendar-cell.is-muted .status-label {
-    opacity: 0.34;
-  }
-
   .date-line {
-    display: inline-flex;
+    display: flex;
+    flex-shrink: 0;
     align-items: center;
-    gap: 5px;
-    min-width: 0;
+    min-height: 24px;
   }
 
   .day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 6px;
     color: var(--text-strong);
-    font-size: 14px;
-    font-weight: 900;
-    line-height: 1.2;
+    font-size: 0.875rem;
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .weekdays div:first-child,
+  .calendar-cell.is-red .day-number,
+  .calendar-cell .holiday-name {
+    color: var(--danger);
+  }
+
+  .weekdays div:last-child,
+  .calendar-cell.is-blue .day-number {
+    color: var(--brand-strong);
   }
 
   .calendar-cell.is-today .day-number {
-    color: #16a34a;
-  }
-
-  .status-dot {
-    flex: 0 0 auto;
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
+    background: var(--brand);
+    color: var(--on-brand);
   }
 
   .status-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1.15;
+    flex-shrink: 0;
+    padding-inline: 5px;
+    font-size: 0.75rem;
+    font-weight: 750;
+    line-height: 1.2;
   }
 
-  .status-label.is-unavailable {
-    color: #dc2626;
-  }
-
-  .status-label.is-unavailable .status-dot {
-    background: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
-  }
-
-  .status-label.is-available {
-    color: #15803d;
-  }
-
-  .status-label.is-available .status-dot {
-    background: #22c55e;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
-  }
+  .status-label.is-available,
+  .legend-available { color: var(--success); }
+  .status-label.is-unavailable,
+  .legend-unavailable { color: var(--danger); }
 
   .calendar-cell small {
     display: -webkit-box;
+    min-height: 0;
     max-width: 100%;
     overflow: hidden;
-    color: #475569;
-    font-size: 0.68rem;
-    font-weight: 700;
-    line-height: 1.35;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
     white-space: pre-line;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 5;
-    line-clamp: 5;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
   }
 
   .calendar-cell .holiday-name {
-    color: #dc2626;
+    flex-shrink: 0;
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
 
-  .editor-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    border: 0;
-    background: rgba(15, 23, 42, 0.5);
-    backdrop-filter: blur(4px);
+  .calendar-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 0.75rem;
   }
 
-  .editor-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 41;
-    display: grid;
-    place-items: end center;
-    padding: 14px;
-    pointer-events: none;
+  .calendar-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
+
+  .calendar-legend b { font-weight: 750; }
+  .today-legend { margin-left: auto; }
+  .today-legend i {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--brand);
+  }
+
+  :global(body:has(.fitness-viewport .editor-panel[open])) { overflow: hidden; }
 
   .editor-panel {
-    display: grid;
-    width: min(100%, 520px);
-    max-height: calc(100svh - 28px);
-    gap: 14px;
+    width: min(calc(100% - 24px), 520px);
+    max-height: calc(100dvh - 24px - env(safe-area-inset-bottom, 0px));
+    margin: auto auto max(12px, env(safe-area-inset-bottom, 0px));
     overflow: auto;
+    overscroll-behavior: contain;
+    padding: 20px;
     border: 1px solid var(--line);
     border-radius: var(--panel-radius);
     background: var(--surface);
-    padding: 18px;
+    color: var(--text);
     box-shadow: var(--shadow-float);
-    pointer-events: auto;
   }
+
+  .editor-panel[open] {
+    display: grid;
+    gap: 20px;
+  }
+
+  .editor-panel::backdrop { background: rgba(12, 18, 28, 0.5); }
 
   .editor-head {
     display: flex;
@@ -697,288 +771,145 @@
   .editor-head h2 {
     margin: 0;
     color: var(--text-strong);
-    font-size: 22px;
-    font-weight: 900;
-    letter-spacing: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
 
-  .editor-close {
-    width: 38px;
-    height: 38px;
-    border: 1px solid var(--line);
-    border-radius: var(--control-radius);
-    background: var(--surface-muted);
-    color: var(--text-strong);
-    font-size: 24px;
-    font-weight: 800;
-    line-height: 1;
-    cursor: pointer;
-  }
+  .editor-close { background: var(--surface-muted); }
 
   .availability-options {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
 
   .availability-toggle {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: fit-content;
-    border-radius: 999px;
-    padding: 10px 14px;
-    font-size: 14px;
-    font-weight: 900;
-  }
-
-  .availability-toggle.is-unavailable {
-    background: #fef2f2;
-    color: #dc2626;
+    gap: 8px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border-radius: var(--control-radius);
+    font-size: 0.875rem;
+    font-weight: 650;
+    cursor: pointer;
   }
 
   .availability-toggle.is-available {
-    background: #f0fdf4;
-    color: #15803d;
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  .availability-toggle.is-unavailable {
+    background: var(--danger-soft);
+    color: var(--danger);
   }
 
   .availability-toggle input {
+    flex-shrink: 0;
     width: 18px;
     height: 18px;
+    margin: 0;
   }
 
-  .availability-toggle.is-unavailable input {
-    accent-color: #ef4444;
-  }
+  .availability-toggle.is-available input { accent-color: var(--success); }
+  .availability-toggle.is-unavailable input { accent-color: var(--danger); }
 
-  .availability-toggle.is-available input {
-    accent-color: #22c55e;
-  }
-
-  .editor-field {
-    display: grid;
-    gap: 8px;
-  }
-
+  .editor-field { display: grid; gap: 8px; }
   .editor-field span {
     color: var(--muted);
-    font-size: 13px;
-    font-weight: 900;
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .editor-field textarea {
     width: 100%;
-    border: 1px solid var(--line);
+    min-height: 160px;
+    padding: 12px 14px;
+    resize: vertical;
+    border: 1px solid var(--line-strong);
     border-radius: var(--control-radius);
     background: var(--surface);
     color: var(--text-strong);
+    caret-color: var(--brand);
     font: inherit;
-    font-size: 16px;
-    outline: none;
-  }
-
-  .editor-field textarea {
-    min-height: 160px;
-    resize: vertical;
-    padding: 13px 14px;
+    font-size: 1rem;
     line-height: 1.55;
   }
 
-  .editor-field textarea:focus {
-    border-color: var(--brand);
-    box-shadow: 0 0 0 3px var(--focus-ring);
-  }
-
   .editor-error {
-    margin: -4px 0 0;
-    color: #dc2626;
-    font-size: 13px;
-    font-weight: 800;
+    margin: 0;
+    color: var(--danger);
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
-  .editor-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
+  .editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .action-button {
-    height: 48px;
-    border-radius: 16px;
-    border: 1px solid #dbe4ef;
-    font-size: 15px;
-    font-weight: 900;
+    min-height: 48px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--control-radius);
+    font-size: 0.9375rem;
+    font-weight: 650;
     cursor: pointer;
+    transition: background-color 160ms ease-out;
   }
 
-  .action-button:disabled {
-    cursor: wait;
-    opacity: 0.68;
+  .action-button:disabled { cursor: wait; opacity: 0.68; }
+  .action-button.ghost { background: var(--surface-muted); color: var(--text); }
+  .action-button.primary { border-color: var(--brand); background: var(--brand); color: var(--on-brand); }
+
+  .month-button:focus-visible,
+  .today-button:focus-visible,
+  .calendar-cell:focus-visible,
+  .records-status button:focus-visible,
+  .editor-close:focus-visible,
+  .action-button:focus-visible,
+  .editor-field textarea:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
-  .action-button.ghost {
-    background: #f8fafc;
-    color: #475569;
+  .calendar-cell:focus-visible { outline-offset: -3px; }
+
+  @media (hover: hover) {
+    .month-button:hover,
+    .today-button:hover,
+    .editor-close:hover,
+    .action-button.ghost:hover { background: var(--surface-strong); }
+    .calendar-cell:hover { background: var(--brand-soft); }
+    .action-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 90%, #000); }
   }
 
-  .action-button.primary {
-    border-color: #0f172a;
-    background: #0f172a;
-    color: #fff;
+  @media (prefers-reduced-motion: reduce) {
+    .month-button,
+    .today-button,
+    .editor-close,
+    .calendar-cell,
+    .action-button { transition: none; }
+    .loading-spinner { animation: none; }
   }
 
-  .weekdays div:first-child,
-  .calendar-cell.is-red .day-number {
-    color: #dc2626;
-  }
-
-  .weekdays div:last-child,
-  .calendar-cell.is-blue .day-number {
-    color: #2563eb;
-  }
-
-  .calendar-cell.is-today:not(.is-red) .day-number {
-    color: #16a34a;
-  }
-
-  @media (max-width: 380px) {
-    .fitness-page {
-      padding-inline: 5px;
-    }
-
-    .calendar-toolbar {
-      grid-template-columns: 38px minmax(0, 1fr) 38px;
-    }
-
-    .month-button {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-    }
-
+  /* The container width follows the URL override, including dialogs in the top layer. */
+  @container fitness (min-width: 768px) {
+    .fitness-page { padding: 28px 32px 24px; }
+    .calendar-toolbar { justify-content: space-between; margin-bottom: 24px; }
+    .month-navigation { flex: none; grid-template-columns: 44px auto 44px; gap: 16px; }
+    .calendar-toolbar h1 { min-width: 210px; font-size: 1.75rem; }
+    .today-button { padding-inline: 20px; }
+    .weekdays div { padding-block: 12px; font-size: 0.8125rem; }
     .calendar-cell {
-      min-height: clamp(68px, 13.5svh, 96px);
-      padding: 6px 4px;
+      height: clamp(112px, calc((100svh - 188px) / 6), 148px);
+      gap: 7px;
+      padding: 10px 12px;
     }
-
-    .calendar-cell small {
-      -webkit-line-clamp: 4;
-      line-clamp: 4;
-    }
-  }
-
-  :global(html[data-theme="dark"]) .fitness-page {
-    color: var(--text);
-  }
-
-  :global(html[data-theme="dark"]) .calendar-toolbar h1,
-  :global(html[data-theme="dark"]) .month-button,
-  :global(html[data-theme="dark"]) .day-number {
-    color: var(--text-strong);
-  }
-
-  :global(html[data-theme="dark"]) .month-button,
-  :global(html[data-theme="dark"]) .calendar-panel,
-  :global(html[data-theme="dark"]) .calendar-cell,
-  :global(html[data-theme="dark"]) .calendar-cell.is-muted {
-    background: var(--surface);
-    border-color: var(--line);
-  }
-
-  :global(html[data-theme="dark"]) .weekdays div {
-    background: var(--surface-muted);
-    border-color: var(--line);
-    color: var(--muted);
-  }
-
-  :global(html[data-theme="dark"]) .calendar-cell small {
-    color: var(--muted);
-  }
-
-  :global(html[data-theme="dark"]) .calendar-cell .holiday-name {
-    color: #f87171;
-  }
-
-  :global(html[data-theme="dark"]) .calendar-cell.is-selected {
-    background: var(--brand-soft);
-    box-shadow: inset 0 0 0 2px var(--brand);
-  }
-
-  :global(html[data-theme="dark"]) .records-status {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: rgba(20, 83, 45, 0.34);
-    color: #86efac;
-  }
-
-  :global(html[data-theme="dark"]) .records-status.is-error {
-    background: rgba(127, 29, 29, 0.35);
-    color: #fca5a5;
-  }
-
-  :global(html[data-theme="dark"]) .records-status button {
-    background: #1c1917;
-    border-color: rgba(252, 165, 165, 0.28);
-    color: #fca5a5;
-  }
-
-  :global(html[data-theme="dark"]) .weekdays div:first-child,
-  :global(html[data-theme="dark"]) .calendar-cell.is-red .day-number {
-    color: #f87171;
-  }
-
-  :global(html[data-theme="dark"]) .weekdays div:last-child,
-  :global(html[data-theme="dark"]) .calendar-cell.is-blue .day-number {
-    color: #60a5fa;
-  }
-
-  :global(html[data-theme="dark"]) .calendar-cell.is-today:not(.is-red) .day-number {
-    color: #4ade80;
-  }
-
-  :global(html[data-theme="dark"]) .editor-panel,
-  :global(html[data-theme="dark"]) .editor-field textarea {
-    background: var(--surface);
-    border-color: var(--line);
-    color: var(--text-strong);
-  }
-
-  :global(html[data-theme="dark"]) .editor-head h2,
-  :global(html[data-theme="dark"]) .editor-close {
-    color: var(--text-strong);
-  }
-
-  :global(html[data-theme="dark"]) .editor-close,
-  :global(html[data-theme="dark"]) .action-button.ghost {
-    background: var(--surface-muted);
-    border-color: var(--line);
-    color: var(--muted);
-  }
-
-  :global(html[data-theme="dark"]) .editor-field span {
-    color: var(--muted);
-  }
-
-  :global(html[data-theme="dark"]) .availability-toggle.is-unavailable {
-    background: rgba(127, 29, 29, 0.35);
-    color: #fca5a5;
-  }
-
-  :global(html[data-theme="dark"]) .availability-toggle.is-available {
-    background: rgba(20, 83, 45, 0.35);
-    color: #86efac;
-  }
-
-  :global(html[data-theme="dark"]) .status-label.is-unavailable {
-    color: #f87171;
-  }
-
-  :global(html[data-theme="dark"]) .status-label.is-available {
-    color: #4ade80;
-  }
-
-  :global(html[data-theme="dark"]) .action-button.primary {
-    border-color: var(--brand);
-    background: var(--brand);
-    color: var(--on-brand);
+    .day-number { min-width: 28px; height: 28px; font-size: 1rem; }
+    .status-label { font-size: 0.875rem; }
+    .calendar-cell small { font-size: 0.875rem; }
+    .calendar-legend { margin-top: 16px; font-size: 0.8125rem; gap: 20px; }
+    .editor-panel { width: min(calc(100% - 48px), 560px); margin: auto; padding: 28px; }
+    .editor-actions { grid-template-columns: auto auto; justify-content: end; }
+    .action-button { min-width: 96px; padding-inline: 24px; }
   }
 </style>
